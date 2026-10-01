@@ -1,0 +1,21 @@
+{
+  "name": "nexlibris",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "common",
+    "client"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w client --",
+    "build": "npm run build -w client --",
+    "test": "npm test --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "android": "npm run build && cd android && ./gradlew assembleDebug",
+    "android:install": "npm run build && cd android && ./gradlew installDebug"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.3"
+  }
+}

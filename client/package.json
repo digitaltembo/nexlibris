@@ -1,0 +1,32 @@
+{
+  "name": "@nexlibris/client",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "@lingo-reader/mobi-parser": "^0.4.6",
+    "@nexlibris/common": "^0.0.0",
+    "epubier": "file:../../epubierjs",
+    "jszip": "^3.10.2",
+    "node-unrar-js": "^2.0.2",
+    "pdfjs-dist": "^6.3.289",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "rtf.js": "^3.0.9",
+    "styled-components": "^6.5.3"
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "happy-dom": "^20.14.5",
+    "vite": "^8.3.1"
+  }
+}

@@ -1,0 +1,20 @@
+[versions]
+agp = "8.11.2"
+kotlin = "2.1.21"
+activity = "1.11.0"
+core = "1.17.0"
+webkit = "1.14.0"
+junit = "4.13.2"
+json = "20240303"
+
+[libraries]
+androidx-activity = { module = "androidx.activity:activity-ktx", version.ref = "activity" }
+androidx-core = { module = "androidx.core:core-ktx", version.ref = "core" }
+androidx-webkit = { module = "androidx.webkit:webkit", version.ref = "webkit" }
+junit = { module = "junit:junit", version.ref = "junit" }
+# Android's org.json is a stub in local unit tests; use the real one there.
+json = { module = "org.json:json", version.ref = "json" }
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
+kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }

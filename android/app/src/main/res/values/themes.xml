@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- A light theme makes the WebView report prefers-color-scheme: light; values-night flips it. -->
+    <style name="Theme.Nexlibris" parent="android:Theme.Material.Light.NoActionBar">
+        <!-- The web app's background color, so there's no flash of white before it paints. -->
+        <item name="android:windowBackground">@color/background</item>
+    </style>
+    <color name="background">#faf8f5</color>
+</resources>
