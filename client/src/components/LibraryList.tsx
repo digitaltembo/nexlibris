@@ -91,10 +91,10 @@ const Td = styled.td<{ $col: ColumnKind }>`
 
 const Tr = styled.tr<{ $highlighted: boolean }>`
   cursor: pointer;
-  ${(p) => p.$highlighted && 'background: color-mix(in srgb, var(--accent) 14%, var(--surface));'}
+  ${(p) => p.$highlighted && 'background: var(--soft);'}
 
   &:hover {
-    ${(p) => !p.$highlighted && 'background: var(--surface-2);'}
+    ${(p) => !p.$highlighted && 'background: var(--hover);'}
   }
 `;
 

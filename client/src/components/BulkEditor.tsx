@@ -1,6 +1,7 @@
 import { LOCAL_USER, userData, type Item, type Operation } from '@nexlibris/common';
 import { useState } from 'react';
 import styled from 'styled-components';
+import { deviceItems } from '../devices/selection';
 import { conversionSource, convertItemFile } from '../library/convert';
 import { useLibrary } from '../library/LibraryContext';
 import { textToMetadata } from '../library/metadataText';
@@ -16,6 +17,8 @@ import {
   PanelSection,
   SectionHeading,
   Row,
+  Spacer,
+  Stack,
   Tag,
   TagLabel,
   TagList,
@@ -69,6 +72,7 @@ export function BulkEditor({ items, onClearSelection }: Props) {
   const [progress, setProgress] = useState<string>();
 
   const count = items.length;
+  const devices = Object.values(library.devices ?? {});
   const tags = tally(items, (i) => i.tags);
   const creators = tally(items, (i) => i.creators.map((c) => c.name));
   const fields = tally(items, (i) => Object.keys(i.metadata));
@@ -152,6 +156,46 @@ export function BulkEditor({ items, onClearSelection }: Props) {
           onChange={(rating) => run(items.map((i) => ({ type: 'setRating', userId: LOCAL_USER, itemId: i.id, rating })))}
         />
       </PanelSection>
+
+      {devices.length > 0 && (
+        <PanelSection>
+          <SectionHeading>Devices</SectionHeading>
+          <Stack>
+            {devices.map((device) => {
+              const included = new Set(deviceItems(library, device).map((i) => i.id));
+              const on = items.filter((i) => included.has(i.id)).length;
+              // Remove only takes off books added by hand; ones its search matches stay while they match.
+              const byHand = items.filter((i) => device.items.includes(i.id)).length;
+              return (
+                <Row key={device.id}>
+                  <span>
+                    {device.name} <Muted>({on === 0 ? 'none' : of(on)} on it{on > byHand && `, ${on - byHand} by its search`})</Muted>
+                  </span>
+                  <Spacer />
+                  {on < count && (
+                    <Button
+                      $variant="secondary"
+                      $size="small"
+                      onClick={() => run([{ type: 'addDeviceItems', id: device.id, itemIds: items.map((i) => i.id) }])}
+                    >
+                      Add
+                    </Button>
+                  )}
+                  {byHand > 0 && (
+                    <Button
+                      $variant="secondary"
+                      $size="small"
+                      onClick={() => run([{ type: 'removeDeviceItems', id: device.id, itemIds: items.map((i) => i.id) }])}
+                    >
+                      Remove
+                    </Button>
+                  )}
+                </Row>
+              );
+            })}
+          </Stack>
+        </PanelSection>
+      )}
 
       <PanelSection>
         <SectionHeading>Tags</SectionHeading>
@@ -267,6 +311,7 @@ export function BulkEditor({ items, onClearSelection }: Props) {
         </PanelSection>
       )}
       {progress && <Muted as="p">{progress}</Muted>}
+
 
       <PanelFooter>
         <DeleteButton

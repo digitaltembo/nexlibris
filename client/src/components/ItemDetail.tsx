@@ -2,10 +2,11 @@ import { LOCAL_USER, userData, type FileRef, type Item, type MetadataValue } fro
 import { useState } from 'react';
 import styled from 'styled-components';
 import { diffDraft, draftFromItem, type ItemDraft } from '../library/editDraft';
+import { savedPosition } from '../library/useReadingPosition';
 import { useLibrary } from '../library/LibraryContext';
 import { metadataToText } from '../library/metadataText';
 import { roleLabel } from '../library/roles';
-import { preferredReadable } from '../reader/Reader';
+import { isReadable, preferredReadable } from '../reader/Reader';
 import { Cover } from './Cover';
 import { CreatorsEditor } from './CreatorsEditor';
 import { DeleteButton } from './DeleteButton';
@@ -114,7 +115,11 @@ export function ItemDetail({ item, onClose, onSelectTag, onRead }: Props) {
   const { library, apply } = useLibrary();
   const { ratings, reviews } = userData(library);
   const [draft, setDraft] = useState<ItemDraft>();
-  const readable = preferredReadable(item);
+  const position = savedPosition(library, item.id);
+  // Carry on in the file last read, if it can still be read; otherwise start the best one.
+  const resume = position && isReadable(position.file) ? position : undefined;
+  const readable = resume?.file ?? preferredReadable(item);
+  const progress = resume?.progress !== undefined ? ` · ${Math.round(resume.progress * 100)}%` : '';
   const review = reviews[item.id]?.text;
 
   return (
@@ -141,7 +146,7 @@ export function ItemDetail({ item, onClose, onSelectTag, onRead }: Props) {
           />
           {!draft && (
             <Actions>
-              {readable && <Button onClick={() => onRead(readable)}>Read</Button>}
+              {readable && <Button onClick={() => onRead(readable)}>{resume ? `Continue${progress}` : 'Read'}</Button>}
               <Button $variant="secondary" onClick={() => setDraft(draftFromItem(item, review))}>
                 Edit
               </Button>

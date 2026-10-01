@@ -1,0 +1,30 @@
+{
+ "key": "/works/OL893414W",
+ "title": "Dune",
+ "description": {
+  "type": "/type/text",
+  "value": "A placeholder description of the work."
+ },
+ "subjects": [
+  "Dune (Imaginary place)",
+  "Fiction",
+  "Fiction, science fiction, general",
+  "Dune (imaginary place), fiction",
+  "New York Times reviewed",
+  "Science fiction",
+  "Science-fiction",
+  "American literature",
+  "nyt:mass-market-monthly=2021-11-07",
+  "New York Times bestseller",
+  "award:nebula_award=novel",
+  "nyt:trade-fiction-paperback=2021-11-07"
+ ],
+ "series": [
+  {
+   "series": {
+    "key": "/series/OL331367L"
+   },
+   "position": "1"
+  }
+ ]
+}

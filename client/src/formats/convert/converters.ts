@@ -1,5 +1,6 @@
 import type { FormatId } from '../formats';
 import type { ConvertContext } from './bookFromItem';
+import { DEFAULT_OPTIMIZE_OPTIONS, optimizerVersion, type OptimizeOptions } from './xteink/options';
 
 export type { ConvertContext } from './bookFromItem';
 
@@ -50,6 +51,8 @@ export const CONVERTERS: Converter[] = [
     version: '1',
     run: async (data, _from, ctx) => (await import('./comics')).cbrToCbz(data, ctx),
   },
+  xteinkConverter('X4'),
+  xteinkConverter('X3'),
   {
     id: 'epub-txt',
     from: ['epub', 'x4.epub', 'x3.epub'],
@@ -61,4 +64,18 @@ export const CONVERTERS: Converter[] = [
 
 export function convertersFrom(format: string): Converter[] {
   return CONVERTERS.filter((c) => (c.from as string[]).includes(format));
+}
+
+/** The CrossPoint optimizer for a reader's screen, with options (a device's settings) recorded in its version. */
+export function xteinkConverter(profile: 'X4' | 'X3', options: OptimizeOptions = DEFAULT_OPTIMIZE_OPTIONS): Converter {
+  return {
+    id: profile === 'X4' ? 'xteink-x4' : 'xteink-x3',
+    from: ['epub'],
+    to: profile === 'X4' ? 'x4.epub' : 'x3.epub',
+    version: optimizerVersion(options),
+    run: async (data) => {
+      const [{ optimizeEpub }, { PROFILES }] = await Promise.all([import('./xteink/optimize'), import('./xteink/image')]);
+      return optimizeEpub(data, PROFILES[profile], options);
+    },
+  };
 }

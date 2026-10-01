@@ -2,6 +2,8 @@ import {
   LOCAL_USER,
   SCHEMA_VERSION,
   type Creator,
+  type Device,
+  type DeviceId,
   type FileHash,
   type FileRef,
   type Item,
@@ -9,12 +11,22 @@ import {
   type ItemKind,
   type Library,
   type MetadataValue,
+  type PlacedFile,
+  type ReadingPosition,
   type UserData,
   type UserId,
 } from './types';
 
 /** Top-level item fields that are replaced wholesale by `updateItem`. */
 export type ItemPatch = Partial<Pick<Item, 'kind' | 'title' | 'creators' | 'identifiers' | 'cover'>>;
+
+/** A device's name, and settings by key (undefined removes one), so edits on different instances merge. */
+export interface DevicePatch {
+  name?: string;
+  /** An empty string clears it. */
+  query?: string;
+  settings?: Record<string, MetadataValue | undefined>;
+}
 
 /**
  * Every mutation of a library is one of these. They are recorded in the change
@@ -34,7 +46,15 @@ export type Operation =
   | { type: 'attachFile'; id: ItemId; file: FileRef }
   | { type: 'detachFile'; id: ItemId; hash: FileHash }
   | { type: 'setRating'; userId: UserId; itemId: ItemId; rating: number | undefined }
-  | { type: 'setReview'; userId: UserId; itemId: ItemId; text: string | undefined };
+  | { type: 'setReview'; userId: UserId; itemId: ItemId; text: string | undefined }
+  | { type: 'setPosition'; userId: UserId; itemId: ItemId; position: Omit<ReadingPosition, 'updatedAt'> | undefined }
+  | { type: 'addDevice'; device: Device }
+  | { type: 'updateDevice'; id: DeviceId; patch: DevicePatch }
+  | { type: 'removeDevice'; id: DeviceId }
+  | { type: 'addDeviceItems'; id: DeviceId; itemIds: ItemId[] }
+  | { type: 'removeDeviceItems'; id: DeviceId; itemIds: ItemId[] }
+  /** What a sync did: files it put on the device, by path, and paths it removed or found gone. */
+  | { type: 'recordDeviceSync'; id: DeviceId; placed: Record<string, PlacedFile>; removed: string[] };
 
 export interface Change {
   revision: number;
@@ -84,6 +104,23 @@ export function createItem(fields: NewItem, now: string = new Date().toISOString
   };
 }
 
+export function createDevice(
+  fields: Pick<Device, 'name' | 'type'> & Partial<Pick<Device, 'settings' | 'query'>>,
+  now: string = new Date().toISOString(),
+): Device {
+  const query = fields.query?.trim();
+  return {
+    id: crypto.randomUUID(),
+    name: fields.name,
+    type: fields.type,
+    items: [],
+    ...(query && { query }),
+    settings: fields.settings ?? {},
+    placed: {},
+    addedAt: now,
+  };
+}
+
 const tagKey = (tag: string) => tag.trim().toLowerCase();
 
 /** Appends trimmed tags not already present, comparing case-insensitively. */
@@ -112,6 +149,12 @@ export function applyOperation(library: Library, op: Operation, at: string): Lib
     ...next,
     items: { ...library.items, [item.id]: { ...item, updatedAt: at } },
   });
+  const requireDevice = (id: DeviceId): Device => {
+    const device = library.devices?.[id];
+    if (!device) throw new OperationError(`No device with id ${id}`, op);
+    return device;
+  };
+  const withDevice = (device: Device): Library => ({ ...next, devices: { ...library.devices, [device.id]: device } });
   const withUserData = (userId: UserId, update: (data: UserData) => UserData): Library => {
     const current = library.userData[userId] ?? { ratings: {}, reviews: {} };
     return { ...next, userData: { ...library.userData, [userId]: update(current) } };
@@ -149,10 +192,14 @@ export function applyOperation(library: Library, op: Operation, at: string): Lib
         Object.entries(library.userData).map(([userId, data]) => {
           const { [op.id]: _rating, ...ratings } = data.ratings;
           const { [op.id]: _review, ...reviews } = data.reviews;
-          return [userId, { ratings, reviews }];
+          if (!data.positions) return [userId, { ratings, reviews }];
+          const { [op.id]: _position, ...positions } = data.positions;
+          return [userId, { ratings, reviews, positions }];
         }),
       );
-      return { ...next, items, userData };
+      // Taken off devices too; what's already on them is removed by their next sync.
+      const devices = library.devices && mapValues(library.devices, (d) => ({ ...d, items: d.items.filter((id) => id !== op.id) }));
+      return { ...next, items, userData, ...(devices && { devices }) };
     }
     case 'attachFile': {
       const item = requireItem(op.id);
@@ -183,6 +230,59 @@ export function applyOperation(library: Library, op: Operation, at: string): Lib
         };
       });
     }
+    case 'setPosition': {
+      requireItem(op.itemId);
+      const progress = op.position?.progress;
+      if (progress !== undefined && !(progress >= 0 && progress <= 1)) {
+        throw new OperationError(`Progress must be between 0 and 1, got ${progress}`, op);
+      }
+      return withUserData(op.userId, (data) => {
+        const { [op.itemId]: _old, ...positions } = data.positions ?? {};
+        return {
+          ...data,
+          positions:
+            op.position === undefined ? positions : { ...positions, [op.itemId]: { ...op.position, updatedAt: at } },
+        };
+      });
+    }
+    case 'addDevice': {
+      if (library.devices?.[op.device.id]) throw new OperationError(`Device ${op.device.id} already exists`, op);
+      return withDevice(op.device);
+    }
+    case 'updateDevice': {
+      const device = requireDevice(op.id);
+      const settings = { ...device.settings };
+      for (const [key, value] of Object.entries(op.patch.settings ?? {})) {
+        if (value === undefined) delete settings[key];
+        else settings[key] = value;
+      }
+      const { query: _query, ...rest } = device;
+      const query = op.patch.query === undefined ? device.query : op.patch.query.trim() || undefined;
+      return withDevice({ ...rest, ...(op.patch.name !== undefined && { name: op.patch.name }), settings, ...(query && { query }) });
+    }
+    case 'removeDevice': {
+      requireDevice(op.id);
+      const { [op.id]: _removed, ...devices } = library.devices ?? {};
+      return { ...next, devices };
+    }
+    case 'addDeviceItems': {
+      const device = requireDevice(op.id);
+      op.itemIds.forEach(requireItem);
+      const added = op.itemIds.filter((id, i) => !device.items.includes(id) && op.itemIds.indexOf(id) === i);
+      return withDevice({ ...device, items: [...device.items, ...added] });
+    }
+    case 'removeDeviceItems': {
+      const device = requireDevice(op.id);
+      const removed = new Set(op.itemIds);
+      return withDevice({ ...device, items: device.items.filter((id) => !removed.has(id)) });
+    }
+    case 'recordDeviceSync': {
+      const device = requireDevice(op.id);
+      const placed = { ...device.placed };
+      for (const path of op.removed) delete placed[path];
+      Object.assign(placed, op.placed);
+      return withDevice({ ...device, placed, lastSyncedAt: at });
+    }
   }
 }
 
@@ -202,4 +302,8 @@ export function applyOperations(
 
 export function userData(library: Library, userId: UserId = LOCAL_USER): UserData {
   return library.userData[userId] ?? { ratings: {}, reviews: {} };
+}
+
+function mapValues<T>(record: Record<string, T>, f: (value: T) => T): Record<string, T> {
+  return Object.fromEntries(Object.entries(record).map(([key, value]) => [key, f(value)]));
 }

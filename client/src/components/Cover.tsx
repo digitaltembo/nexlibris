@@ -7,7 +7,7 @@ const frame = css`
   width: 100%;
   aspect-ratio: 2 / 3;
   border-radius: 4px;
-  background: var(--surface-2);
+  background: var(--surface);
   box-shadow: 0 1px 3px rgb(0 0 0 / 0.15);
 `;
 

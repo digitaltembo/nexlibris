@@ -1,6 +1,7 @@
 import JSZip from 'jszip';
 import { buildEpub, escapeXml, extensionFor, htmlToXhtml, type EpubChapter, type EpubResource } from '../epubBuilder';
 import { decodeText, loadRtfjs } from '../text';
+import { parseXml } from '../xml';
 import { bookFromItem, type ConvertContext } from './bookFromItem';
 
 const HEADING = /^(chapter|part|book|prologue|epilogue|introduction|preface|afterword|appendix)\b.{0,70}$|^[IVXLCDM]+\.?$|^\d{1,3}\.?$/i;
@@ -103,7 +104,7 @@ function textOf(node: Node, out: string[]): void {
 export async function epubToTxt(data: Blob, ctx: ConvertContext): Promise<Blob> {
   const zip = await JSZip.loadAsync(await data.arrayBuffer());
   const xml = async (path: string) =>
-    new DOMParser().parseFromString((await zip.file(path)?.async('string')) ?? '', 'application/xml');
+    parseXml((await zip.file(path)?.async('string')) ?? '') ?? new Document();
   const byLocalName = (doc: Document, name: string) =>
     Array.from(doc.getElementsByTagName('*')).filter((el) => el.localName === name);
 

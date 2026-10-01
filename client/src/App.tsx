@@ -2,18 +2,25 @@ import { createItem, userData, type FileRef, type Item, type ItemId } from '@nex
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import styled from 'styled-components';
 import { BulkEditor } from './components/BulkEditor';
+import { BackupDialog } from './components/BackupDialog';
+import { DevicesDialog } from './components/DevicesDialog';
 import { ColumnsDialog } from './components/ColumnsDialog';
+import { FiltersDialog } from './components/FiltersDialog';
+import { IsbnDialog } from './components/IsbnDialog';
 import { ItemDetail } from './components/ItemDetail';
 import { LibraryGrid, type CollectionProps } from './components/LibraryGrid';
 import { LibraryList } from './components/LibraryList';
 import { IMPORT_ACCEPT } from './formats/formats';
 import { availableFields, DEFAULT_COLUMNS, visibleColumns } from './library/columns';
-import { importFiles, type ImportResult } from './library/importFiles';
+import { describeRule, filterFields, filtersQuery, parseFilters } from './library/filters';
+import { importFiles, type ImportResult, type ImportSource } from './library/importFiles';
+import { nativeImportAvailable, pickNativeFiles } from './library/nativeImport';
+import { useBackToClose } from './library/useBackToClose';
 import { useLibrary } from './library/LibraryContext';
 import { DEFAULT_DESC, filterItems, sortItems, type Sort, type SortKey } from './library/search';
 import { usePersistentState } from './library/usePersistentState';
 import { Reader } from './reader/Reader';
-import { besidePanel, Button, FileButton, Muted } from './styles/ui';
+import { besidePanel, Button, FileButton, Muted, Tag, TagButton, TagLabel, TagList, TagRemove } from './styles/ui';
 
 type View = 'grid' | 'list';
 
@@ -35,6 +42,19 @@ const Toolbar = styled.header<{ $withPanel: boolean }>`
     font-size: 1.15rem;
     letter-spacing: 0.02em;
   }
+`;
+
+const FilterChips = styled(TagList)`
+  flex: 1;
+`;
+
+/** A chip's label that opens the filters. */
+const ChipLabel = styled(TagLabel).attrs({ as: 'button', type: 'button' })`
+  border: none;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
 `;
 
 const Search = styled.input`
@@ -62,7 +82,9 @@ const Segmented = styled.div`
   }
 
   > button[aria-pressed='true'] {
-    background: var(--surface-2);
+    background: var(--highlight);
+    color: var(--highlight-text);
+    border-color: var(--highlight);
     font-weight: 600;
   }
 `;
@@ -88,7 +110,8 @@ const Notice = styled.div<{ $withPanel: boolean }>`
   gap: 4px 12px;
   margin: 12px 16px 0;
   padding: 8px 12px;
-  background: var(--surface-2);
+  background: var(--soft);
+  border-left: 4px solid var(--highlight);
   border-radius: var(--radius);
   ${besidePanel}
 
@@ -140,6 +163,9 @@ const SORT_LABELS: Record<SortKey, string> = {
 export function App() {
   const { library, backend, apply, refresh } = useLibrary();
   const [query, setQuery] = useState('');
+  /** The filters' rules, as search text (`library/filters.ts`); applied along with `query`. */
+  const [filterQuery, setFilterQuery] = useState('');
+  const [editingFilters, setEditingFilters] = useState(false);
   const [view, setView] = usePersistentState<View>('nexlibris:view', 'grid');
   const [sort, setSort] = usePersistentState<Sort>('nexlibris:sort', {
     key: 'title',
@@ -147,21 +173,29 @@ export function App() {
   });
   const [listColumns, setListColumns] = usePersistentState<string[]>('nexlibris:listColumns', DEFAULT_COLUMNS);
   const [choosingColumns, setChoosingColumns] = useState(false);
+  const [backingUp, setBackingUp] = useState(false);
+  const [managingDevices, setManagingDevices] = useState(false);
+  const [addingByIsbn, setAddingByIsbn] = useState(false);
   const [activeId, setActiveId] = useState<ItemId>();
   const [selecting, setSelecting] = useState(false);
   const [selection, setSelection] = useState<ReadonlySet<ItemId>>(new Set());
   const anchorRef = useRef<ItemId>(undefined);
-  const [importing, setImporting] = useState(false);
+  /** Files done and total, while an import runs. */
+  const [importing, setImporting] = useState<{ done: number; total: number }>();
   const [lastImport, setLastImport] = useState<ImportResult>();
   const [dragging, setDragging] = useState(false);
   const [reading, setReading] = useState<{ itemId: ItemId; file: FileRef }>();
 
   const allItems = Object.values(library.items);
   const { ratings } = userData(library);
-  const items = useMemo(
-    () => sortItems(filterItems(Object.values(library.items), query), sort, ratings),
-    [library.items, query, sort, ratings],
-  );
+  const items = useMemo(() => {
+    const context = { ratings };
+    const filtered = filterItems(filterItems(Object.values(library.items), filterQuery, context), query, context);
+    return sortItems(filtered, sort, ratings);
+  }, [library.items, filterQuery, query, sort, ratings]);
+  const countMatches = (q: string) => filterItems(filterItems(allItems, q, { ratings }), query, { ratings }).length;
+  const filterFieldList = useMemo(() => filterFields(Object.values(library.items)), [library.items]);
+  const filters = filterQuery ? parseFilters(filterQuery, filterFieldList) : undefined;
   const fields = useMemo(() => availableFields(Object.values(library.items)), [library.items]);
   const active = activeId ? library.items[activeId] : undefined;
   const selectedItems = [...selection].map((id) => library.items[id]).filter((i): i is Item => i !== undefined);
@@ -174,6 +208,15 @@ export function App() {
     setSelecting(false);
     setSelection(new Set());
   };
+
+  // Back closes these, innermost (registered last) first.
+  useBackToClose(selecting, stopSelecting);
+  useBackToClose(showDetail, () => setActiveId(undefined));
+  useBackToClose(choosingColumns, () => setChoosingColumns(false));
+  useBackToClose(backingUp, () => setBackingUp(false));
+  useBackToClose(managingDevices, () => setManagingDevices(false));
+  useBackToClose(editingFilters, () => setEditingFilters(false));
+  useBackToClose(reading !== undefined, closeReader);
 
   const onActivate: CollectionProps['onActivate'] = (id, { shiftKey, metaKey, ctrlKey }) => {
     if (!selecting && (metaKey || ctrlKey)) {
@@ -202,17 +245,39 @@ export function App() {
     setSelection(next);
   };
 
-  const runImport = async (files: File[]) => {
-    if (!files.length) return;
-    setImporting(true);
+  const runImport = async (files: ImportSource[], skipped: ImportResult['skipped'] = []) => {
+    if (!files.length && !skipped.length) return;
+    setImporting({ done: 0, total: files.length });
     try {
-      const result = await importFiles(backend, files);
+      const result = await importFiles(backend, files, {
+        onProgress: (done, total) => setImporting({ done, total }),
+        onSaved: () => void refresh(),
+      });
+      result.skipped.unshift(...skipped);
       setLastImport(result);
       await refresh();
-      if (result.added.length === 1 && !selecting) setActiveId(result.added[0]!.id);
+      const touched = [...result.added, ...result.merged.map((m) => m.item)];
+      if (touched.length === 1 && !selecting) setActiveId(touched[0]!.id);
     } finally {
-      setImporting(false);
+      setImporting(undefined);
     }
+  };
+
+  const [pickingFiles, setPickingFiles] = useState(false);
+  const importLabel = importing ? `Importing ${importing.done}/${importing.total}…` : 'Import files';
+  /** In the Android and desktop apps: the native picker, which stores the files itself (much faster on Android). */
+  const importNatively = async () => {
+    setPickingFiles(true);
+    let picked;
+    try {
+      picked = await pickNativeFiles();
+    } catch (e) {
+      setLastImport({ added: [], merged: [], skipped: [{ name: 'Import', reason: e instanceof Error ? e.message : String(e) }], warnings: [] });
+      return;
+    } finally {
+      setPickingFiles(false);
+    }
+    if (picked) await runImport(picked.files, picked.skipped);
   };
 
   const addBlankItem = async () => {
@@ -232,7 +297,7 @@ export function App() {
   };
   const selectAllRef = useRef(selectAll);
   selectAllRef.current = selectAll;
-  const overlayOpen = reading !== undefined || choosingColumns;
+  const overlayOpen = reading !== undefined || choosingColumns || backingUp || managingDevices;
 
   // Cmd/Ctrl+A selects all visible items, except where it should select text.
   useEffect(() => {
@@ -310,10 +375,13 @@ export function App() {
         <h1>nexlibris</h1>
         <Search
           type="search"
-          placeholder={`Search ${allItems.length} items…`}
+          placeholder={`Search ${allItems.length} ${allItems.length === 1 ? 'item' : 'items'}…`}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
+        <Button $variant="secondary" aria-pressed={!!filterQuery} onClick={() => setEditingFilters(true)}>
+          {filters?.rules.length ? `Filters (${filters.rules.length})` : 'Filters…'}
+        </Button>
         <Segmented role="group" aria-label="View">
           {(['grid', 'list'] as const).map((v) => (
             <button key={v} type="button" aria-pressed={view === v} onClick={() => setView(v)}>
@@ -364,26 +432,67 @@ export function App() {
             <Button $variant="secondary" disabled={allItems.length === 0} onClick={() => setSelecting(true)}>
               Select
             </Button>
-            <FileButton>
-              {importing ? 'Importing…' : 'Import files'}
-              <input
-                type="file"
-                accept={IMPORT_ACCEPT}
-                multiple
-                hidden
-                disabled={importing}
-                onChange={(e) => {
-                  void runImport(Array.from(e.target.files ?? []));
-                  e.target.value = '';
-                }}
-              />
-            </FileButton>
+            {nativeImportAvailable() ? (
+              <Button disabled={importing !== undefined || pickingFiles} onClick={() => void importNatively()}>
+                {pickingFiles ? 'Copying files…' : importLabel}
+              </Button>
+            ) : (
+              <FileButton>
+                {importLabel}
+                <input
+                  type="file"
+                  accept={IMPORT_ACCEPT}
+                  multiple
+                  hidden
+                  disabled={importing !== undefined}
+                  onChange={(e) => {
+                    void runImport(Array.from(e.target.files ?? []));
+                    e.target.value = '';
+                  }}
+                />
+              </FileButton>
+            )}
             <Button $variant="secondary" onClick={() => void addBlankItem()}>
               New item
+            </Button>
+            <Button $variant="secondary" onClick={() => setAddingByIsbn(true)}>
+              Add by ISBN…
+            </Button>
+            <Button $variant="secondary" onClick={() => setManagingDevices(true)}>
+              Devices…
+            </Button>
+            <Button $variant="secondary" onClick={() => setBackingUp(true)}>
+              Backup…
             </Button>
           </>
         )}
       </Toolbar>
+
+      {filterQuery && (
+        <Notice $withPanel={withPanel} role="status" aria-label="Filters">
+          <FilterChips>
+            {filters && filters.any && filters.rules.length > 1 && <Muted>Any of:</Muted>}
+            {filters ? (
+              filters.rules.map((rule, index) => (
+                <Tag key={index}>
+                  <ChipLabel onClick={() => setEditingFilters(true)}>{describeRule(rule, filterFieldList)}</ChipLabel>
+                  <TagRemove
+                    aria-label={`Remove filter: ${describeRule(rule, filterFieldList)}`}
+                    onClick={() => setFilterQuery(filtersQuery({ ...filters, rules: filters.rules.filter((_, i) => i !== index) }))}
+                  >
+                    ×
+                  </TagRemove>
+                </Tag>
+              ))
+            ) : (
+              <TagButton onClick={() => setEditingFilters(true)}>{filterQuery}</TagButton>
+            )}
+          </FilterChips>
+          <Button $variant="secondary" $size="small" onClick={() => setFilterQuery('')}>
+            Clear filters
+          </Button>
+        </Notice>
+      )}
 
       {selecting && selectedItems.length === 0 && (
         <Notice $withPanel={withPanel} role="status">
@@ -395,10 +504,17 @@ export function App() {
         <Notice $withPanel={withPanel} role="status">
           <span>
             Imported {lastImport.added.length} item{lastImport.added.length === 1 ? '' : 's'}
+            {lastImport.merged.length > 0 &&
+              `, and added files to ${lastImport.merged.length} book${lastImport.merged.length === 1 ? '' : 's'} already in the library`}
             {lastImport.skipped.length > 0 && `, skipped ${lastImport.skipped.length}`}.
           </span>
-          {(lastImport.skipped.length > 0 || lastImport.warnings.length > 0) && (
+          {(lastImport.merged.length > 0 || lastImport.skipped.length > 0 || lastImport.warnings.length > 0) && (
             <ul>
+              {lastImport.merged.map((m) => (
+                <li key={`m${m.item.id}`}>
+                  {m.names.join(', ')}: added to “{m.item.title}”
+                </li>
+              ))}
               {lastImport.skipped.map((s, i) => (
                 <li key={`s${i}`}>
                   {s.name}: {s.reason}
@@ -427,7 +543,7 @@ export function App() {
           </Empty>
         ) : items.length === 0 ? (
           <Empty>
-            <Muted>Nothing matches “{query}”.</Muted>
+            <Muted>{query ? `Nothing matches “${query}”${filterQuery ? ' with these filters' : ''}.` : 'Nothing matches these filters.'}</Muted>
           </Empty>
         ) : view === 'list' ? (
           <LibraryList {...collection} columns={visibleColumns(listColumns, fields)} sort={sort} onSort={setSort} />
@@ -442,8 +558,33 @@ export function App() {
           key={active.id}
           item={active}
           onClose={() => setActiveId(undefined)}
-          onSelectTag={(tag) => setQuery(tag)}
+          onSelectTag={(tag) => {
+            setQuery('');
+            setFilterQuery(filtersQuery({ any: false, rules: [{ field: 'tag', condition: 'anyOf', values: [tag] }] }));
+          }}
           onRead={(file) => setReading({ itemId: active.id, file })}
+        />
+      )}
+      {backingUp && <BackupDialog onClose={() => setBackingUp(false)} />}
+      {managingDevices && <DevicesDialog onClose={() => setManagingDevices(false)} />}
+      {editingFilters && (
+        <FiltersDialog
+          title="Filters"
+          query={filterQuery}
+          onChange={setFilterQuery}
+          onClose={() => setEditingFilters(false)}
+          items={allItems}
+          count={countMatches}
+        />
+      )}
+      {addingByIsbn && (
+        <IsbnDialog
+          onClose={() => setAddingByIsbn(false)}
+          onOpen={(id) => {
+            setAddingByIsbn(false);
+            stopSelecting();
+            setActiveId(id);
+          }}
         />
       )}
       {choosingColumns && (

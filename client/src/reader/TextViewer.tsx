@@ -23,13 +23,16 @@ const RtfDoc = styled.div`
   ${docStyles}
   min-height: 100%;
   white-space: normal;
-  background: #ffffff;
-  color: #22201c;
+  background: #fffdf5;
+  color: #0a2540;
 `;
 import type { ViewerProps } from './Reader';
+import { useScrollFraction } from './scroll';
 
-export function PlainTextViewer({ data }: ViewerProps) {
+export function PlainTextViewer({ data, position, onPosition }: ViewerProps) {
   const [text, setText] = useState<string>();
+  const docRef = useRef<HTMLPreElement>(null);
+  useScrollFraction(docRef, text !== undefined, position, onPosition);
   useEffect(() => {
     let cancelled = false;
     void data.arrayBuffer().then((buffer) => {
@@ -41,12 +44,14 @@ export function PlainTextViewer({ data }: ViewerProps) {
   }, [data]);
 
   if (text === undefined) return <Status>Opening…</Status>;
-  return <TextDoc>{text}</TextDoc>;
+  return <TextDoc ref={docRef}>{text}</TextDoc>;
 }
 
-export function RtfViewer({ data }: ViewerProps) {
+export function RtfViewer({ data, position, onPosition }: ViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string>();
+  const [rendered, setRendered] = useState(false);
+  useScrollFraction(containerRef, rendered, position, onPosition);
 
   useEffect(() => {
     let cancelled = false;
@@ -54,7 +59,9 @@ export function RtfViewer({ data }: ViewerProps) {
       try {
         const RTFJS = await loadRtfjs();
         const elements = await new RTFJS.Document(await data.arrayBuffer(), {}).render();
-        if (!cancelled) containerRef.current?.replaceChildren(...elements);
+        if (cancelled) return;
+        containerRef.current?.replaceChildren(...elements);
+        setRendered(true);
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : String(e));
       }

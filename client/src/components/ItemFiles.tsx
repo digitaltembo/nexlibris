@@ -4,7 +4,7 @@ import styled from 'styled-components';
 import { FORMATS, formatFromName, isFormatId } from '../formats/formats';
 import { availableConversions, convertItemFile } from '../library/convert';
 import { useLibrary } from '../library/LibraryContext';
-import { useFileUrl } from '../library/useFileUrl';
+import { saveFile } from '../library/saveFile';
 import { isReadable } from '../reader/Reader';
 import { Button, FileButton, Muted, SmallSelect, Stack } from '../styles/ui';
 
@@ -22,8 +22,14 @@ const Name = styled.span`
   text-overflow: ellipsis;
   white-space: nowrap;
 
-  &[href] {
+  &:is(button) {
+    padding: 0;
+    border: 0;
+    background: none;
+    font: inherit;
+    text-align: left;
     color: var(--accent);
+    cursor: pointer;
   }
 `;
 
@@ -60,14 +66,31 @@ function fileName(item: Item, file: FileRef) {
   return file.name ?? `${item.title}.${file.format}`;
 }
 
+/**
+ * Saves the file when clicked. It's only read then: reading every format up
+ * front, to have download URLs ready, made opening a big book's details slow.
+ */
 function DownloadLink({ item, file }: { item: Item; file: FileRef }) {
-  const url = useFileUrl(file.hash, isFormatId(file.format) ? FORMATS[file.format].mediaType : undefined);
-  return url ? (
-    <Name as="a" href={url} download={fileName(item, file)} title="Download">
-      {fileName(item, file)}
-    </Name>
-  ) : (
-    <Name>{fileName(item, file)}</Name>
+  const { backend } = useLibrary();
+  const [error, setError] = useState<string>();
+  const download = async () => {
+    setError(undefined);
+    try {
+      const blob = await backend.getFile(file.hash);
+      if (!blob) throw new Error('The file is missing from the library.');
+      const type = isFormatId(file.format) ? FORMATS[file.format].mediaType : blob.type;
+      await saveFile(new Blob([blob], { type }), fileName(item, file));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+  return (
+    <>
+      <Name as="button" type="button" title="Download" onClick={() => void download()}>
+        {fileName(item, file)}
+      </Name>
+      {error && <Meta role="alert">{error}</Meta>}
+    </>
   );
 }
 

@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { hashBlob, StoredLibraryBackend } from './backend';
-import { createItem } from './operations';
+import { migrateLibrary, migrateOperation, NewerSchemaError } from './migrate';
+import { createItem, createLibrary } from './operations';
 import { MemoryStorage } from './storage';
+import { SCHEMA_VERSION } from './types';
 
 describe('StoredLibraryBackend', () => {
   it('persists the library and change log across instances', async () => {
@@ -43,5 +45,62 @@ describe('StoredLibraryBackend', () => {
     expect(hash).toBe('2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824');
     expect(size).toBe(5);
     expect(await (await backend.getFile(hash))?.text()).toBe('hello');
+  });
+});
+
+describe('loading a stored library', () => {
+  const setup = async () => {
+    const storage = new MemoryStorage();
+    const first = new StoredLibraryBackend(storage);
+    const dune = createItem({ title: 'Dune' });
+    const emma = createItem({ title: 'Emma' });
+    await first.apply([{ type: 'addItem', item: dune }]);
+    return { storage, dune, emma };
+  };
+
+  it('replays logged changes the snapshot lacks (a crash between logging and saving)', async () => {
+    const { storage, dune, emma } = await setup();
+    const snapshot = (await storage.readText('library.json'))!;
+    await new StoredLibraryBackend(storage).apply([{ type: 'addItem', item: emma }]);
+    // As if the app stopped after logging Emma but before saving the snapshot.
+    await storage.writeText('library.json', snapshot);
+
+    const library = await new StoredLibraryBackend(storage).getLibrary();
+    expect(Object.keys(library.items).sort()).toEqual([dune.id, emma.id].sort());
+    expect(library.revision).toBe(2);
+    // Saved, so it's not replayed again.
+    expect(JSON.parse((await storage.readText('library.json'))!).revision).toBe(2);
+  });
+
+  it('ignores a log line cut short by a crash', async () => {
+    const { storage, dune } = await setup();
+    await storage.appendText('changes.jsonl', '{"revision":2,"at":"2026-');
+    const backend = new StoredLibraryBackend(storage);
+    expect(Object.keys((await backend.getLibrary()).items)).toEqual([dune.id]);
+    expect((await backend.getChanges(0)).map((c) => c.revision)).toEqual([1]);
+  });
+
+  it('refuses a library from a newer version instead of misreading it', async () => {
+    const { storage } = await setup();
+    const stored = JSON.parse((await storage.readText('library.json'))!);
+    await storage.writeText('library.json', JSON.stringify({ ...stored, schemaVersion: SCHEMA_VERSION + 1 }));
+    await expect(new StoredLibraryBackend(storage).getLibrary()).rejects.toBeInstanceOf(NewerSchemaError);
+  });
+});
+
+describe('migrateLibrary', () => {
+  it('runs each step from the stored version up', () => {
+    const migrations = {
+      1: { library: (l: Record<string, unknown>) => ({ ...l, shelves: [] }) },
+      2: {
+        library: (l: Record<string, unknown>) => ({ ...l, renamed: l.name, name: undefined }),
+        operation: (op: Record<string, unknown>) => (op.type === 'old' ? { ...op, type: 'new' } : op),
+      },
+    };
+    const library = createLibrary('Mine');
+    expect(migrateLibrary(library, migrations, 3)).toMatchObject({ schemaVersion: 3, shelves: [], renamed: 'Mine' });
+    expect(migrateOperation({ type: 'old' } as never, 1, migrations, 3)).toEqual({ type: 'new' });
+    expect(() => migrateLibrary({ ...library, schemaVersion: 4 }, migrations, 3)).toThrow(NewerSchemaError);
+    expect(() => migrateLibrary({ name: 'not a library' })).toThrow('This is not a nexlibris library.');
   });
 });

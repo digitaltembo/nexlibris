@@ -43,12 +43,12 @@ const Card = styled.button.attrs({ type: 'button' })<{ $active: boolean }>`
   padding: 6px;
   border: none;
   border-radius: var(--radius);
-  background: ${(p) => (p.$active ? 'var(--surface-2)' : 'none')};
+  background: ${(p) => (p.$active ? 'var(--soft)' : 'none')};
   color: inherit;
   text-align: left;
 
   &:hover {
-    background: var(--surface-2);
+    background: ${(p) => (p.$active ? 'var(--soft)' : 'var(--hover)')};
   }
 `;
 

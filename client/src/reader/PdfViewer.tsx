@@ -24,12 +24,14 @@ const Page = styled.canvas`
   box-shadow: 0 1px 4px rgb(0 0 0 / 0.2);
 `;
 import type { ViewerProps } from './Reader';
+import { scrollParent } from './scroll';
 import { useObjectUrl } from './useObjectUrl';
 
 /** The browser's own PDF viewer where there is one; pdf.js otherwise (e.g. Android Chrome). */
-export default function PdfViewer({ data, options }: ViewerProps) {
+export default function PdfViewer({ data, options, position, onPosition }: ViewerProps) {
+  // The built-in viewer is a sandboxed frame, so its position can't be followed.
   if (navigator.pdfViewerEnabled && !options.forcePdfjs) return <BuiltinPdfViewer data={data} />;
-  return <PdfJsViewer data={data} />;
+  return <PdfJsViewer data={data} position={position} onPosition={onPosition} />;
 }
 
 function BuiltinPdfViewer({ data }: { data: Blob }) {
@@ -41,9 +43,31 @@ function BuiltinPdfViewer({ data }: { data: Blob }) {
 
 type PdfDocument = Awaited<ReturnType<Awaited<ReturnType<typeof loadPdfjs>>['getDocument']>['promise']>;
 
-function PdfJsViewer({ data }: { data: Blob }) {
+function PdfJsViewer({ data, position, onPosition }: Pick<ViewerProps, 'data' | 'position' | 'onPosition'>) {
   const [doc, setDoc] = useState<PdfDocument>();
   const [error, setError] = useState<string>();
+  const pagesRef = useRef<HTMLDivElement>(null);
+  const onPositionRef = useRef(onPosition);
+  onPositionRef.current = onPosition;
+
+  // The locator is the 1-based page number at the top of the screen. Pages are
+  // placeholders until rendered, so a page number holds up where a scroll offset wouldn't.
+  useEffect(() => {
+    const container = pagesRef.current;
+    if (!doc || !container) return;
+    const pages = () => [...container.querySelectorAll('canvas')];
+    const target = Math.floor(Number(position));
+    if (target > 1) pages()[Math.min(target, doc.numPages) - 1]?.scrollIntoView();
+    const scroller = scrollParent(container);
+    const onScroll = () => {
+      const top = scroller.getBoundingClientRect().top;
+      const index = pages().findIndex((page) => page.getBoundingClientRect().bottom > top + 1);
+      const page = (index < 0 ? doc.numPages - 1 : index) + 1;
+      onPositionRef.current?.(String(page), page / doc.numPages);
+    };
+    scroller.addEventListener('scroll', onScroll, { passive: true });
+    return () => scroller.removeEventListener('scroll', onScroll);
+  }, [doc, position]);
 
   useEffect(() => {
     let task: { destroy(): Promise<void> } | undefined;
@@ -70,7 +94,7 @@ function PdfJsViewer({ data }: { data: Blob }) {
   if (error) return <Status $error>{error}</Status>;
   if (!doc) return <Status>Opening PDF…</Status>;
   return (
-    <Pages>
+    <Pages ref={pagesRef}>
       {Array.from({ length: doc.numPages }, (_, i) => (
         <PdfPage key={i} doc={doc} pageNumber={i + 1} />
       ))}

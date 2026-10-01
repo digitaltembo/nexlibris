@@ -1,14 +1,15 @@
 import {
   createMessageClient,
-  RpcStorage,
   storageApiMeta,
   StoredLibraryBackend,
   type Library,
   type LibraryBackend,
   type Operation,
+  type RpcSend,
 } from '@nexlibris/common';
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
-import { androidSend, inAndroidApp } from '../backends/androidBridge';
+import { nativeTransport } from '../backends/native';
+import { NativeStorage } from '../backends/nativeStorage';
 import { OpfsStorage } from '../backends/opfsStorage';
 import { Status } from '../styles/ui';
 
@@ -37,14 +38,15 @@ let opening: Promise<LibraryBackend> | undefined;
 
 /** Opens the backend once per page, even when effects run twice in StrictMode. */
 function openBackend(): Promise<LibraryBackend> {
-  opening ??= inAndroidApp() ? openAndroidBackend() : openOpfsBackend();
+  const transport = nativeTransport();
+  opening ??= transport ? openNativeBackend(transport) : openOpfsBackend();
   return opening;
 }
 
-/** In the Android app, the library lives in the app's own files, reached over estuary-rpc. */
-async function openAndroidBackend(): Promise<LibraryBackend> {
-  const client = createMessageClient(storageApiMeta, androidSend());
-  return new StoredLibraryBackend(new RpcStorage(client.storage));
+/** In the Android or desktop app, the library lives in the app's own files, reached over estuary-rpc. */
+async function openNativeBackend(transport: RpcSend): Promise<LibraryBackend> {
+  const client = createMessageClient(storageApiMeta, transport);
+  return new StoredLibraryBackend(new NativeStorage(client.storage));
 }
 
 async function openOpfsBackend(): Promise<LibraryBackend> {
@@ -54,12 +56,19 @@ async function openOpfsBackend(): Promise<LibraryBackend> {
   return new StoredLibraryBackend(await OpfsStorage.open('libraries', 'default'));
 }
 
-export function LibraryProvider({ children }: { children: ReactNode }) {
+export function LibraryProvider({
+  children,
+  open = openBackend,
+}: {
+  children: ReactNode;
+  /** How to get the backend; tests pass one in. */
+  open?: () => Promise<LibraryBackend>;
+}) {
   const [state, setState] = useState<State>({ status: 'loading' });
 
   useEffect(() => {
     let cancelled = false;
-    openBackend()
+    open()
       .then(async (backend) => {
         const library = await backend.getLibrary();
         if (!cancelled) setState({ status: 'ready', backend, library });
@@ -70,7 +79,7 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [open]);
 
   const backend = state.status === 'ready' ? state.backend : undefined;
   const apply = useCallback(

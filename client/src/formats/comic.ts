@@ -1,6 +1,7 @@
 import type { Creator } from '@nexlibris/common';
 import JSZip from 'jszip';
 import { emptyParsedItem, splitTags, type ParsedItem } from './formats';
+import { parseXml } from './xml';
 
 export interface ComicPage {
   name: string;
@@ -122,8 +123,8 @@ export async function parseComic(
 }
 
 export function applyComicInfo(parsed: ParsedItem, xml: string): void {
-  const doc = new DOMParser().parseFromString(xml, 'application/xml');
-  if (doc.getElementsByTagName('parsererror').length) return;
+  const doc = parseXml(xml);
+  if (!doc) return;
   const field = (name: string) => doc.getElementsByTagName(name)[0]?.textContent?.trim() || undefined;
   const list = (name: string) => field(name)?.split(',').map((s) => s.trim()).filter(Boolean) ?? [];
 

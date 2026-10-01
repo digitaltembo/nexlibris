@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyOperations, createItem, createLibrary, OperationError, userData } from './operations';
+import { applyOperations, createDevice, createItem, createLibrary, OperationError, userData } from './operations';
 import { LOCAL_USER } from './types';
 
 const AT = '2026-01-01T00:00:00.000Z';
@@ -93,6 +93,76 @@ describe('applyOperations', () => {
     const removed = applyOperations(rated, [{ type: 'removeItem', id: item.id }], AT).library;
     expect(removed.items).toEqual({});
     expect(userData(removed)).toEqual({ ratings: {}, reviews: {} });
+  });
+
+  it('remembers one reading position per user and item, cleared with the item', () => {
+    const { library, item } = libraryWithItem();
+    const position = { hash: 'abc', locator: 'epubcfi(/6/4!/4/2)', progress: 0.25 };
+    const read = applyOperations(
+      library,
+      [
+        { type: 'setPosition', userId: LOCAL_USER, itemId: item.id, position: { hash: 'abc', locator: '1' } },
+        { type: 'setPosition', userId: LOCAL_USER, itemId: item.id, position },
+      ],
+      AT,
+    ).library;
+    expect(userData(read).positions?.[item.id]).toEqual({ ...position, updatedAt: AT });
+    expect(() =>
+      applyOperations(read, [
+        { type: 'setPosition', userId: LOCAL_USER, itemId: item.id, position: { ...position, progress: 2 } },
+      ]),
+    ).toThrow(OperationError);
+
+    const removed = applyOperations(read, [{ type: 'removeItem', id: item.id }], AT).library;
+    expect(userData(removed).positions).toEqual({});
+  });
+
+  it('keeps devices: their settings by key, their items, and what syncs placed on them', () => {
+    const dune = createItem({ title: 'Dune' });
+    const emma = createItem({ title: 'Emma' });
+    const x4 = createDevice({ name: 'My X4', type: 'crosspoint.x4', settings: { address: 'http://crosspoint.local' } });
+    let { library } = applyOperations(createLibrary('L'), [
+      { type: 'addItem', item: dune },
+      { type: 'addItem', item: emma },
+      { type: 'addDevice', device: x4 },
+      { type: 'addDeviceItems', id: x4.id, itemIds: [dune.id, emma.id, dune.id] },
+      { type: 'updateDevice', id: x4.id, patch: { name: 'X4', settings: { folder: '/Books', address: undefined } } },
+      { type: 'recordDeviceSync', id: x4.id, placed: { '/Books/Dune.epub': { itemId: dune.id, hash: 'h1', size: 1 } }, removed: [] },
+    ], '2026-10-01T00:00:00Z');
+    expect(library.devices?.[x4.id]).toMatchObject({
+      name: 'X4',
+      settings: { folder: '/Books' },
+      items: [dune.id, emma.id],
+      placed: { '/Books/Dune.epub': { itemId: dune.id, hash: 'h1', size: 1 } },
+      lastSyncedAt: '2026-10-01T00:00:00Z',
+    });
+
+    // Removing an item takes it off the device's list; what the device holds is the next sync's business.
+    ({ library } = applyOperations(library, [
+      { type: 'removeItem', id: dune.id },
+      { type: 'recordDeviceSync', id: x4.id, placed: {}, removed: ['/Books/Dune.epub'] },
+      { type: 'removeDeviceItems', id: x4.id, itemIds: [emma.id] },
+    ]));
+    expect(library.devices?.[x4.id]).toMatchObject({ items: [], placed: {} });
+
+    // A query is set, kept by other patches, and cleared by an empty one.
+    ({ library } = applyOperations(library, [{ type: 'updateDevice', id: x4.id, patch: { query: '  tag sci-fi ' } }]));
+    expect(library.devices?.[x4.id]?.query).toBe('tag sci-fi');
+    ({ library } = applyOperations(library, [{ type: 'updateDevice', id: x4.id, patch: { name: 'Renamed' } }]));
+    expect(library.devices?.[x4.id]?.query).toBe('tag sci-fi');
+    ({ library } = applyOperations(library, [{ type: 'updateDevice', id: x4.id, patch: { query: ' ' } }]));
+    expect(library.devices?.[x4.id]).not.toHaveProperty('query');
+    expect(createDevice({ name: 'X3', type: 'crosspoint.x3', query: 'austen' }).query).toBe('austen');
+
+    ({ library } = applyOperations(library, [{ type: 'removeDevice', id: x4.id }]));
+    expect(library.devices).toEqual({});
+    expect(() => applyOperations(library, [{ type: 'addDeviceItems', id: x4.id, itemIds: [emma.id] }])).toThrow(OperationError);
+  });
+
+  it('rejects device items that are not in the library', () => {
+    const x4 = createDevice({ name: 'X4', type: 'crosspoint.x4' });
+    const { library } = applyOperations(createLibrary('L'), [{ type: 'addDevice', device: x4 }]);
+    expect(() => applyOperations(library, [{ type: 'addDeviceItems', id: x4.id, itemIds: ['nope'] }])).toThrow('No item with id nope');
   });
 
   it('rejects invalid operations without partial application', () => {

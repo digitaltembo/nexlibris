@@ -3,5 +3,5 @@
     <style name="Theme.Nexlibris" parent="android:Theme.Material.NoActionBar">
         <item name="android:windowBackground">@color/background</item>
     </style>
-    <color name="background">#181715</color>
+    <color name="background">#071f37</color>
 </resources>

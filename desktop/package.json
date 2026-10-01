@@ -1,0 +1,22 @@
+{
+  "name": "@nexlibris/desktop",
+  "productName": "nexlibris",
+  "version": "0.0.0",
+  "private": true,
+  "description": "nexlibris as a desktop app: the web client in Electron, with the library in native files",
+  "type": "module",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "rolldown -c rolldown.config.js",
+    "start": "node scripts/start.js",
+    "test": "vitest run",
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "@nexlibris/common": "^0.0.0"
+  },
+  "devDependencies": {
+    "electron": "^44.5.1",
+    "rolldown": "^1.2.12"
+  }
+}

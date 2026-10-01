@@ -6,6 +6,8 @@ export function useObjectUrl(blob: Blob | undefined): string | undefined {
   useEffect(() => {
     if (!blob) return;
     const objectUrl = URL.createObjectURL(blob);
+    // Made here rather than during render so it can be revoked: an effect is the place for it.
+    // oxlint-disable-next-line react/set-state-in-effect
     setUrl(objectUrl);
     return () => {
       URL.revokeObjectURL(objectUrl);

@@ -1,6 +1,7 @@
 import type { Creator, MetadataValue } from '@nexlibris/common';
 import JSZip from 'jszip';
 import { splitTags, titleFromFilename, type ParsedItem } from './formats';
+import { parseXml } from './xml';
 
 export class EpubError extends Error {
   name = 'EpubError';
@@ -79,8 +80,7 @@ function byLocalName(root: Document | Element, name: string): Element[] {
 async function readXml(zip: JSZip, path: string): Promise<Document | undefined> {
   const file = zip.file(path);
   if (!file) return undefined;
-  const doc = new DOMParser().parseFromString(await file.async('string'), 'application/xml');
-  return doc.getElementsByTagName('parsererror').length ? undefined : doc;
+  return parseXml(await file.async('string'));
 }
 
 /** EPUB 3 attaches properties to elements via `<meta refines="#id" property="…">`. */

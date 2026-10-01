@@ -9,11 +9,11 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 
 /** Requests here are shaped exactly as client/src/backends/androidBridge.ts sends them. */
-class StorageRouterTest {
+class RpcRouterTest {
     @get:Rule
     val temp = TemporaryFolder()
 
-    private fun router() = StorageRouter(StorageService(temp.root))
+    private fun router() = RpcRouter(storageRoutes(StorageService(temp.root)))
     private fun request(method: String, url: String, body: String) =
         JSONObject("""{"id":1,"method":"$method","url":"$url","body":$body}""")
 

@@ -12,9 +12,14 @@ const variants = {
     color: var(--accent-text);
   `,
   secondary: css`
-    background: var(--surface-2);
+    background: var(--surface);
     color: var(--text);
     border-color: var(--border);
+
+    &:hover:not(:disabled) {
+      background: var(--hover);
+      border-color: var(--soft-border);
+    }
   `,
   danger: css`
     background: var(--danger);
@@ -135,8 +140,8 @@ const chip = css`
   display: inline-flex;
   align-items: center;
   border-radius: 999px;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
+  background: var(--soft);
+  border: 1px solid var(--soft-border);
 `;
 
 /** A chip holding a label and a remove button. */

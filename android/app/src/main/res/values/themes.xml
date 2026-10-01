@@ -5,5 +5,5 @@
         <!-- The web app's background color, so there's no flash of white before it paints. -->
         <item name="android:windowBackground">@color/background</item>
     </style>
-    <color name="background">#faf8f5</color>
+    <color name="background">#fdf8e5</color>
 </resources>

@@ -1,23 +1,27 @@
 import { createMessageClient, RpcStorage, storageApiMeta, type RpcMessage, type RpcResponse } from '@nexlibris/common';
-import { afterEach, describe, expect, it } from 'vitest';
-import { androidSend, type AndroidInterface } from './androidBridge';
+import { describe, expect, it } from 'vitest';
+import { androidSend, type AndroidInterface, type BridgeReply } from './androidBridge';
 
-/** Stands in for the app: answers each call later, by id, as JSON, like evaluateJavascript would. */
-function fakeApp(answer: (message: RpcMessage) => RpcResponse): AndroidInterface & { received: RpcMessage[] } {
+/** Stands in for the app: answers each message later, by id, as the native bridge does. */
+function fakeApp(answer: (message: RpcMessage) => RpcResponse): AndroidInterface & {
+  received: RpcMessage[];
+  reply(data: string): void;
+} {
   const received: RpcMessage[] = [];
+  const listeners: ((event: { data: string }) => void)[] = [];
+  const reply = (data: string) => listeners.forEach((l) => l({ data }));
   return {
     received,
-    call(json) {
+    reply,
+    addEventListener: (_type, listener) => listeners.push(listener),
+    postMessage(json) {
       const message = JSON.parse(json) as RpcMessage;
       received.push(message);
-      setTimeout(() => window.__nexlibrisBridge!.settle(message.id, JSON.stringify(answer(message))), 0);
+      const out: BridgeReply = { id: message.id, response: answer(message) };
+      setTimeout(() => reply(JSON.stringify(out)), 0);
     },
   };
 }
-
-afterEach(() => {
-  delete window.__nexlibrisBridge;
-});
 
 describe('androidSend', () => {
   it('sends estuary-rpc requests and resolves with the answers, matched by id', async () => {
@@ -37,13 +41,14 @@ describe('androidSend', () => {
     await expect(storage.readText('../x')).rejects.toThrow('Bad path: ../x');
   });
 
-  it('rejects when the interface throws, and ignores answers for unknown calls', async () => {
-    const send = androidSend({
-      call() {
-        throw new Error('bridge gone');
-      },
-    });
+  it('rejects when posting throws, and ignores replies it can’t match', async () => {
+    const app = fakeApp(() => ({ ok: true, value: null }));
+    app.postMessage = () => {
+      throw new Error('bridge gone');
+    };
+    const send = androidSend(app);
     await expect(send({ method: 'GET', url: 'api/storage/exists', body: { path: 'a' } })).rejects.toThrow('bridge gone');
-    expect(() => window.__nexlibrisBridge!.settle(99, '{"ok":true,"value":1}')).not.toThrow();
+    expect(() => app.reply('{"id":99,"response":{"ok":true,"value":1}}')).not.toThrow();
+    expect(() => app.reply('not json')).not.toThrow();
   });
 });

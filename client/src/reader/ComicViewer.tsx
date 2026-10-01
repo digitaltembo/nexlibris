@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import styled from 'styled-components';
 import { openComic, type Comic } from '../formats/comic';
 import { Status } from '../styles/ui';
@@ -50,27 +50,13 @@ const Controls = styled.div`
 import type { ViewerProps } from './Reader';
 import { useObjectUrl } from './useObjectUrl';
 
-function savedPage(key: string): number {
-  try {
-    return Number(localStorage.getItem(key)) || 0;
-  } catch {
-    return 0;
-  }
-}
-
-function savePage(key: string, page: number) {
-  try {
-    localStorage.setItem(key, String(page));
-  } catch {
-    // Remembering the page is a convenience only.
-  }
-}
-
-export default function ComicViewer({ data, format, storageKey }: ViewerProps) {
+export default function ComicViewer({ data, format, position, onPosition }: ViewerProps) {
   const [comic, setComic] = useState<Comic>();
   const [error, setError] = useState<string>();
-  const pageKey = `${storageKey}:page`;
-  const [index, setIndex] = useState(() => savedPage(pageKey));
+  // The locator is the page index.
+  const [index, setIndex] = useState(() => Math.max(0, Math.floor(Number(position)) || 0));
+  const onPositionRef = useRef(onPosition);
+  onPositionRef.current = onPosition;
   const [image, setImage] = useState<Blob>();
   const url = useObjectUrl(image);
 
@@ -92,11 +78,11 @@ export default function ComicViewer({ data, format, storageKey }: ViewerProps) {
     let cancelled = false;
     void comic.pages[current].load().then((blob) => !cancelled && setImage(blob));
     void comic.pages[current + 1]?.load(); // warm the next page
-    savePage(pageKey, current);
+    onPositionRef.current?.(String(current), (current + 1) / comic.pages.length);
     return () => {
       cancelled = true;
     };
-  }, [comic, current, pageKey]);
+  }, [comic, current]);
 
   const go = useCallback(
     (delta: number) => setIndex((i) => Math.max(0, Math.min(pageCount - 1, Math.min(i, pageCount - 1) + delta))),

@@ -20,7 +20,8 @@
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "rtf.js": "^3.0.9",
-    "styled-components": "^6.5.3"
+    "styled-components": "^6.5.3",
+    "zxing-wasm": "^3.1.4"
   },
   "devDependencies": {
     "@types/react": "^19.3.0",

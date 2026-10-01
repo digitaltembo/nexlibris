@@ -3,6 +3,7 @@ import { lazy, Suspense, useEffect, useState, type ComponentType } from 'react';
 import styled from 'styled-components';
 import { FORMATS, isFormatId, READ_PREFERENCE, type FormatId } from '../formats/formats';
 import { useLibrary } from '../library/LibraryContext';
+import { useReadingPosition } from '../library/useReadingPosition';
 import { LockScroll } from '../styles/GlobalStyle';
 import { Button, Muted, Status } from '../styles/ui';
 
@@ -40,8 +41,12 @@ const Body = styled.div`
 export interface ViewerProps {
   data: Blob;
   format: FormatId;
-  /** Stable per file, for viewers that remember position. */
+  /** Stable per file, for viewers that keep their own data (epubier: page counts, bookmarks). */
   storageKey: string;
+  /** Where to open: a locator this viewer reported for this file before. */
+  position?: string;
+  /** Reports where the reader is, as often as it likes; saving is debounced. */
+  onPosition?(locator: string, progress?: number): void;
   onClose(): void;
   options: { forcePdfjs: boolean };
 }
@@ -82,6 +87,7 @@ interface Props {
 /** A full-window reader for one of an item's files. */
 export function Reader({ item, file, onClose }: Props) {
   const { backend } = useLibrary();
+  const { initial: position, report: onPosition } = useReadingPosition(item.id, file);
   const [data, setData] = useState<Blob | null>();
   const [forcePdfjs, setForcePdfjs] = useState(false);
   const format = isFormatId(file.format) ? file.format : undefined;
@@ -125,6 +131,8 @@ export function Reader({ item, file, onClose }: Props) {
           data={data}
           format={format}
           storageKey={`nexlibris:${file.hash}`}
+          position={position}
+          onPosition={onPosition}
           onClose={onClose}
           options={{ forcePdfjs }}
         />

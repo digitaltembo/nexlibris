@@ -2,6 +2,9 @@ package org.nexlibris.app
 
 import java.io.File
 import java.io.FileNotFoundException
+import java.io.InputStream
+import java.security.DigestInputStream
+import java.security.MessageDigest
 import java.io.FileOutputStream
 import java.io.RandomAccessFile
 import java.nio.file.Files
@@ -70,6 +73,37 @@ class StorageService(root: File) {
         if (last) commit(upload, file)
     }
 
+    /**
+     * Stores [input] as a content-addressed file, where common/src/backend.ts keeps them
+     * ([storedFilePath]), hashing it as it's copied. Storing contents already there is a no-op.
+     */
+    fun putStream(input: InputStream): StoredFile {
+        val files = resolve("files")
+        files.mkdirs()
+        val temp = File.createTempFile(".put", ".tmp", files)
+        try {
+            val digest = MessageDigest.getInstance("SHA-256")
+            val size = DigestInputStream(input, digest).use { source ->
+                FileOutputStream(temp).use { out ->
+                    val copied = source.copyTo(out)
+                    out.fd.sync()
+                    copied
+                }
+            }
+            val hash = digest.digest().joinToString("") { "%02x".format(it) }
+            val file = resolve(storedFilePath(hash))
+            if (file.isFile) {
+                temp.delete()
+            } else {
+                file.parentFile?.mkdirs()
+                Files.move(temp.toPath(), file.toPath(), StandardCopyOption.ATOMIC_MOVE)
+            }
+            return StoredFile(hash, size)
+        } finally {
+            temp.delete()
+        }
+    }
+
     /** The file for a library path, refusing anything that would leave [root]. */
     fun resolve(path: String): File {
         val segments = path.split('/')
@@ -94,3 +128,8 @@ class StorageService(root: File) {
         Files.move(temp.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
     }
 }
+
+data class StoredFile(val hash: String, val size: Long)
+
+/** Where a stored file lives, by hash: `storedFilePath` in common/src/importApi.ts. */
+fun storedFilePath(hash: String) = "files/${hash.take(2)}/$hash"

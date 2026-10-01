@@ -1,4 +1,6 @@
-import { applyOperations, createLibrary, type Change, type Operation } from './operations';
+import { storedFilePath } from './importApi';
+import { migrateLibrary, migrateOperation } from './migrate';
+import { applyOperation, applyOperations, createLibrary, OperationError, type Change, type Operation } from './operations';
 import type { Storage } from './storage';
 import type { FileHash, Library } from './types';
 
@@ -24,7 +26,7 @@ export async function hashBlob(data: Blob): Promise<FileHash> {
 
 const LIBRARY_PATH = 'library.json';
 const CHANGES_PATH = 'changes.jsonl';
-const filePath = (hash: FileHash) => `files/${hash.slice(0, 2)}/${hash}`;
+const filePath = storedFilePath;
 
 /**
  * A backend over any `Storage`: the library as one JSON document, the change
@@ -58,12 +60,21 @@ export class StoredLibraryBackend implements LibraryBackend {
   }
 
   async getChanges(sinceRevision: number): Promise<Change[]> {
+    return (await this.readChanges()).filter((c) => c.revision > sinceRevision);
+  }
+
+  private async readChanges(): Promise<Change[]> {
     const text = (await this.storage.readText(CHANGES_PATH)) ?? '';
-    return text
-      .split('\n')
-      .filter(Boolean)
-      .map((line) => JSON.parse(line) as Change)
-      .filter((c) => c.revision > sinceRevision);
+    const changes: Change[] = [];
+    for (const line of text.split('\n')) {
+      if (!line) continue;
+      try {
+        changes.push(JSON.parse(line) as Change);
+      } catch {
+        // Only the last line can be cut short, by a crash while it was appended; it was never applied.
+      }
+    }
+    return changes;
   }
 
   async putFile(data: Blob): Promise<{ hash: FileHash; size: number }> {
@@ -77,11 +88,30 @@ export class StoredLibraryBackend implements LibraryBackend {
     return this.storage.readBlob(filePath(hash));
   }
 
+  /**
+   * The library as stored, migrated to the current schema, with any logged changes the snapshot
+   * lacks replayed: `apply` logs before writing the snapshot, so a crash between the two leaves
+   * the log ahead. Either fix-up is saved straight away.
+   */
   private async load(): Promise<Library> {
     if (this.library) return this.library;
     const text = await this.storage.readText(LIBRARY_PATH);
     if (text) {
-      this.library = JSON.parse(text) as Library;
+      const stored = JSON.parse(text) as { schemaVersion: number };
+      let library = migrateLibrary(stored);
+      let changed = library.schemaVersion !== stored.schemaVersion;
+      for (const change of await this.getChanges(library.revision)) {
+        if (change.revision !== library.revision + 1) break;
+        try {
+          library = applyOperation(library, migrateOperation(change.op, stored.schemaVersion), change.at);
+        } catch (e) {
+          if (e instanceof OperationError) break;
+          throw e;
+        }
+        changed = true;
+      }
+      if (changed) await this.storage.writeText(LIBRARY_PATH, JSON.stringify(library));
+      this.library = library;
     } else {
       this.library = createLibrary(this.defaultName);
       await this.storage.writeText(LIBRARY_PATH, JSON.stringify(this.library));
