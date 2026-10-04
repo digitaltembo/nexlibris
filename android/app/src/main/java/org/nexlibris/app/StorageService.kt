@@ -2,6 +2,7 @@ package org.nexlibris.app
 
 import java.io.File
 import java.io.FileNotFoundException
+import java.io.IOException
 import java.io.InputStream
 import java.security.DigestInputStream
 import java.security.MessageDigest
@@ -17,18 +18,18 @@ import java.util.Base64
  *
  * Not thread-safe; [NativeBridge] runs every call on one thread.
  */
-class StorageService(root: File) {
+class StorageService(root: File) : PathStorage {
     private val root: File = root.canonicalFile
 
     init {
         this.root.mkdirs()
     }
 
-    fun readText(path: String): String? = resolve(path).takeIf { it.isFile }?.readText()
+    override fun readText(path: String): String? = resolve(path).takeIf { it.isFile }?.readText()
 
-    fun writeText(path: String, text: String) = replace(resolve(path)) { it.writeText(text) }
+    override fun writeText(path: String, text: String) = replace(resolve(path)) { it.writeText(text) }
 
-    fun appendText(path: String, text: String) {
+    override fun appendText(path: String, text: String) {
         val file = resolve(path)
         file.parentFile?.mkdirs()
         FileOutputStream(file, true).use { out ->
@@ -38,12 +39,12 @@ class StorageService(root: File) {
         }
     }
 
-    fun exists(path: String): Boolean = resolve(path).isFile
+    override fun exists(path: String): Boolean = resolve(path).isFile
 
-    fun size(path: String): Long? = resolve(path).takeIf { it.isFile }?.length()
+    override fun size(path: String): Long? = resolve(path).takeIf { it.isFile }?.length()
 
     /** Base64 of up to [length] bytes starting at [offset]. */
-    fun readChunk(path: String, offset: Long, length: Int): String {
+    override fun readChunk(path: String, offset: Long, length: Int): String {
         require(offset >= 0 && length >= 0) { "Bad range: $offset+$length" }
         val file = resolve(path)
         if (!file.isFile) throw FileNotFoundException("No file: $path")
@@ -60,7 +61,7 @@ class StorageService(root: File) {
      * Appends a chunk to an upload in progress, which replaces the file at [path]
      * only once the [last] chunk arrives, so readers never see a partial file.
      */
-    fun writeChunk(path: String, data: String, first: Boolean, last: Boolean) {
+    override fun writeChunk(path: String, data: String, first: Boolean, last: Boolean) {
         val file = resolve(path)
         val upload = uploadFile(file)
         if (first) {
@@ -76,8 +77,9 @@ class StorageService(root: File) {
     /**
      * Stores [input] as a content-addressed file, where common/src/backend.ts keeps them
      * ([storedFilePath]), hashing it as it's copied. Storing contents already there is a no-op.
+     * With [expected], contents with any other hash are discarded and it throws.
      */
-    fun putStream(input: InputStream): StoredFile {
+    override fun putStream(input: InputStream, expected: String?): StoredFile {
         val files = resolve("files")
         files.mkdirs()
         val temp = File.createTempFile(".put", ".tmp", files)
@@ -91,6 +93,9 @@ class StorageService(root: File) {
                 }
             }
             val hash = digest.digest().joinToString("") { "%02x".format(it) }
+            if (expected != null && hash != expected) {
+                throw IOException("The file's contents don't match its hash (expected ${expected.take(12)}…, got ${hash.take(12)}…).")
+            }
             val file = resolve(storedFilePath(hash))
             if (file.isFile) {
                 temp.delete()
@@ -102,6 +107,18 @@ class StorageService(root: File) {
         } finally {
             temp.delete()
         }
+    }
+
+    override fun list(path: String): List<String> = resolve(path).list()?.filterNot { it.startsWith(".") }?.sorted() ?: emptyList()
+
+    override fun remove(path: String) {
+        resolve(path).delete()
+    }
+
+    override fun openStored(hash: String): InputStream {
+        val file = resolve(storedFilePath(hash))
+        if (!file.isFile) throw FileNotFoundException("That file isn’t stored here.")
+        return file.inputStream()
     }
 
     /** The file for a library path, refusing anything that would leave [root]. */

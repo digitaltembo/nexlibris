@@ -1,4 +1,5 @@
 import type { Item } from '@nexlibris/common';
+import { fieldLabel } from './bookFields';
 import { formatQuery, metadataKeys, orGroups, parseQuery, type FieldTerm, type Term } from './search';
 
 /**
@@ -57,7 +58,8 @@ const BUILTIN_FIELDS: FilterField[] = [
   { id: 'format', label: 'Format', kind: 'set' },
   { id: 'rating', label: 'Rating', kind: 'rating' },
   { id: 'added', label: 'Added', kind: 'date' },
-  { id: 'published', label: 'Published', kind: 'date' },
+  { id: 'originallyPublished', label: 'First published', kind: 'date' },
+  { id: 'published', label: 'Edition published', kind: 'date' },
   { id: 'publisher', label: 'Publisher', kind: 'text' },
   { id: 'language', label: 'Language', kind: 'text' },
   { id: 'pages', label: 'Pages', kind: 'number' },
@@ -66,9 +68,9 @@ const BUILTIN_FIELDS: FilterField[] = [
 ];
 
 /** Metadata the built-in fields cover or that isn't worth filtering on. */
-const HIDDEN_METADATA = new Set(['seriesIndex', 'description']);
+const HIDDEN_METADATA = new Set(['seriesIndex', 'description', 'titleSort', 'authorSort', 'coverColor']);
 
-const label = (key: string) => key.replace(/^[a-z]/, (c) => c.toUpperCase()).replace(/([a-z])([A-Z])/g, '$1 $2');
+const label = fieldLabel;
 
 /** The fields rules can use: the built-in ones, then the library's other metadata fields. */
 export function filterFields(items: Iterable<Item>): FilterField[] {

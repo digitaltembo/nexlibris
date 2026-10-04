@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { desktopSend } from './desktopBridge';
+import { afterEach, describe, expect, it } from 'vitest';
+import { desktopSend, followTitleBar, type DesktopInterface } from './desktopBridge';
 
 describe('desktopSend', () => {
   it('passes requests to the app and unwraps its answers', async () => {
@@ -16,5 +16,39 @@ describe('desktopSend', () => {
       { method: 'GET', url: 'api/storage/exists', body: { path: 'a' } },
       { method: 'GET', url: 'api/storage/readText', body: { path: '..' } },
     ]);
+  });
+});
+
+const desktop = (titleBarInset: boolean) => {
+  let fullScreen: ((on: boolean) => void) | undefined;
+  const native: DesktopInterface = {
+    rpc: async () => ({ ok: true, value: null }),
+    titleBarInset,
+    onFullScreen: (handler) => {
+      fullScreen = handler;
+    },
+  };
+  return { native, fullScreen: (on: boolean) => fullScreen?.(on) };
+};
+
+describe('followTitleBar', () => {
+  afterEach(() => delete document.documentElement.dataset.titleBar);
+
+  it('marks the page while the window buttons sit over it, but not in full screen', () => {
+    const { native, fullScreen } = desktop(true);
+    const stop = followTitleBar(native);
+    expect(document.documentElement.dataset.titleBar).toBe('inset');
+    fullScreen(true);
+    expect(document.documentElement.dataset.titleBar).toBeUndefined();
+    fullScreen(false);
+    expect(document.documentElement.dataset.titleBar).toBe('inset');
+    stop();
+    expect(document.documentElement.dataset.titleBar).toBeUndefined();
+  });
+
+  it('leaves the page alone with a title bar, and outside the desktop app', () => {
+    followTitleBar(desktop(false).native);
+    followTitleBar(undefined);
+    expect(document.documentElement.dataset.titleBar).toBeUndefined();
   });
 });

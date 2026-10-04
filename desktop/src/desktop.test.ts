@@ -9,6 +9,7 @@ import {
   hashBlob,
   createItem,
   importApiMeta,
+  STORE_BATCH_FILES,
   storedFilePath,
   type RpcRequest,
 } from '@nexlibris/common';
@@ -95,7 +96,12 @@ describe('app protocol', () => {
     expect(appFile('app://nexlibris/', dirs)).toEqual({ kind: 'client', file: join(client, 'index.html') });
     expect(appFile('app://nexlibris/assets/index-abc.js', dirs)).toEqual({ kind: 'client', file: join(client, 'assets', 'index-abc.js') });
     expect(appFile('app://nexlibris/library/files/ab/abcd', dirs)).toEqual({ kind: 'library', file: join(library, 'files', 'ab', 'abcd') });
-    // Only stored files: not the library's JSON or change log.
+    expect(appFile('app://nexlibris/library/local/thumbs/ab/abcd.jpg', dirs)).toEqual({
+      kind: 'library',
+      file: join(library, 'local', 'thumbs', 'ab', 'abcd.jpg'),
+    });
+    // Only stored files and thumbnails: not the library's JSON, change log or other local state.
+    expect(appFile('app://nexlibris/library/local/sync-host.json', dirs)?.kind).toBe('client');
     expect(appFile('app://nexlibris/library/library.json', dirs)).toEqual({ kind: 'client', file: join(client, 'library', 'library.json') });
     // Dot segments are resolved by the URL parser, within the origin; encoded slashes survive it, and are refused.
     expect(appFile('app://nexlibris/library/files/%2e%2e/%2e%2e/library.json', dirs)?.file).toBe(join(client, 'library.json'));
@@ -114,7 +120,7 @@ describe('desktop import', () => {
     writeFileSync(join(picked, 'Book.EPUB'), 'hello');
     writeFileSync(join(picked, 'notes.doc'), 'nope');
     let offered: string[] = [];
-    const service = createImportService(root, async (extensions) => {
+    const service = createImportService(root, async ({ extensions }) => {
       offered = extensions;
       return [join(picked, 'Book.EPUB'), join(picked, 'notes.doc'), join(picked, 'missing.pdf')];
     });
@@ -124,15 +130,72 @@ describe('desktop import', () => {
       if (!response.ok) throw new Error(response.message);
       return response.value;
     };
-    const result = await createMessageClient(importApiMeta, send).import.pick({ extensions: ['epub', 'pdf'] });
+    const client = createMessageClient(importApiMeta, send).import;
+    const chosen = await client.pick({ extensions: ['epub', 'pdf'] });
 
     expect(offered).toEqual(['epub', 'pdf']);
+    // Listed with sizes, not stored yet.
+    expect(chosen.files).toEqual([
+      { name: 'Book.EPUB', size: 5 },
+      { name: 'missing.pdf', size: 0 },
+    ]);
+    expect(chosen.skipped).toEqual([{ name: 'notes.doc', reason: 'unsupported file type' }]);
+    expect(readdirSync(root)).not.toContain('files');
+
+    const result = await client.store({ token: chosen.token, start: 0 });
     const hash = await hashBlob(new Blob(['hello']));
     expect(result.files).toEqual([{ name: 'Book.EPUB', hash, size: 5 }]);
-    expect(result.skipped.map((s) => s.name)).toEqual(['notes.doc', 'missing.pdf']);
+    expect(result.skipped.map((s) => s.name)).toEqual(['missing.pdf']);
+    expect(result.next).toBe(2);
     expect(readFileSync(join(root, storedFilePath(hash)), 'utf8')).toBe('hello');
+    // Once it's all stored, the pick is let go.
+    await expect(client.store({ token: chosen.token, start: 2 })).rejects.toThrow(/pick the files again/);
     // The page's backend finds it already stored, and nothing temporary is left.
     expect(await new StoredLibraryBackend(new RpcStorage(connect(root).storage)).getFile(hash).then((b) => b?.text())).toBe('hello');
     expect(readdirSync(join(root, 'files')).filter((f) => f.endsWith('.tmp'))).toEqual([]);
+  });
+  it('stores the books in a picked folder and its subfolders, with their paths and the named sidecars', async () => {
+    const root = tempDir();
+    const picked = join(tempDir(), 'Calibre Library');
+    const book = join(picked, 'Frank Herbert', 'Dune (7)');
+    mkdirSync(book, { recursive: true });
+    mkdirSync(join(picked, '.caltrash'));
+    writeFileSync(join(book, 'Dune.epub'), 'epub');
+    writeFileSync(join(book, 'Metadata.OPF'), '<package/>');
+    writeFileSync(join(book, 'cover.jpg'), 'jpeg');
+    writeFileSync(join(picked, 'metadata.db'), 'sqlite');
+    writeFileSync(join(picked, '.caltrash', 'old.epub'), 'gone');
+    let asked: unknown;
+    const service = createImportService(root, async (options) => {
+      asked = options;
+      return [picked];
+    });
+    const chosen = await service.pick({ extensions: ['epub'], folder: true, names: ['metadata.opf', 'cover.jpg'] });
+    const result = await service.store({ token: chosen.token, start: 0 });
+
+    expect(asked).toEqual({ extensions: ['epub'], folder: true });
+    expect(result.files.map(({ name, path }) => [name, path])).toEqual([
+      ['Dune.epub', 'Calibre Library/Frank Herbert/Dune (7)/Dune.epub'],
+      ['Metadata.OPF', 'Calibre Library/Frank Herbert/Dune (7)/Metadata.OPF'],
+      ['cover.jpg', 'Calibre Library/Frank Herbert/Dune (7)/cover.jpg'],
+    ]);
+    expect(readFileSync(join(root, storedFilePath(result.files[0]!.hash)), 'utf8')).toBe('epub');
+    // Hidden folders aren't looked in; other files are reported by path.
+    expect(chosen.skipped).toEqual([{ name: 'Calibre Library/metadata.db', reason: 'unsupported file type' }]);
+  });
+
+  it('stores a pick in batches, and only the latest pick', async () => {
+    const picked = tempDir();
+    const paths = Array.from({ length: STORE_BATCH_FILES + 10 }, (_, i) => join(picked, `book-${i}.epub`));
+    for (const [i, path] of paths.entries()) writeFileSync(path, `book ${i}`);
+    const service = createImportService(tempDir(), async () => paths);
+    const first = await service.pick({ extensions: ['epub'] });
+    const batch = await service.store({ token: first.token, start: 0 });
+    expect([batch.files.length, batch.next]).toEqual([STORE_BATCH_FILES, STORE_BATCH_FILES]);
+
+    const second = await service.pick({ extensions: ['epub'] });
+    await expect(service.store({ token: first.token, start: batch.next })).rejects.toThrow(/replaced/);
+    const rest = await service.store({ token: second.token, start: STORE_BATCH_FILES });
+    expect([rest.files.length, rest.next]).toEqual([10, paths.length]);
   });
 });

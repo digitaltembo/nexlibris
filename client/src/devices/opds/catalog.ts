@@ -37,8 +37,16 @@ export type CatalogFile =
   | { path: string; book: { itemId: ItemId; format: string } }
   | { path: string; cover: FileHash };
 
+/** One of the user's browse categories, with the books each entry's search found. */
+export interface CatalogCategory {
+  name: string;
+  entries: { label: string; itemIds: ItemId[] }[];
+}
+
 export interface CatalogOptions {
   title: string;
+  /** Listed between Series and Tags, as calibre3opds's custom feeds. */
+  categories?: CatalogCategory[];
   pageSize?: number;
   /** For the feeds' `updated`. */
   now?: string;
@@ -207,11 +215,37 @@ export function buildCatalog(books: CatalogBook[], options: CatalogOptions): Cat
   );
   grouped('tags', 'Tags', (b) => b.item.tags);
 
+  // The user's categories: one with a single entry is its books' feed; others list their entries.
+  const unique = (taken: Set<string>, base: string) => {
+    let key = base;
+    for (let n = 2; taken.has(key); n++) key = `${base}-${n}`;
+    taken.add(key);
+    return key;
+  };
+  const categoryKeys = new Set<string>();
+  const custom = [...(options.categories ?? [])]
+    .filter((category) => category.entries.length > 0)
+    .sort((a, b) => byText(a.name, b.name))
+    .map((category): [string, string] => {
+      const dir = `navigation/custom/${unique(categoryKeys, slug(category.name))}`;
+      const booksOf = (ids: ItemId[]) => sorted.filter((b) => ids.includes(b.item.id));
+      if (category.entries.length === 1) {
+        paged(dir, category.name, booksOf(category.entries[0]!.itemIds));
+        return [category.name, `${dir}/page-1.xml`];
+      }
+      const entryKeys = new Set<string>();
+      const entries = category.entries.map((entry) => ({ entry, key: unique(entryKeys, slug(entry.label)) }));
+      navigation(`${dir}/index.xml`, category.name, entries.map(({ entry, key }) => [entry.label, `${dir}/${key}/page-1.xml`]));
+      for (const { entry, key } of entries) paged(`${dir}/${key}`, entry.label, booksOf(entry.itemIds));
+      return [category.name, `${dir}/index.xml`];
+    });
+
   navigation('navigation/index.xml', options.title, [
     ['Recent books', 'navigation/recent/page-1.xml'],
     ['By title', 'navigation/titles/page-1.xml'],
     ['Authors', 'navigation/authors/index.xml'],
     ['Series', 'navigation/series/index.xml'],
+    ...custom,
     ['Tags', 'navigation/tags/index.xml'],
   ]);
 

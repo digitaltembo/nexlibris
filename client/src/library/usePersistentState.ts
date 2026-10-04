@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 
 /** State remembered in this browser between visits; a convenience only, so storage failures are ignored. */
 export function usePersistentState<T>(key: string, initial: T): [T, (value: T) => void] {
@@ -10,12 +10,17 @@ export function usePersistentState<T>(key: string, initial: T): [T, (value: T) =
       return initial;
     }
   });
-  useEffect(() => {
-    try {
-      localStorage.setItem(key, JSON.stringify(value));
-    } catch {
-      // Not remembered this time.
-    }
-  }, [key, value]);
-  return [value, setValue];
+  // Stored as it's set, not after the next render, so a value set just before unmounting is kept.
+  const set = useCallback(
+    (next: T) => {
+      setValue(next);
+      try {
+        localStorage.setItem(key, JSON.stringify(next));
+      } catch {
+        // Not remembered this time.
+      }
+    },
+    [key],
+  );
+  return [value, set];
 }

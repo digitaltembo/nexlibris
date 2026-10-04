@@ -3,11 +3,14 @@ package org.nexlibris.app
 import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothManager
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.provider.OpenableColumns
 import android.util.Log
@@ -67,6 +70,39 @@ class MainActivity : ComponentActivity() {
     private val pickForImport = registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         pendingImport?.complete(uris)
         pendingImport = null
+    }
+
+    /** The folder picker for importing the bridge is waiting on, if any. */
+    @Volatile
+    private var pendingImportFolder: CompletableFuture<Uri?>? = null
+    private val pickFolderForImport = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        pendingImportFolder?.complete(uri)
+        pendingImportFolder = null
+    }
+
+    /** Bluetooth permissions, and turning Bluetooth on, that hosting sync is waiting on, if any. */
+    @Volatile
+    private var pendingBluetoothPermissions: CompletableFuture<Map<String, Boolean>>? = null
+    private val requestBluetoothPermissions = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+        pendingBluetoothPermissions?.complete(it)
+        pendingBluetoothPermissions = null
+    }
+
+    @Volatile
+    private var pendingBluetoothOn: CompletableFuture<Boolean>? = null
+    private val turnOnBluetooth = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        pendingBluetoothOn?.complete(it.resultCode == Activity.RESULT_OK)
+        pendingBluetoothOn = null
+    }
+
+    private lateinit var bluetoothHost: BluetoothHostService
+
+    /** The folder picker for the sync folder the bridge is waiting on, if any. */
+    @Volatile
+    private var pendingFolder: CompletableFuture<Uri?>? = null
+    private val pickFolder = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        pendingFolder?.complete(uri)
+        pendingFolder = null
     }
 
     /** The "Save as" picker the bridge is waiting on, if any. */
@@ -161,7 +197,19 @@ class MainActivity : ComponentActivity() {
 
         val saves = SaveService(File(cacheDir, "saves"), ::chooseSaveDestination)
         val imports = ImportService(storage, ::chooseImportSources)
-        bridge = NativeBridge(RpcRouter(storageRoutes(storage), saveRoutes(saves), importRoutes(imports)))
+        bluetoothHost = BluetoothHostService(this, getSharedPreferences("sync", MODE_PRIVATE), ::prepareBluetooth)
+        val syncFolders = SyncFolderService(contentResolver, getSharedPreferences("sync", MODE_PRIVATE), ::chooseSyncFolder)
+        bridge = NativeBridge(
+            RpcRouter(
+                storageRoutes(storage),
+                saveRoutes(saves),
+                importRoutes(imports),
+                peerRoutes(PeerService(storage)),
+                bluetoothHostRoutes(bluetoothHost),
+                usbFolderRoutes(syncFolders::folder, storage, syncFolders::info, syncFolders::choose),
+            ),
+        )
+        bluetoothHost.resume()
         if (WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) {
             WebViewCompat.addWebMessageListener(webView, "NexlibrisAndroid", setOf("https://$APP_HOST"), bridge)
         } else {
@@ -191,6 +239,10 @@ class MainActivity : ComponentActivity() {
     override fun onDestroy() {
         pendingSave?.complete(null)
         pendingImport?.complete(emptyList())
+        pendingFolder?.complete(null)
+        pendingBluetoothPermissions?.complete(emptyMap())
+        pendingBluetoothOn?.complete(false)
+        bluetoothHost.stop()
         bridge.shutdown()
         webView.destroy()
         super.onDestroy()
@@ -208,8 +260,63 @@ class MainActivity : ComponentActivity() {
         return contentResolver.openOutputStream(uri) ?: throw IOException("Couldn't open $uri")
     }
 
-    /** Shows the system picker for files to import and waits for it; called on the bridge's thread. */
-    private fun chooseImportSources(): List<PickedSource> {
+    /**
+     * Makes Bluetooth usable for hosting sync: asks for the "Nearby devices" permissions (Android 12
+     * on), then to turn Bluetooth on. Throws with what to do if either is refused. Called on the
+     * bridge's thread, as it waits on the user.
+     */
+    @SuppressLint("MissingPermission")
+    private fun prepareBluetooth() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val needed = arrayOf(Manifest.permission.BLUETOOTH_ADVERTISE, Manifest.permission.BLUETOOTH_CONNECT)
+            if (needed.any { ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED }) {
+                val choice = CompletableFuture<Map<String, Boolean>>()
+                runOnUiThread {
+                    pendingBluetoothPermissions?.complete(emptyMap())
+                    pendingBluetoothPermissions = choice
+                    requestBluetoothPermissions.launch(needed)
+                }
+                val granted = choice.get()
+                if (needed.any { granted[it] != true }) {
+                    throw IllegalStateException("nexlibris wasn’t allowed to use Bluetooth. Allow “Nearby devices” in its app settings.")
+                }
+            }
+        }
+        val adapter = getSystemService(BluetoothManager::class.java)?.adapter ?: throw IllegalStateException("This device has no Bluetooth.")
+        if (!adapter.isEnabled) {
+            val choice = CompletableFuture<Boolean>()
+            runOnUiThread {
+                pendingBluetoothOn?.complete(false)
+                pendingBluetoothOn = choice
+                turnOnBluetooth.launch(Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE))
+            }
+            if (!choice.get()) throw IllegalStateException("Bluetooth is off. Turn it on to host sync.")
+        }
+    }
+
+    /** Shows the folder picker for the sync folder and waits for it; called on the bridge's thread. */
+    private fun chooseSyncFolder(): Uri? {
+        val choice = CompletableFuture<Uri?>()
+        runOnUiThread {
+            pendingFolder?.complete(null)
+            pendingFolder = choice
+            pickFolder.launch(null)
+        }
+        return choice.get()
+    }
+
+    /** Shows the system picker for files, or a folder, to import and waits for it; called on the bridge's thread. */
+    private fun chooseImportSources(folder: Boolean): List<PickedSource> {
+        if (folder) {
+            val choice = CompletableFuture<Uri?>()
+            runOnUiThread {
+                pendingImportFolder?.complete(null)
+                pendingImportFolder = choice
+                pickFolderForImport.launch(null)
+            }
+            val tree = choice.get() ?: return emptyList()
+            return documentTreeFiles(contentResolver, tree)
+        }
         val choice = CompletableFuture<List<Uri>>()
         runOnUiThread {
             pendingImport?.complete(emptyList())
@@ -218,16 +325,20 @@ class MainActivity : ComponentActivity() {
             pickForImport.launch(arrayOf("*/*"))
         }
         return choice.get().map { uri ->
-            PickedSource(displayName(uri)) {
+            val (name, size) = nameAndSize(uri)
+            PickedSource(name, size = size) {
                 contentResolver.openInputStream(uri) ?: throw IOException("Couldn't open $uri")
             }
         }
     }
 
-    private fun displayName(uri: Uri): String =
-        contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
-            if (cursor.moveToFirst()) cursor.getString(0) else null
-        } ?: uri.lastPathSegment?.substringAfterLast('/') ?: "file"
+    /** A picked document's name, and its size (0 if the provider doesn't say). */
+    private fun nameAndSize(uri: Uri): Pair<String, Long> {
+        val found = contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE), null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst()) cursor.getString(0) to (if (cursor.isNull(1)) 0L else cursor.getLong(1)) else null
+        }
+        return (found?.first ?: uri.lastPathSegment?.substringAfterLast('/') ?: "file") to (found?.second ?: 0L)
+    }
 
     private fun deliverFiles(uris: List<Uri>) {
         pendingFiles?.onReceiveValue(uris.takeIf { it.isNotEmpty() }?.toTypedArray())

@@ -2,12 +2,34 @@ import type { Kf8, Mobi } from '@lingo-reader/mobi-parser';
 import { bookFromItem, type ConvertContext } from './convert/bookFromItem';
 import { buildEpub, extensionFor, htmlToXhtml, type EpubChapter, type EpubResource, type EpubTocEntry } from './epubBuilder';
 import { emptyParsedItem, splitTags, type ParsedItem } from './formats';
+import { readKindleHeader, type KindleHeader } from './kindleHeader';
 
 export class KindleError extends Error {
   name = 'KindleError';
 }
 
 type KindleBook = Mobi | Kf8;
+
+/**
+ * The most text, uncompressed, that's converted to EPUB in the app: 16 times a long novel. The
+ * parser holds a book's text many times over and the conversion builds a DOM of all of it, so a
+ * dictionary (tens to hundreds of megabytes) can take gigabytes. Bigger books stay as they are.
+ */
+export const MAX_CONVERT_TEXT = 16_000_000;
+
+const megabytes = (bytes: number) => `${Math.round(bytes / 1e6)} MB`;
+
+/** A Kindle file's headers, refusing one whose text can't be read (DRM). */
+async function header(data: Blob): Promise<KindleHeader> {
+  let header: KindleHeader;
+  try {
+    header = readKindleHeader(new Uint8Array(await data.arrayBuffer()));
+  } catch (e) {
+    throw new KindleError(`Not a readable MOBI/AZW file: ${e instanceof Error ? e.message : e}`);
+  }
+  if (header.encrypted) throw new KindleError('This book is DRM-protected, so its text can’t be read.');
+  return header;
+}
 
 /** Reads a resource the parser exposes by URL: a blob URL in browsers, a file path under Node (tests). */
 export type ResourceFetcher = (url: string) => Promise<{ data: Uint8Array<ArrayBuffer>; mediaType: string }>;
@@ -64,34 +86,25 @@ function stripHtml(html: string): string {
   return new DOMParser().parseFromString(html, 'text/html').body.textContent?.trim() ?? '';
 }
 
-export async function parseKindle(data: Blob, filename: string, options: KindleOptions = {}): Promise<ParsedItem> {
-  const book = await openKindle(data, options);
-  try {
-    const meta = book.getMetadata();
-    const parsed = emptyParsedItem(filename);
-    parsed.title = meta.title?.trim() || parsed.title;
-    parsed.creators = meta.author.filter(Boolean).map((name) => ({ name: name.trim(), role: 'aut' }));
-    parsed.tags = splitTags(meta.subject.filter(Boolean));
-    const set = (key: string, value: string | undefined) => {
-      if (value?.trim()) parsed.metadata[key] = value.trim();
-    };
-    set('publisher', meta.publisher);
-    set('language', meta.language);
-    set('published', meta.published?.slice(0, 10));
-    set('description', meta.description && stripHtml(meta.description));
-    const id = meta.identifier?.replace(/[-\s]/g, '') ?? '';
-    if (/^(97[89])?\d{9}[\dX]$/i.test(id)) parsed.identifiers.isbn = id;
-    else if (/^B0[A-Z0-9]{8}$/.test(id)) parsed.identifiers.asin = id;
-
-    const coverUrl = book.getCoverImage();
-    if (coverUrl) {
-      const cover = await (options.fetchResource ?? fetchByUrl)(coverUrl).catch(() => undefined);
-      if (cover?.mediaType.startsWith('image/')) parsed.cover = { data: new Blob([cover.data], { type: cover.mediaType }), mediaType: cover.mediaType };
-    }
-    return parsed;
-  } finally {
-    book.destroy();
-  }
+/** A Kindle file's metadata and cover, from its headers (see `kindleHeader.ts`): its text isn't read. */
+export async function parseKindle(data: Blob, filename: string): Promise<ParsedItem> {
+  const meta = await header(data);
+  const parsed = emptyParsedItem(filename);
+  parsed.title = meta.title || parsed.title;
+  parsed.creators = meta.authors.map((name) => ({ name, role: 'aut' }));
+  parsed.tags = splitTags(meta.subjects);
+  const set = (key: string, value: string | undefined) => {
+    if (value?.trim()) parsed.metadata[key] = value.trim();
+  };
+  set('publisher', meta.publisher);
+  set('language', meta.language);
+  set('published', meta.published?.slice(0, 10));
+  set('description', meta.description && stripHtml(meta.description));
+  const isbn = meta.isbn?.replace(/[-\s]/g, '') ?? '';
+  if (/^(97[89])?\d{9}[\dX]$/i.test(isbn)) parsed.identifiers.isbn = isbn;
+  if (meta.asin && /^B0[A-Z0-9]{8}$/.test(meta.asin)) parsed.identifiers.asin = meta.asin;
+  if (meta.cover) parsed.cover = { data: new Blob([meta.cover.data], { type: meta.cover.mediaType }), mediaType: meta.cover.mediaType };
+  return parsed;
 }
 
 /** The `id` an `[id="…"]` selector targets, as returned by `resolveHref`. */
@@ -101,6 +114,10 @@ function selectorId(selector: string): string | undefined {
 
 /** Repackages a MOBI/AZW3 as an EPUB: chapters, images, stylesheets, internal links and TOC. */
 export async function kindleToEpub(data: Blob, ctx: ConvertContext, options: KindleOptions = {}): Promise<Blob> {
+  const { textLength } = await header(data);
+  if (textLength > MAX_CONVERT_TEXT) {
+    throw new KindleError(`It’s too big to convert in the app: ${megabytes(textLength)} of text (the most is ${megabytes(MAX_CONVERT_TEXT)}).`);
+  }
   const book = await openKindle(data, options);
   const fetchResource = options.fetchResource ?? fetchByUrl;
   try {

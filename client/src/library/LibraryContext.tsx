@@ -1,6 +1,7 @@
 import {
   createMessageClient,
   storageApiMeta,
+  fetchingMissingFiles,
   StoredLibraryBackend,
   type Library,
   type LibraryBackend,
@@ -12,6 +13,7 @@ import { nativeTransport } from '../backends/native';
 import { NativeStorage } from '../backends/nativeStorage';
 import { OpfsStorage } from '../backends/opfsStorage';
 import { Status } from '../styles/ui';
+import { canSync, fetchFromHub } from '../sync/connect';
 
 interface LibraryContextValue {
   backend: LibraryBackend;
@@ -39,7 +41,10 @@ let opening: Promise<LibraryBackend> | undefined;
 /** Opens the backend once per page, even when effects run twice in StrictMode. */
 function openBackend(): Promise<LibraryBackend> {
   const transport = nativeTransport();
-  opening ??= transport ? openNativeBackend(transport) : openOpfsBackend();
+  opening ??= (transport ? openNativeBackend(transport) : openOpfsBackend()).then((backend) =>
+    // An instance that syncs with a hub may leave books' files there; they're fetched when read.
+    canSync() ? fetchingMissingFiles(backend, (hash) => fetchFromHub(backend, hash)) : backend,
+  );
   return opening;
 }
 

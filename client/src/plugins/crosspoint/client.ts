@@ -57,6 +57,10 @@ export class CrossPointTarget implements DeviceTarget {
     await this.request(`/upload?path=${encodeURIComponent(path.slice(0, slash) || '/')}`, { method: 'POST', body: form });
   }
 
+  async download(path: string): Promise<Blob> {
+    return (await this.request(`/download?path=${encodeURIComponent(path)}`)).blob();
+  }
+
   async remove(path: string) {
     // One path per request: the `paths` list form was refused by the simulator.
     await this.request('/delete', { method: 'POST', body: new URLSearchParams({ path }) });

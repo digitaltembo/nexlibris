@@ -1,4 +1,5 @@
 import { LOCAL_USER, type Creator, type FileRef, type Item, type Operation, type UserId } from '@nexlibris/common';
+import { BOOK_FIELDS, isFixedField } from './bookFields';
 import { metadataToText, textToMetadata } from './metadataText';
 
 /** An item's editable fields as plain form state, until the user saves. */
@@ -9,6 +10,9 @@ export interface ItemDraft {
   review: string;
   /** Edited separately from other metadata since it's usually long. */
   description: string;
+  /** `BookMetadata`'s fixed fields, as text (empty for none). */
+  fields: Record<string, string>;
+  /** Custom fields. */
   metadata: [key: string, text: string][];
   identifiers: [scheme: string, value: string][];
   /** Detaching happens on save, like any other edit. */
@@ -23,8 +27,9 @@ export function draftFromItem(item: Item, review: string | undefined): ItemDraft
     tags: item.tags,
     review: review ?? '',
     description: typeof description === 'string' ? description : '',
+    fields: Object.fromEntries(BOOK_FIELDS.map((f) => [f.key, metadataToText(item.metadata[f.key])])),
     metadata: Object.entries(item.metadata)
-      .filter(([key]) => key !== 'description' || typeof description !== 'string')
+      .filter(([key]) => !isFixedField(key) && (key !== 'description' || typeof description !== 'string'))
       .map(([key, value]) => [key, metadataToText(value)]),
     identifiers: Object.entries(item.identifiers),
     files: item.files,
@@ -65,6 +70,7 @@ export function diffDraft(
   if (removed.length) ops.push({ type: 'removeTags', id, tags: removed });
 
   const metadata = new Map<string, string>(draft.metadata.map(([k, v]) => [k.trim(), v] as const).filter(([k]) => k));
+  for (const [key, text] of Object.entries(draft.fields)) if (text.trim()) metadata.set(key, text.trim());
   if (draft.description.trim()) metadata.set('description', draft.description.trim());
   for (const [key, text] of metadata) {
     const value = textToMetadata(text, item.metadata[key]);

@@ -80,4 +80,19 @@ class StorageServiceTest {
         assertThrows(IllegalArgumentException::class.java) { storage.writeText("link/x", "nope") }
         assertFalse(File(outside, "x").exists())
     }
+
+    @Test
+    fun listsRemovesAndCopiesStoredFilesBetweenStorages() {
+        val library = storage()
+        val folder = StorageService(File(temp.root, "sync"))
+        val stored = library.putStream("a book".byteInputStream())
+        assertEquals(listOf(stored.hash.take(2)), library.list("files"))
+        assertEquals(emptyList<String>(), folder.list("files"))
+
+        assertEquals(stored, copyStoredFile(library, folder, stored.hash))
+        assertEquals("a book", folder.resolve(storedFilePath(stored.hash)).readText())
+        folder.remove(storedFilePath(stored.hash))
+        assertFalse(folder.exists(storedFilePath(stored.hash)))
+        assertThrows(java.io.FileNotFoundException::class.java) { copyStoredFile(folder, library, stored.hash) }
+    }
 }

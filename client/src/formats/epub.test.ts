@@ -25,7 +25,11 @@ describe('parseEpub', () => {
       <package xmlns="http://www.idpf.org/2007/opf" version="2.0">
         <metadata xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:opf="http://www.idpf.org/2007/opf">
           <dc:title>The Left Hand of Darkness</dc:title>
-          <dc:creator opf:role="aut">Ursula K. Le Guin</dc:creator>
+          <dc:creator opf:role="aut" opf:file-as="Le Guin, Ursula K.">Ursula K. Le Guin</dc:creator>
+          <dc:contributor opf:file-as="calibre" opf:role="bkp">calibre (5.0)</dc:contributor>
+          <dc:date>2010-05-11T22:00:00+00:00</dc:date>
+          <dc:date opf:event="original-publication">1969</dc:date>
+          <dc:rights>All rights reserved</dc:rights>
           <dc:identifier opf:scheme="ISBN">978-0-441-47812-5</dc:identifier>
           <dc:identifier opf:scheme="calibre">42</dc:identifier>
           <dc:identifier>urn:uuid:1234-abcd</dc:identifier>
@@ -34,6 +38,7 @@ describe('parseEpub', () => {
           <dc:subject>science fiction, Anthropology; Classics</dc:subject>
           <meta name="calibre:series" content="Hainish Cycle"/>
           <meta name="calibre:series_index" content="4.0"/>
+          <meta name="calibre:title_sort" content="Left Hand of Darkness, The"/>
           <meta name="cover" content="cover-img"/>
         </metadata>
         <manifest>
@@ -47,9 +52,18 @@ describe('parseEpub', () => {
     expect(parsed).toMatchObject({
       title: 'The Left Hand of Darkness',
       creators: [{ name: 'Ursula K. Le Guin', role: 'aut' }],
-      identifiers: { isbn: '9780441478125', calibre: '42', uuid: '1234-abcd' },
+      identifiers: { isbn: '9780441478125', uuid: '1234-abcd' },
       tags: ['Science Fiction', 'Anthropology', 'Classics'],
-      metadata: { language: 'en', series: 'Hainish Cycle', seriesIndex: 4 },
+      metadata: {
+        language: 'en',
+        series: 'Hainish Cycle',
+        seriesIndex: 4,
+        titleSort: 'Left Hand of Darkness, The',
+        authorSort: 'Le Guin, Ursula K.',
+        published: '2010-05-12',
+        originallyPublished: '1969',
+        rights: 'All rights reserved',
+      },
     });
     expect(parsed.cover?.mediaType).toBe('image/png');
     expect(new Uint8Array(await parsed.cover!.data.arrayBuffer())).toEqual(PNG);
@@ -63,7 +77,10 @@ describe('parseEpub', () => {
           <dc:title id="sub">A Subtitle</dc:title>
           <dc:title id="main">Piranesi</dc:title>
           <meta refines="#main" property="title-type">main</meta>
+          <meta refines="#sub" property="title-type">subtitle</meta>
+          <meta refines="#main" property="file-as">Piranesi</meta>
           <dc:creator id="c1">Susanna Clarke</dc:creator>
+          <meta refines="#c1" property="file-as">Clarke, Susanna</meta>
           <meta refines="#c1" property="role" scheme="marc:relators">aut</meta>
           <dc:creator id="c2">Some Translator</dc:creator>
           <meta refines="#c2" property="role" scheme="marc:relators">trl</meta>
@@ -86,7 +103,8 @@ describe('parseEpub', () => {
       { name: 'Some Translator', role: 'trl' },
     ]);
     expect(parsed.identifiers).toEqual({ isbn: '9781635575637' });
-    expect(parsed.metadata).toMatchObject({ series: 'Standalones', seriesIndex: 2 });
+    // The translator has no sort name, but only authors make the author sort.
+    expect(parsed.metadata).toMatchObject({ series: 'Standalones', seriesIndex: 2, subtitle: 'A Subtitle', titleSort: 'Piranesi', authorSort: 'Clarke, Susanna' });
     expect(parsed.cover?.mediaType).toBe('image/png');
   });
 

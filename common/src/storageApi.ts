@@ -35,20 +35,21 @@ export interface ChunkWriteRequest {
   last: boolean;
 }
 
-export const storageApiMeta = {
-  storage: {
-    /** The file's text (UTF-8), or null if there's no file. */
-    readText: get<PathRequest, string | null, SimpleMeta>('api/storage/readText'),
-    /** Replaces the file, all at once. */
-    writeText: post<TextRequest, null, SimpleMeta>('api/storage/writeText'),
-    appendText: post<TextRequest, null, SimpleMeta>('api/storage/appendText'),
-    exists: get<PathRequest, boolean, SimpleMeta>('api/storage/exists'),
-    /** The file's size in bytes, or null if there's no file. */
-    size: get<PathRequest, number | null, SimpleMeta>('api/storage/size'),
-    /** Base64 of up to `length` bytes from `offset`. */
-    readChunk: get<ChunkReadRequest, string, SimpleMeta>('api/storage/readChunk'),
-    writeChunk: post<ChunkWriteRequest, null, SimpleMeta>('api/storage/writeChunk'),
-  },
-};
+/** The storage endpoints under `base` (`api/storage` for the library; the Android app serves the same for its sync folder). */
+export const storageEndpoints = (base: string) => ({
+  /** The file's text (UTF-8), or null if there's no file. */
+  readText: get<PathRequest, string | null, SimpleMeta>(`${base}/readText`),
+  /** Replaces the file, all at once. */
+  writeText: post<TextRequest, null, SimpleMeta>(`${base}/writeText`),
+  appendText: post<TextRequest, null, SimpleMeta>(`${base}/appendText`),
+  exists: get<PathRequest, boolean, SimpleMeta>(`${base}/exists`),
+  /** The file's size in bytes, or null if there's no file. */
+  size: get<PathRequest, number | null, SimpleMeta>(`${base}/size`),
+  /** Base64 of up to `length` bytes from `offset`. */
+  readChunk: get<ChunkReadRequest, string, SimpleMeta>(`${base}/readChunk`),
+  writeChunk: post<ChunkWriteRequest, null, SimpleMeta>(`${base}/writeChunk`),
+});
+
+export const storageApiMeta = { storage: storageEndpoints('api/storage') };
 
 export type StorageApi = typeof storageApiMeta;

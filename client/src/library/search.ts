@@ -1,7 +1,8 @@
 import type { Item, MetadataValue } from '@nexlibris/common';
+import { authorSortKey, firstPublished, titleSortKey } from './bookFields';
 
-function flatten(value: MetadataValue): string {
-  if (value === null) return '';
+function flatten(value: MetadataValue | undefined): string {
+  if (value === null || value === undefined) return '';
   if (Array.isArray(value)) return value.map(flatten).join(' ');
   if (typeof value === 'object') return Object.values(value).map(flatten).join(' ');
   return String(value);
@@ -32,7 +33,7 @@ function itemText(item: Item): string {
   ].join(' '));
 }
 
-export type SortKey = 'title' | 'author' | 'series' | 'rating' | 'added';
+export type SortKey = 'title' | 'author' | 'series' | 'published' | 'rating' | 'added';
 
 export interface Sort {
   key: SortKey;
@@ -40,7 +41,7 @@ export interface Sort {
 }
 
 /** The direction a column sorts in when first chosen. */
-export const DEFAULT_DESC: Record<SortKey, boolean> = { title: false, author: false, series: false, rating: true, added: true };
+export const DEFAULT_DESC: Record<SortKey, boolean> = { title: false, author: false, series: false, published: false, rating: true, added: true };
 
 /*
  * Search syntax, in the style of Gmail's. Words match the start of words anywhere in an item
@@ -315,24 +316,25 @@ export function filterItems(items: Item[], query: string, context: SearchContext
 
 const text = (item: Item, key: string) => (typeof item.metadata[key] === 'string' ? (item.metadata[key] as string) : '');
 const num = (item: Item, key: string) => (typeof item.metadata[key] === 'number' ? (item.metadata[key] as number) : 0);
-const byTitle = (a: Item, b: Item) => a.title.localeCompare(b.title, undefined, { numeric: true });
+const byTitle = (a: Item, b: Item) => titleSortKey(a).localeCompare(titleSortKey(b), undefined, { numeric: true });
 
 /**
- * Sorts by `sort`, with title as the tiebreaker. Items missing the sort value
- * (no series, no rating) go last in either direction.
+ * Sorts by `sort`, with title as the tiebreaker. Titles and authors sort by their sort forms
+ * ("Left Hand of Darkness, The", "Le Guin, Ursula K."), and publication by when the work was first
+ * published. Items missing the sort value (no series, no rating) go last in either direction.
  */
 export function sortItems(items: Item[], sort: Sort, ratings: Record<string, number> = {}): Item[] {
   const dir = sort.desc ? -1 : 1;
-  const firstAuthor = (item: Item) => item.creators[0]?.name ?? '';
   const compare: Record<SortKey, (a: Item, b: Item) => number> = {
     title: (a, b) => dir * byTitle(a, b),
-    author: (a, b) => dir * firstAuthor(a).localeCompare(firstAuthor(b)) || byTitle(a, b),
+    author: (a, b) => dir * authorSortKey(a).localeCompare(authorSortKey(b)) || byTitle(a, b),
     series: (a, b) => dir * (text(a, 'series').localeCompare(text(b, 'series')) || num(a, 'seriesIndex') - num(b, 'seriesIndex')),
+    published: (a, b) => dir * firstPublished(a).localeCompare(firstPublished(b)) || byTitle(a, b),
     rating: (a, b) => dir * ((ratings[a.id] ?? 0) - (ratings[b.id] ?? 0)) || byTitle(a, b),
     added: (a, b) => dir * a.addedAt.localeCompare(b.addedAt) || byTitle(a, b),
   };
   const missing = (item: Item) =>
     (sort.key === 'series' && !text(item, 'series')) || (sort.key === 'rating' && ratings[item.id] === undefined) ||
-    (sort.key === 'author' && !item.creators.length);
+    (sort.key === 'author' && !item.creators.length) || (sort.key === 'published' && !firstPublished(item));
   return [...items].sort((a, b) => Number(missing(a)) - Number(missing(b)) || compare[sort.key](a, b) || byTitle(a, b));
 }

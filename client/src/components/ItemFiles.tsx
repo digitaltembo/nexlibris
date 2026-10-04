@@ -1,5 +1,5 @@
-import type { FileRef, Item } from '@nexlibris/common';
-import { useState } from 'react';
+import { readPairings, type FileRef, type Item } from '@nexlibris/common';
+import { useEffect, useState } from 'react';
 import styled from 'styled-components';
 import { FORMATS, formatFromName, isFormatId } from '../formats/formats';
 import { availableConversions, convertItemFile } from '../library/convert';
@@ -7,6 +7,8 @@ import { useLibrary } from '../library/LibraryContext';
 import { saveFile } from '../library/saveFile';
 import { isReadable } from '../reader/Reader';
 import { Button, FileButton, Muted, SmallSelect, Stack } from '../styles/ui';
+import { onFileFetched } from '../sync/files';
+import { canSync } from '../sync/connect';
 
 const FileRow = styled.li`
   display: flex;
@@ -57,7 +59,8 @@ const ErrorText = styled.span`
 export function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`;
 }
 
 export const formatLabel = (format: string) => (isFormatId(format) ? FORMATS[format].label : format.toUpperCase());
@@ -132,9 +135,37 @@ function ConvertMenu({ item, file }: { item: Item; file: FileRef }) {
   );
 }
 
+/**
+ * Which of these files aren't stored here, in an instance paired with a hub: they're on the hub,
+ * and fetched when opened (checked again as files arrive).
+ */
+function useNotDownloaded(files: FileRef[]): Set<string> {
+  const { backend } = useLibrary();
+  const [missing, setMissing] = useState(new Set<string>());
+  const hashes = files.map((file) => file.hash).join(' ');
+  useEffect(() => {
+    if (!canSync() || !hashes) return;
+    let cancelled = false;
+    const list = hashes.split(' ');
+    const check = async () => {
+      if (!(await readPairings(backend)).length) return;
+      const stored = await Promise.all(list.map((hash) => backend.hasFile(hash)));
+      if (!cancelled) setMissing(new Set(list.filter((_, i) => !stored[i])));
+    };
+    void check();
+    const unsubscribe = onFileFetched(() => void check());
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, [backend, hashes]);
+  return missing;
+}
+
 /** An item's files, with reading, downloading, converting and attaching (none of which need edit mode). */
 export function ItemFiles({ item, onRead }: { item: Item; onRead(file: FileRef): void }) {
   const { backend, apply } = useLibrary();
+  const notDownloaded = useNotDownloaded(item.files);
 
   const attach = async (files: FileList | null) => {
     for (const file of Array.from(files ?? [])) {
@@ -156,6 +187,7 @@ export function ItemFiles({ item, onRead }: { item: Item; onRead(file: FileRef):
               <Meta>
                 {formatLabel(file.format)} · {formatSize(file.size)}
                 {file.derivedFrom && ' · converted'}
+                {notDownloaded.has(file.hash) && ' · not downloaded'}
               </Meta>
               <Actions>
                 {isReadable(file) && (

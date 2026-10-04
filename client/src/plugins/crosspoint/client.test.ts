@@ -88,4 +88,15 @@ describe('CrossPointTarget', () => {
     }) as typeof fetch);
     await expect(offline.connect()).rejects.toThrow('Couldn’t reach http://crosspoint.local'.replace('’', "'"));
   });
+
+  it('downloads a file', async () => {
+    const asked: string[] = [];
+    const fetchFn = (async (input: string) => {
+      asked.push(input);
+      return new Response('the index');
+    }) as typeof fetch;
+    const target = new CrossPointTarget('192.168.1.5', fetchFn);
+    expect(await (await target.download('/.crosspoint/library.idx')).text()).toBe('the index');
+    expect(asked).toEqual(['http://192.168.1.5/download?path=%2F.crosspoint%2Flibrary.idx']);
+  });
 });

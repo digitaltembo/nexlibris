@@ -1,7 +1,8 @@
 import { userData, type Item, type ItemId } from '@nexlibris/common';
 import type { MouseEvent } from 'react';
-import styled, { css } from 'styled-components';
+import styled from 'styled-components';
 import { useLibrary } from '../library/LibraryContext';
+import { useLongPress } from '../library/useLongPress';
 import { NARROW } from '../styles/GlobalStyle';
 import { Badge } from '../styles/ui';
 import { Cover } from './Cover';
@@ -10,23 +11,24 @@ import { StarRating } from './StarRating';
 /** Shared by the grid and list views. */
 export interface CollectionProps {
   items: Item[];
-  /** The item open in the detail panel. */
-  activeId: ItemId | undefined;
-  selecting: boolean;
+  /** The selected items, shown highlighted (see `library/selection.ts`). */
   selection: ReadonlySet<ItemId>;
   onActivate(id: ItemId, event: { shiftKey: boolean; metaKey: boolean; ctrlKey: boolean }): void;
+  /** A long press on a touch screen: adds the item to the selection, or takes it away. */
+  onLongPress(id: ItemId): void;
 }
 
 export const clickModifiers = (e: MouseEvent) => ({ shiftKey: e.shiftKey, metaKey: e.metaKey, ctrlKey: e.ctrlKey });
 
-const Grid = styled.ul<{ $selecting: boolean }>`
+const Grid = styled.ul`
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
   gap: 16px;
   margin: 0;
   padding: 0;
   list-style: none;
-  ${(p) => p.$selecting && 'user-select: none;'}
+  user-select: none;
+  -webkit-touch-callout: none;
 
   ${NARROW} {
     grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
@@ -34,7 +36,7 @@ const Grid = styled.ul<{ $selecting: boolean }>`
   }
 `;
 
-const Card = styled.button.attrs({ type: 'button' })<{ $active: boolean }>`
+const Card = styled.button.attrs({ type: 'button' })<{ $selected: boolean }>`
   display: flex;
   flex-direction: column;
   align-items: stretch;
@@ -43,43 +45,14 @@ const Card = styled.button.attrs({ type: 'button' })<{ $active: boolean }>`
   padding: 6px;
   border: none;
   border-radius: var(--radius);
-  background: ${(p) => (p.$active ? 'var(--soft)' : 'none')};
+  background: ${(p) => (p.$selected ? 'var(--soft)' : 'none')};
+  box-shadow: ${(p) => (p.$selected ? 'inset 0 0 0 2px var(--highlight)' : 'none')};
   color: inherit;
   text-align: left;
 
   &:hover {
-    background: ${(p) => (p.$active ? 'var(--soft)' : 'var(--hover)')};
+    background: ${(p) => (p.$selected ? 'var(--soft)' : 'var(--hover)')};
   }
-`;
-
-const CoverFrame = styled.span`
-  position: relative;
-`;
-
-const CardCover = styled(Cover)<{ $selected: boolean }>`
-  ${(p) =>
-    p.$selected &&
-    css`
-      outline: 3px solid var(--accent);
-      outline-offset: 2px;
-    `}
-`;
-
-const Check = styled.span<{ $selected: boolean }>`
-  position: absolute;
-  top: 6px;
-  left: 6px;
-  display: grid;
-  place-items: center;
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  border: 2px solid #fff;
-  background: ${(p) => (p.$selected ? 'var(--accent)' : 'rgb(0 0 0 / 0.35)')};
-  color: #fff;
-  font-size: 13px;
-  font-weight: 700;
-  box-shadow: 0 1px 3px rgb(0 0 0 / 0.4);
 `;
 
 const CardTitle = styled.span`
@@ -106,29 +79,24 @@ const Footer = styled.span`
   min-height: 1.4em;
 `;
 
-export function LibraryGrid({ items, activeId, selecting, selection, onActivate }: CollectionProps) {
+export function LibraryGrid({ items, selection, onActivate, onLongPress }: CollectionProps) {
   const { library } = useLibrary();
   const { ratings } = userData(library);
+  const longPress = useLongPress(onLongPress);
 
   return (
-    <Grid $selecting={selecting}>
+    <Grid>
       {items.map((item) => {
         const selected = selection.has(item.id);
         return (
           <li key={item.id}>
             <Card
-              $active={item.id === activeId && !selecting}
-              aria-pressed={selecting ? selected : undefined}
+              $selected={selected}
+              aria-pressed={selected}
               onClick={(e) => onActivate(item.id, clickModifiers(e))}
+              {...longPress(item.id)}
             >
-              <CoverFrame>
-                <CardCover item={item} $selected={selected} />
-                {selecting && (
-                  <Check $selected={selected} aria-hidden>
-                    {selected ? '✓' : ''}
-                  </Check>
-                )}
-              </CoverFrame>
+              <Cover item={item} />
               <CardTitle>{item.title}</CardTitle>
               <Creators>{item.creators.map((c) => c.name).join(', ')}</Creators>
               <Footer>

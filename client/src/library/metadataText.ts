@@ -4,7 +4,8 @@ import type { MetadataValue } from '@nexlibris/common';
  * Metadata values are edited as text. Lists of strings are shown
  * comma-separated; other non-string values are shown as JSON.
  */
-export function metadataToText(value: MetadataValue): string {
+export function metadataToText(value: MetadataValue | undefined): string {
+  if (value === undefined) return '';
   if (typeof value === 'string') return value;
   if (isStringList(value)) return value.join(', ');
   return JSON.stringify(value);

@@ -13,7 +13,18 @@ const Shell = styled.div`
   z-index: 20;
   display: flex;
   flex-direction: column;
+  padding-top: var(--title-bar-height, 0px);
   background: var(--bg);
+
+  /* Without a title bar (the desktop app on macOS), a strip above the reader holds the window
+     buttons and moves the window. data-covers-window keeps the top bar beneath from taking it. */
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0 0 auto;
+    height: var(--title-bar-height, 0px);
+    -webkit-app-region: drag;
+  }
 `;
 
 const Bar = styled.header`
@@ -81,14 +92,17 @@ export function preferredReadable(item: Item): FileRef | undefined {
 interface Props {
   item: Item;
   file: FileRef;
+  /** Where to open instead of where the reader left off, e.g. a passage a text search found. */
+  at?: string;
   onClose(): void;
 }
 
 /** A full-window reader for one of an item's files. */
-export function Reader({ item, file, onClose }: Props) {
+export function Reader({ item, file, at, onClose }: Props) {
   const { backend } = useLibrary();
   const { initial: position, report: onPosition } = useReadingPosition(item.id, file);
   const [data, setData] = useState<Blob | null>();
+  const [fetchError, setFetchError] = useState<string>();
   const [forcePdfjs, setForcePdfjs] = useState(false);
   const format = isFormatId(file.format) ? file.format : undefined;
   // epubier has its own toolbar and uses Escape for its menus.
@@ -96,7 +110,15 @@ export function Reader({ item, file, onClose }: Props) {
 
   useEffect(() => {
     let cancelled = false;
-    void backend.getFile(file.hash).then((blob) => !cancelled && setData(blob ?? null));
+    // A file left on the sync hub is fetched first, which can fail.
+    backend.getFile(file.hash).then(
+      (blob) => !cancelled && setData(blob ?? null),
+      (e: unknown) => {
+        if (cancelled) return;
+        setFetchError(e instanceof Error ? e.message : String(e));
+        setData(null);
+      },
+    );
     return () => {
       cancelled = true;
     };
@@ -122,7 +144,7 @@ export function Reader({ item, file, onClose }: Props) {
     data === undefined ? (
       <Status>Opening…</Status>
     ) : data === null ? (
-      <Status $error>This file is missing from storage.</Status>
+      <Status $error>{fetchError ?? 'This file is missing from storage.'}</Status>
     ) : !Viewer ? (
       <Status>There’s no viewer for {file.format} files yet.</Status>
     ) : (
@@ -131,7 +153,7 @@ export function Reader({ item, file, onClose }: Props) {
           data={data}
           format={format}
           storageKey={`nexlibris:${file.hash}`}
-          position={position}
+          position={at ?? position}
           onPosition={onPosition}
           onClose={onClose}
           options={{ forcePdfjs }}
@@ -141,14 +163,14 @@ export function Reader({ item, file, onClose }: Props) {
 
   if (ownChrome && data) {
     return (
-      <Shell>
+      <Shell data-covers-window>
         <LockScroll />
         {body}
       </Shell>
     );
   }
   return (
-    <Shell role="dialog" aria-label={`Reading ${item.title}`}>
+    <Shell data-covers-window role="dialog" aria-label={`Reading ${item.title}`}>
       <LockScroll />
       <Bar>
         <Button $variant="secondary" onClick={onClose}>

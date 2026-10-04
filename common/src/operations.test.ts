@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyOperations, createDevice, createItem, createLibrary, OperationError, userData } from './operations';
+import { applyOperations, createCategory, createDevice, createItem, createLibrary, OperationError, userData } from './operations';
 import { LOCAL_USER } from './types';
 
 const AT = '2026-01-01T00:00:00.000Z';
@@ -163,6 +163,21 @@ describe('applyOperations', () => {
     const x4 = createDevice({ name: 'X4', type: 'crosspoint.x4' });
     const { library } = applyOperations(createLibrary('L'), [{ type: 'addDevice', device: x4 }]);
     expect(() => applyOperations(library, [{ type: 'addDeviceItems', id: x4.id, itemIds: ['nope'] }])).toThrow('No item with id nope');
+  });
+
+  it('sets categories whole, trimmed, and removes them', () => {
+    const moods = createCategory({ name: ' Moods ', entries: [{ label: ' Cosy ', query: ' tag:cosy ' }] });
+    let { library } = applyOperations(createLibrary('L'), [{ type: 'setCategory', category: moods }]);
+    expect(library.categories?.[moods.id]).toEqual({ id: moods.id, name: 'Moods', entries: [{ label: 'Cosy', query: 'tag:cosy' }] });
+    const renamed = { ...moods, name: 'Feelings', entries: [] };
+    library = applyOperations(library, [{ type: 'setCategory', category: renamed }]).library;
+    expect(library.categories?.[moods.id]).toEqual(renamed);
+    library = applyOperations(library, [{ type: 'removeCategory', id: moods.id }]).library;
+    expect(library.categories).toEqual({});
+    expect(() => applyOperations(library, [{ type: 'removeCategory', id: moods.id }])).toThrow(OperationError);
+    expect(() => applyOperations(library, [{ type: 'setCategory', category: { ...moods, name: ' ' } }])).toThrow('needs a name');
+    const blank = { ...moods, entries: [{ label: 'Any', query: '' }] };
+    expect(() => applyOperations(library, [{ type: 'setCategory', category: blank }])).toThrow('needs a search');
   });
 
   it('rejects invalid operations without partial application', () => {

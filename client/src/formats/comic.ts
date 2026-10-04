@@ -147,7 +147,8 @@ export function applyComicInfo(parsed: ParsedItem, xml: string): void {
     if (value !== undefined && value !== '') parsed.metadata[key] = value;
   };
   set('series', series);
-  if (number !== undefined) set('seriesIndex', Number.isNaN(Number(number)) ? number : Number(number));
+  // A number that isn't one ("Annual 1") is the issue, not a place in the series.
+  if (number !== undefined) set(Number.isNaN(Number(number)) ? 'issue' : 'seriesIndex', Number.isNaN(Number(number)) ? number : Number(number));
   set('description', field('Summary'));
   set('publisher', field('Publisher'));
   set('language', field('LanguageISO'));

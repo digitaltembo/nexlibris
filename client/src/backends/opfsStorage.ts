@@ -6,7 +6,7 @@ import type { Storage } from '@nexlibris/common';
  * handles) is a later optimization.
  */
 export class OpfsStorage implements Storage {
-  private constructor(private readonly root: FileSystemDirectoryHandle) {}
+  protected constructor(protected readonly root: FileSystemDirectoryHandle) {}
 
   static async open(...dirs: string[]): Promise<OpfsStorage> {
     let root = await navigator.storage.getDirectory();
@@ -49,9 +49,9 @@ export class OpfsStorage implements Storage {
     return (await this.fileHandle(path, false)) !== undefined;
   }
 
-  private fileHandle(path: string, create: true): Promise<FileSystemFileHandle>;
-  private fileHandle(path: string, create: false): Promise<FileSystemFileHandle | undefined>;
-  private async fileHandle(path: string, create: boolean) {
+  protected fileHandle(path: string, create: true): Promise<FileSystemFileHandle>;
+  protected fileHandle(path: string, create: false): Promise<FileSystemFileHandle | undefined>;
+  protected async fileHandle(path: string, create: boolean) {
     const parts = path.split('/');
     const name = parts.pop()!;
     try {

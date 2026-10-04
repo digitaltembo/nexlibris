@@ -2,11 +2,8 @@ import { LOCAL_USER, userData, type Item, type Operation } from '@nexlibris/comm
 import { useState } from 'react';
 import styled from 'styled-components';
 import { deviceItems } from '../devices/selection';
-import { conversionSource, convertItemFile } from '../library/convert';
 import { useLibrary } from '../library/LibraryContext';
 import { textToMetadata } from '../library/metadataText';
-import type { FormatId } from '../formats/formats';
-import { formatLabel } from './ItemFiles';
 import { DeleteButton } from './DeleteButton';
 import { StarRating } from './StarRating';
 import {
@@ -43,7 +40,10 @@ const Chips = styled(TagList)`
 
 interface Props {
   items: Item[];
-  onClearSelection(): void;
+  /** Closes the panel, leaving the selection. */
+  onClose(): void;
+  /** After the items are deleted. */
+  onDeleted(): void;
 }
 
 /** How many of `items` have each value, most common first. */
@@ -60,16 +60,13 @@ function tally(items: Item[], values: (item: Item) => string[]): [value: string,
   return [...counts.values()].sort((a, b) => b.count - a.count || a.label.localeCompare(b.label)).map((e) => [e.label, e.count]);
 }
 
-const CONVERSION_TARGETS: FormatId[] = ['epub', 'cbz', 'txt'];
-
 /** Edits applied to every selected item at once; each action is a single atomic batch. */
-export function BulkEditor({ items, onClearSelection }: Props) {
-  const { library, backend, apply } = useLibrary();
+export function BulkEditor({ items, onClose, onDeleted }: Props) {
+  const { library, apply } = useLibrary();
   const { ratings } = userData(library);
   const [newTags, setNewTags] = useState('');
   const [newCreator, setNewCreator] = useState('');
   const [field, setField] = useState({ key: '', value: '' });
-  const [progress, setProgress] = useState<string>();
 
   const count = items.length;
   const devices = Object.values(library.devices ?? {});
@@ -116,36 +113,14 @@ export function BulkEditor({ items, onClearSelection }: Props) {
     setField({ key: '', value: '' });
   };
 
-  const convertable = CONVERSION_TARGETS.map((to) => ({
-    to,
-    sources: items.flatMap((item) => {
-      const source = conversionSource(item, to);
-      return source ? [{ item, ...source }] : [];
-    }),
-  })).filter((t) => t.sources.length > 0);
-
-  const convertAll = async (to: FormatId) => {
-    const sources = convertable.find((t) => t.to === to)?.sources ?? [];
-    const failures: string[] = [];
-    for (const [n, { item, file, converter }] of sources.entries()) {
-      setProgress(`Converting ${n + 1} of ${sources.length} to ${formatLabel(to)}…`);
-      try {
-        await apply([await convertItemFile(backend, item, file, converter)]);
-      } catch (e) {
-        failures.push(`${item.title}: ${e instanceof Error ? e.message : e}`);
-      }
-    }
-    setProgress(failures.length ? `Converted ${sources.length - failures.length}; failed: ${failures.join('; ')}` : undefined);
-  };
-
   return (
     <Panel aria-label="Bulk edit">
       <Header>
         <h2>
           {count} item{count === 1 ? '' : 's'} selected
         </h2>
-        <Button $variant="secondary" $size="small" onClick={onClearSelection}>
-          Clear selection
+        <Button $variant="icon" aria-label="Close" onClick={onClose}>
+          ×
         </Button>
       </Header>
 
@@ -159,7 +134,7 @@ export function BulkEditor({ items, onClearSelection }: Props) {
 
       {devices.length > 0 && (
         <PanelSection>
-          <SectionHeading>Devices</SectionHeading>
+          <SectionHeading>Connections</SectionHeading>
           <Stack>
             {devices.map((device) => {
               const included = new Set(deviceItems(library, device).map((i) => i.id));
@@ -298,27 +273,12 @@ export function BulkEditor({ items, onClearSelection }: Props) {
         </Row>
       </PanelSection>
 
-      {convertable.length > 0 && (
-        <PanelSection>
-          <SectionHeading>Convert</SectionHeading>
-          <Chips>
-            {convertable.map(({ to, sources }) => (
-              <Button key={to} $variant="secondary" $size="small" disabled={!!progress?.endsWith('…')} onClick={() => void convertAll(to)}>
-                Make {formatLabel(to)} ({of(sources.length)})
-              </Button>
-            ))}
-          </Chips>
-        </PanelSection>
-      )}
-      {progress && <Muted as="p">{progress}</Muted>}
-
-
       <PanelFooter>
         <DeleteButton
           what={`${count} item${count === 1 ? '' : 's'}`}
           onDelete={() => {
             run(items.map((i) => ({ type: 'removeItem', id: i.id })));
-            onClearSelection();
+            onDeleted();
           }}
         />
       </PanelFooter>

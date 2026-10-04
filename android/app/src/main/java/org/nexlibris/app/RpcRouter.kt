@@ -33,18 +33,51 @@ class RpcRouter(vararg routeTables: Map<String, Route>) {
 }
 
 /** The storage API (common/src/storageApi.ts). */
-fun storageRoutes(storage: StorageService): Map<String, Route> = mapOf(
-    "GET api/storage/readText" to { b -> storage.readText(b.getString("path")) },
-    "POST api/storage/writeText" to { b -> storage.writeText(b.getString("path"), b.getString("text")) },
-    "POST api/storage/appendText" to { b -> storage.appendText(b.getString("path"), b.getString("text")) },
-    "GET api/storage/exists" to { b -> storage.exists(b.getString("path")) },
-    "GET api/storage/size" to { b -> storage.size(b.getString("path")) },
-    "GET api/storage/readChunk" to { b ->
-        storage.readChunk(b.getString("path"), b.getLong("offset"), b.getInt("length"))
+fun storageRoutes(storage: StorageService): Map<String, Route> = storageRoutes("api/storage") { storage }
+
+/** The storage API's endpoints under [base], over the storage [storage] gives when called. */
+fun storageRoutes(base: String, storage: () -> PathStorage): Map<String, Route> = mapOf(
+    "GET $base/readText" to { b -> storage().readText(b.getString("path")) },
+    "POST $base/writeText" to { b -> storage().writeText(b.getString("path"), b.getString("text")) },
+    "POST $base/appendText" to { b -> storage().appendText(b.getString("path"), b.getString("text")) },
+    "GET $base/exists" to { b -> storage().exists(b.getString("path")) },
+    "GET $base/size" to { b -> storage().size(b.getString("path")) },
+    "GET $base/readChunk" to { b ->
+        storage().readChunk(b.getString("path"), b.getLong("offset"), b.getInt("length"))
     },
-    "POST api/storage/writeChunk" to { b ->
-        storage.writeChunk(b.getString("path"), b.getString("data"), b.getBoolean("first"), b.getBoolean("last"))
+    "POST $base/writeChunk" to { b ->
+        storage().writeChunk(b.getString("path"), b.getString("data"), b.getBoolean("first"), b.getBoolean("last"))
     },
+)
+
+/**
+ * The sync folder API (common/src/usbFolderApi.ts): the folder as storage, plus listing, removing,
+ * and copying stored files between it and the [library]. [folder] gives the folder when called
+ * (throwing until one is chosen); [info] says where it is, and [choose] asks for it.
+ */
+fun usbFolderRoutes(
+    folder: () -> PathStorage,
+    library: PathStorage,
+    info: () -> JSONObject,
+    choose: () -> JSONObject,
+): Map<String, Route> {
+    val base = "api/usbFolder"
+    return storageRoutes(base, folder) + mapOf(
+        "GET $base/info" to { _ -> info() },
+        "POST $base/choose" to { _ -> choose() },
+        "GET $base/list" to { b -> org.json.JSONArray(folder().list(b.getString("path"))) },
+        "POST $base/remove" to { b -> folder().remove(b.getString("path")) },
+        "POST $base/toFolder" to { b -> copyStoredFile(library, folder(), b.getString("hash")); null },
+        "POST $base/fromFolder" to { b -> copyStoredFile(folder(), library, b.getString("hash")); null },
+    )
+}
+
+/** The Bluetooth hosting API (common/src/bluetoothApi.ts). */
+fun bluetoothHostRoutes(host: BluetoothHostService): Map<String, Route> = mapOf(
+    "GET api/bluetoothHost/status" to { _ -> host.status() },
+    "POST api/bluetoothHost/setEnabled" to { b -> host.setEnabled(b.getBoolean("enabled")) },
+    "POST api/bluetoothHost/next" to { b -> host.next(b.optLong("timeoutMs", 20_000)) },
+    "POST api/bluetoothHost/send" to { b -> host.send(b.getString("device"), b.getString("data")) },
 )
 
 /** The save API (common/src/saveApi.ts). */
@@ -57,6 +90,21 @@ fun saveRoutes(saves: SaveService): Map<String, Route> = mapOf(
 fun importRoutes(imports: ImportService): Map<String, Route> = mapOf(
     "POST api/import/pick" to { b ->
         val list = b.getJSONArray("extensions")
-        imports.pick((0 until list.length()).map { list.getString(it) })
+        val names = b.optJSONArray("names")
+        imports.pick(
+            (0 until list.length()).map { list.getString(it) },
+            b.optBoolean("folder", false),
+            if (names == null) emptyList() else (0 until names.length()).map { names.getString(it) },
+        )
     },
+    "POST api/import/store" to { b -> imports.store(b.getString("token"), b.getInt("start")) },
+)
+
+/** The peer API (common/src/peerApi.ts). */
+fun peerRoutes(peers: PeerService): Map<String, Route> = mapOf(
+    "POST api/peer/call" to { b ->
+        peers.call(b.getString("address"), b.getString("url"), if (b.isNull("key")) null else b.optString("key"), b.getString("body"))
+    },
+    "POST api/peer/download" to { b -> peers.download(b.getString("address"), b.getString("key"), b.getString("hash")) },
+    "POST api/peer/upload" to { b -> peers.upload(b.getString("address"), b.getString("key"), b.getString("hash")) },
 )

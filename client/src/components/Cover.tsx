@@ -1,6 +1,7 @@
 import type { Item } from '@nexlibris/common';
+import { useEffect, useState } from 'react';
 import styled, { css } from 'styled-components';
-import { useFileUrl } from '../library/useFileUrl';
+import { useThumbnailUrl } from '../library/useFileUrl';
 
 const frame = css`
   display: block;
@@ -16,8 +17,10 @@ const Image = styled.img`
   object-fit: cover;
 `;
 
-const Placeholder = styled.div`
+/** `$color`: the cover's colour, filling the frame while the cover loads. */
+const Placeholder = styled.div<{ $color?: string | undefined }>`
   ${frame}
+  ${(p) => p.$color && `background: ${p.$color};`}
   display: flex;
   align-items: center;
   justify-content: center;
@@ -37,13 +40,39 @@ export const PlaceholderTitle = styled.span`
   overflow: hidden;
 `;
 
-/** Pass `className` (e.g. via `styled(Cover)`) to size it. */
-export function Cover({ item, className }: { item: Item; className?: string }) {
-  const url = useFileUrl(item.cover?.hash, item.cover?.mediaType);
-  if (url) return <Image className={className} src={url} alt="" />;
+/** How far outside the viewport covers are loaded ahead of scrolling, and kept. */
+const NEAR = '800px';
+
+/**
+ * Whether an element is near the viewport. Off-screen covers are let go of, so a long library
+ * holds only the covers around what's shown. True where it can't be told (no IntersectionObserver).
+ */
+function useNearViewport(element: Element | null): boolean {
+  const [near, setNear] = useState(typeof IntersectionObserver === 'undefined');
+  useEffect(() => {
+    if (!element || typeof IntersectionObserver === 'undefined') return;
+    const observer = new IntersectionObserver(([entry]) => setNear(!!entry?.isIntersecting), { rootMargin: NEAR });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [element]);
+  return near;
+}
+
+/**
+ * An item's cover (its thumbnail, see `library/thumbnails.ts`), loaded when it's near the
+ * viewport, or a placeholder showing `label` (else its title). Without an item, just the
+ * placeholder. Pass `className` (e.g. via `styled(Cover)`) to size it.
+ */
+export function Cover({ item, label, className }: { item?: Item; label?: string; className?: string }) {
+  const [element, setElement] = useState<Element | null>(null);
+  const near = useNearViewport(element);
+  const url = useThumbnailUrl(near ? item?.cover : undefined);
+  if (url) return <Image ref={setElement} className={className} src={url} alt="" />;
+  // A cover still to load is an empty frame rather than a title that flashes up.
+  const waiting = item?.cover && url !== null;
   return (
-    <Placeholder className={className} aria-hidden>
-      <PlaceholderTitle>{item.title}</PlaceholderTitle>
+    <Placeholder ref={setElement} className={className} $color={waiting ? item?.metadata.coverColor : undefined} aria-hidden>
+      {!waiting && <PlaceholderTitle>{label ?? item?.title}</PlaceholderTitle>}
     </Placeholder>
   );
 }

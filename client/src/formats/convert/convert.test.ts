@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { openComic } from '../comic';
 import { parseEpub } from '../epub';
-import { kindleToEpub, parseKindle, type KindleOptions } from '../kindle';
+import { kindleToEpub, MAX_CONVERT_TEXT, parseKindle, type KindleOptions } from '../kindle';
 import { cbrToCbz, comicToEpub } from './comics';
 import { epubToTxt, textChapters, textParagraphs, txtToEpub } from './text';
 
@@ -48,14 +48,39 @@ const item = createItem({
 // EPUB with a stylesheet, an image, a cover and a link from chapter one to chapter two.
 describe.each(['sample.mobi', 'sample.azw3'])('%s', (name) => {
   it('reads metadata and cover', async () => {
-    const parsed = await parseKindle(await fixture(name), name, await nodeKindleOptions());
+    const parsed = await parseKindle(await fixture(name), name);
     expect(parsed).toMatchObject({
       title: 'The Kindle Sample',
       creators: [{ name: 'Mo Bee', role: 'aut' }],
       tags: ['Testing'],
-      metadata: { publisher: 'Sample Press', language: 'en' },
+      identifiers: { isbn: '9780000000002' },
+      metadata: { publisher: 'Sample Press', language: 'en', published: '2026-10-01' },
     });
     expect(parsed.cover?.mediaType).toMatch(/^image\//);
+    expect((await parsed.cover!.data.arrayBuffer()).byteLength).toBeGreaterThan(1000);
+  });
+
+  /** The fixture with its first record's PalmDOC header changed: `at` bytes in, a `size`-byte number. */
+  const withHeader = async (at: number, size: 2 | 4, value: number) => {
+    const bytes = new Uint8Array(await (await fixture(name)).arrayBuffer());
+    const view = new DataView(bytes.buffer);
+    const first = view.getUint32(78);
+    if (size === 2) view.setUint16(first + at, value);
+    else view.setUint32(first + at, value);
+    return new Blob([bytes]);
+  };
+
+  it('refuses a DRM-protected book rather than reading its scrambled text', async () => {
+    const locked = await withHeader(12, 2, 2);
+    await expect(parseKindle(locked, name)).rejects.toThrow('DRM-protected');
+    await expect(kindleToEpub(locked, { item }, await nodeKindleOptions())).rejects.toThrow('DRM-protected');
+  });
+
+  it('refuses to convert a book with more text than the app can hold', async () => {
+    const huge = await withHeader(4, 4, MAX_CONVERT_TEXT + 1);
+    await expect(kindleToEpub(huge, { item }, await nodeKindleOptions())).rejects.toThrow('too big to convert');
+    // Its metadata is still read, so it's imported as it is.
+    expect((await parseKindle(huge, name)).title).toBe('The Kindle Sample');
   });
 
   it('converts to an EPUB with the library metadata, chapters, images and working links', async () => {

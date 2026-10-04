@@ -1,9 +1,11 @@
 import { userData, type Item } from '@nexlibris/common';
 import type { ReactNode } from 'react';
 import styled, { css } from 'styled-components';
+import { authorSortKey, fieldLabel, titleSortKey } from '../library/bookFields';
 import { BUILTIN_COLUMNS, fieldKey, type BuiltinColumn, type ColumnId } from '../library/columns';
 import { useLibrary } from '../library/LibraryContext';
 import { metadataToText } from '../library/metadataText';
+import { useLongPress } from '../library/useLongPress';
 import { DEFAULT_DESC, type Sort, type SortKey } from '../library/search';
 import { Cover, PlaceholderTitle } from './Cover';
 import { formatLabel } from './ItemFiles';
@@ -14,12 +16,9 @@ import { NARROW } from '../styles/GlobalStyle';
 import { Badge } from '../styles/ui';
 
 /** A column's kind: built-in columns by id, metadata fields all alike. */
-type ColumnKind = BuiltinColumn | 'title' | 'check' | 'field';
+type ColumnKind = BuiltinColumn | 'title' | 'field';
 
 const columnStyles: Partial<Record<ColumnKind, ReturnType<typeof css>>> = {
-  check: css`
-    width: 28px;
-  `,
   cover: css`
     width: 40px;
   `,
@@ -41,6 +40,12 @@ const columnStyles: Partial<Record<ColumnKind, ReturnType<typeof css>>> = {
   updated: css`
     white-space: nowrap;
   `,
+  titleSort: css`
+    white-space: nowrap;
+  `,
+  authorSort: css`
+    white-space: nowrap;
+  `,
   field: css`
     max-width: 16em;
     overflow: hidden;
@@ -51,7 +56,19 @@ const columnStyles: Partial<Record<ColumnKind, ReturnType<typeof css>>> = {
 };
 
 /** Dropped on narrow screens to leave room for the title. */
-const NARROW_HIDDEN = new Set<ColumnKind>(['series', 'tags', 'formats', 'added', 'updated', 'field']);
+const NARROW_HIDDEN = new Set<ColumnKind>(['titleSort', 'authorSort', 'series', 'tags', 'formats', 'added', 'updated', 'field']);
+
+/** A sort form worked out rather than stored: shown quieter. */
+const Computed = styled.span`
+  color: var(--muted);
+  font-style: italic;
+`;
+
+/** A sort field's value, or the form worked out when the book has none. */
+function sortCell(stored: string | undefined, computed: string, from: string): ReactNode {
+  if (stored) return stored;
+  return computed ? <Computed title={`Worked out from the ${from}`}>{computed}</Computed> : null;
+}
 
 const cellStyles = css<{ $col: ColumnKind }>`
   ${(p) => columnStyles[p.$col]}
@@ -61,16 +78,17 @@ const cellStyles = css<{ $col: ColumnKind }>`
   }
 `;
 
-const Table = styled.table<{ $selecting: boolean }>`
+const Table = styled.table`
   width: 100%;
   border-collapse: collapse;
   font-size: 0.93rem;
-  ${(p) => p.$selecting && 'user-select: none;'}
+  user-select: none;
+  -webkit-touch-callout: none;
 `;
 
 const Th = styled.th<{ $col: ColumnKind }>`
   position: sticky;
-  top: 54px;
+  top: var(--header-height, 0px);
   padding: 6px 8px;
   background: var(--bg);
   border-bottom: 1px solid var(--border);
@@ -129,7 +147,8 @@ interface Props extends CollectionProps {
 const formats = (item: Item) => [...new Set(item.files.map((f) => formatLabel(f.format)))];
 const date = (iso: string) => new Date(iso).toLocaleDateString();
 
-export function LibraryList({ items, activeId, selecting, selection, onActivate, columns: visible, sort, onSort }: Props) {
+export function LibraryList({ items, selection, onActivate, onLongPress, columns: visible, sort, onSort }: Props) {
+  const longPress = useLongPress(onLongPress);
   const { library } = useLibrary();
   const { ratings } = userData(library);
   // The thumbnail sits before the title; everything else follows it.
@@ -139,6 +158,8 @@ export function LibraryList({ items, activeId, selecting, selection, onActivate,
   const builtinCell: Record<BuiltinColumn, (item: Item) => ReactNode> = {
     cover: () => null,
     creators: (item) => item.creators.map((c) => c.name).join(', '),
+    titleSort: (item) => sortCell(item.metadata.titleSort, titleSortKey(item), 'title'),
+    authorSort: (item) => sortCell(item.metadata.authorSort, authorSortKey(item), 'authors'),
     series: (item) => seriesLabel(item),
     tags: (item) => item.tags.join(', '),
     rating: (item) => <StarRating value={ratings[item.id]} />,
@@ -157,7 +178,10 @@ export function LibraryList({ items, activeId, selecting, selection, onActivate,
     return value === undefined || value === null ? null : metadataToText(value);
   };
 
-  const label = (id: ColumnId) => fieldKey(id) ?? BUILTIN_COLUMNS.find((c) => c.id === id)!.label;
+  const label = (id: ColumnId) => {
+    const key = fieldKey(id);
+    return key === undefined ? BUILTIN_COLUMNS.find((c) => c.id === id)!.label : fieldLabel(key);
+  };
   const kind = (id: ColumnId): ColumnKind => (fieldKey(id) === undefined ? (id as BuiltinColumn) : 'field');
 
   const header = (key: SortKey | undefined, text: string) => {
@@ -178,10 +202,9 @@ export function LibraryList({ items, activeId, selecting, selection, onActivate,
     key && sort.key === key ? (sort.desc ? 'descending' : 'ascending') : undefined;
 
   return (
-    <Table $selecting={selecting}>
+    <Table>
       <thead>
         <tr>
-          {selecting && <Th $col="check" aria-label="Selected" />}
           {showCover && <Th $col="cover" aria-label="Cover" />}
           <Th $col="title" aria-sort={ariaSort('title')}>
             {header('title', 'Title')}
@@ -199,10 +222,11 @@ export function LibraryList({ items, activeId, selecting, selection, onActivate,
           return (
             <Tr
               key={item.id}
-              $highlighted={isSelected || (item.id === activeId && !selecting)}
+              $highlighted={isSelected}
               tabIndex={0}
-              aria-selected={selecting ? isSelected : undefined}
+              aria-selected={isSelected}
               onClick={(e) => onActivate(item.id, clickModifiers(e))}
+              {...longPress(item.id)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
                   e.preventDefault();
@@ -210,11 +234,6 @@ export function LibraryList({ items, activeId, selecting, selection, onActivate,
                 }
               }}
             >
-              {selecting && (
-                <Td $col="check">
-                  <input type="checkbox" checked={isSelected} readOnly tabIndex={-1} aria-label={`Select ${item.title}`} />
-                </Td>
-              )}
               {showCover && (
                 <Td $col="cover">
                   <Thumbnail item={item} />

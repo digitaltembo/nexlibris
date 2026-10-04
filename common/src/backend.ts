@@ -10,13 +10,41 @@ import type { FileHash, Library } from './types';
  */
 export interface LibraryBackend {
   getLibrary(): Promise<Library>;
-  /** Applies operations atomically and returns the updated library. */
-  apply(ops: Operation[]): Promise<Library>;
+  /**
+   * Applies operations atomically and returns the updated library. With `expectRevision`, applies
+   * nothing (throwing {@link RevisionMismatchError}) unless the library is still at that revision.
+   */
+  apply(ops: Operation[], expectRevision?: number): Promise<Library>;
   /** Changes with a revision greater than `sinceRevision`, oldest first. */
   getChanges(sinceRevision: number): Promise<Change[]>;
   /** Stores file contents by hash; storing the same contents twice is a no-op. */
   putFile(data: Blob): Promise<{ hash: FileHash; size: number }>;
   getFile(hash: FileHash): Promise<Blob | undefined>;
+  /** Whether the file's contents are stored here (M6 sync can leave a book's file on the hub only). */
+  hasFile(hash: FileHash): Promise<boolean>;
+  /**
+   * State that belongs to this instance rather than the library (M6 sync's pairings and sync
+   * bases): not part of the library, its change log or its backups. Undefined if never written.
+   */
+  readLocalState<T>(key: string): Promise<T | undefined>;
+  writeLocalState(key: string, value: unknown): Promise<void>;
+  /**
+   * Files that belong to this instance, as local state does: things made from the library that
+   * can be made again, like cover thumbnails. `path` is slash-separated, e.g. `thumbs/ab/abcd.jpg`.
+   */
+  readLocalFile(path: string): Promise<Blob | undefined>;
+  writeLocalFile(path: string, data: Blob): Promise<void>;
+}
+
+/** The library moved on since the caller looked: an `apply` with an `expectRevision` that no longer holds. */
+export class RevisionMismatchError extends Error {
+  constructor(
+    readonly expected: number,
+    readonly actual: number,
+  ) {
+    super(`The library changed while this was being worked out (revision ${actual}, expected ${expected}).`);
+    this.name = 'RevisionMismatchError';
+  }
 }
 
 export async function hashBlob(data: Blob): Promise<FileHash> {
@@ -26,6 +54,15 @@ export async function hashBlob(data: Blob): Promise<FileHash> {
 
 const LIBRARY_PATH = 'library.json';
 const CHANGES_PATH = 'changes.jsonl';
+const localStatePath = (key: string) => {
+  if (!/^[a-z][a-z0-9-]*$/.test(key)) throw new Error(`Bad local state key: ${key}`);
+  return `local/${key}.json`;
+};
+/** A local file's path: lowercase names, each starting with a letter or digit (so never `..`). */
+export const localFilePath = (path: string) => {
+  if (!/^[a-z][a-z0-9-]*(\/[a-z0-9][a-z0-9.-]*)+$/.test(path)) throw new Error(`Bad local file path: ${path}`);
+  return `local/${path}`;
+};
 const filePath = storedFilePath;
 
 /**
@@ -46,9 +83,13 @@ export class StoredLibraryBackend implements LibraryBackend {
     return this.enqueue(() => this.load());
   }
 
-  apply(ops: Operation[]): Promise<Library> {
+  apply(ops: Operation[], expectRevision?: number): Promise<Library> {
     return this.enqueue(async () => {
-      const { library, changes } = applyOperations(await this.load(), ops);
+      const current = await this.load();
+      if (expectRevision !== undefined && current.revision !== expectRevision) {
+        throw new RevisionMismatchError(expectRevision, current.revision);
+      }
+      const { library, changes } = applyOperations(current, ops);
       if (changes.length === 0) return library;
       // Log first: a crash between the two writes leaves a log that is ahead of
       // the snapshot, which is recoverable by replaying it.
@@ -60,16 +101,18 @@ export class StoredLibraryBackend implements LibraryBackend {
   }
 
   async getChanges(sinceRevision: number): Promise<Change[]> {
-    return (await this.readChanges()).filter((c) => c.revision > sinceRevision);
+    return this.readChanges((await this.getLibrary()).origin, sinceRevision);
   }
 
-  private async readChanges(): Promise<Change[]> {
+  /** Logged changes after `sinceRevision`; those from before schema 2 get their ID, as `origin`'s own. */
+  private async readChanges(origin: string, sinceRevision: number): Promise<Change[]> {
     const text = (await this.storage.readText(CHANGES_PATH)) ?? '';
     const changes: Change[] = [];
     for (const line of text.split('\n')) {
       if (!line) continue;
       try {
-        changes.push(JSON.parse(line) as Change);
+        const change = JSON.parse(line) as Partial<Change> & Pick<Change, 'revision' | 'at' | 'op'>;
+        if (change.revision > sinceRevision) changes.push({ origin, seq: change.revision, ...change });
       } catch {
         // Only the last line can be cut short, by a crash while it was appended; it was never applied.
       }
@@ -88,6 +131,27 @@ export class StoredLibraryBackend implements LibraryBackend {
     return this.storage.readBlob(filePath(hash));
   }
 
+  hasFile(hash: FileHash): Promise<boolean> {
+    return this.storage.exists(filePath(hash));
+  }
+
+  async readLocalState<T>(key: string): Promise<T | undefined> {
+    const text = await this.storage.readText(localStatePath(key));
+    return text ? (JSON.parse(text) as T) : undefined;
+  }
+
+  writeLocalState(key: string, value: unknown): Promise<void> {
+    return this.enqueue(() => this.storage.writeText(localStatePath(key), JSON.stringify(value)));
+  }
+
+  readLocalFile(path: string): Promise<Blob | undefined> {
+    return this.storage.readBlob(localFilePath(path));
+  }
+
+  writeLocalFile(path: string, data: Blob): Promise<void> {
+    return this.storage.writeBlob(localFilePath(path), data);
+  }
+
   /**
    * The library as stored, migrated to the current schema, with any logged changes the snapshot
    * lacks replayed: `apply` logs before writing the snapshot, so a crash between the two leaves
@@ -100,7 +164,7 @@ export class StoredLibraryBackend implements LibraryBackend {
       const stored = JSON.parse(text) as { schemaVersion: number };
       let library = migrateLibrary(stored);
       let changed = library.schemaVersion !== stored.schemaVersion;
-      for (const change of await this.getChanges(library.revision)) {
+      for (const change of await this.readChanges(library.origin, library.revision)) {
         if (change.revision !== library.revision + 1) break;
         try {
           library = applyOperation(library, migrateOperation(change.op, stored.schemaVersion), change.at);

@@ -12,7 +12,7 @@
     "build": "npm run build -w client -- && npm run build -w desktop",
     "test": "npm test --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "lint": "oxlint client/src common/src desktop/src desktop/scripts scripts",
+    "lint": "oxlint client/src client/.storybook common/src desktop/src desktop/scripts scripts",
     "android": "npm run build -w client && cd android && ./gradlew assembleDebug",
     "android:install": "npm run build -w client && cd android && ./gradlew installDebug",
     "desktop": "npm run build && npm start -w desktop"

@@ -7,9 +7,10 @@ import java.io.File
 
 /**
  * Serves the library's stored files (covers, books) to the web app at
- * `/library/files/…`, so it can fetch them directly instead of reading them
- * through the bridge as base64 chunks. Only `files/` is served: those are
- * content-addressed and never change, unlike library.json.
+ * `/library/files/…`, and the thumbnails made of covers at `/library/local/thumbs/…`,
+ * so it can fetch them directly instead of reading them through the bridge as
+ * base64 chunks. Only those are served: they're named by the content they hold
+ * (a thumbnail by its cover's hash) and never change, unlike library.json.
  */
 class LibraryFilesPathHandler(private val storage: StorageService) : WebViewAssetLoader.PathHandler {
     override fun handle(path: String): WebResourceResponse {
@@ -24,10 +25,13 @@ class LibraryFilesPathHandler(private val storage: StorageService) : WebViewAsse
     }
 }
 
+/** The parts of the library the page may fetch: stored files, and the thumbnails made of covers. */
+private val SERVED_PATHS = listOf("files/", "local/thumbs/")
+
 /** The stored file a `/library/` path names (e.g. `files/ab/abcd…`), or null if there's none or it isn't allowed. */
 fun storedFile(storage: StorageService, path: String): File? {
     val relative = path.substringBefore('?')
-    if (!relative.startsWith("files/")) return null
+    if (SERVED_PATHS.none { relative.startsWith(it) }) return null
     val file = try {
         storage.resolve(relative)
     } catch (e: IllegalArgumentException) {

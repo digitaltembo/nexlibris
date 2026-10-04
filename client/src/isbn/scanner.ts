@@ -1,21 +1,28 @@
 import { normalizeIsbn } from './isbn';
 
 /**
- * Reading ISBN barcodes (EAN-13, starting 978 or 979) from camera frames or photos: with the
- * browser's `BarcodeDetector` where it has one that reads EAN-13 (Chrome on Android and macOS),
- * otherwise with zxing-cpp compiled to WebAssembly, loaded on first use from the app's own
- * files (never a CDN, so it works offline and in the apps).
+ * Reading barcodes from camera frames or photos: ISBNs (EAN-13, starting 978 or 979), and QR codes
+ * (M6 sync's pairing codes). With the browser's `BarcodeDetector` where it has one that reads the
+ * format (Chrome on Android and macOS), otherwise with zxing-cpp compiled to WebAssembly, loaded
+ * on first use from the app's own files (never a CDN, so it works offline and in the apps).
  */
 
 /** Something to read barcodes from: a playing video, or a decoded image. */
 export type BarcodeSource = HTMLVideoElement | ImageBitmap;
 
-export interface IsbnReader {
+export interface BarcodeReader {
   /** Which decoder is in use, for the UI. */
   kind: 'native' | 'zxing';
-  /** The ISBN-13s of the barcodes in view. */
+  /** The values of the barcodes in view: ISBN-13s for an ISBN reader, the text of QR codes for a QR reader. */
   read(source: BarcodeSource): Promise<string[]>;
 }
+
+type BarcodeKind = 'isbn' | 'qr';
+
+const FORMATS: Record<BarcodeKind, { native: string; zxing: 'EAN13' | 'QRCode'; values(raw: string[]): string[] }> = {
+  isbn: { native: 'ean_13', zxing: 'EAN13', values: (raw) => isbns(raw) },
+  qr: { native: 'qr_code', zxing: 'QRCode', values: (raw) => [...new Set(raw)] },
+};
 
 interface NativeDetector {
   detect(source: BarcodeSource): Promise<{ rawValue: string }[]>;
@@ -25,18 +32,20 @@ interface NativeDetectorClass {
   getSupportedFormats(): Promise<string[]>;
 }
 
-let reader: Promise<IsbnReader> | undefined;
+const readers: Partial<Record<BarcodeKind, Promise<BarcodeReader>>> = {};
 
-/** The page's one reader; the decoder loads once. */
-export const isbnReader = (): Promise<IsbnReader> => (reader ??= createReader());
+/** The page's one reader of each kind; the decoder loads once. */
+export const isbnReader = (): Promise<BarcodeReader> => (readers.isbn ??= createReader('isbn'));
+export const qrReader = (): Promise<BarcodeReader> => (readers.qr ??= createReader('qr'));
 
-async function createReader(): Promise<IsbnReader> {
+async function createReader(kind: BarcodeKind): Promise<BarcodeReader> {
+  const format = FORMATS[kind];
   const Native = (globalThis as { BarcodeDetector?: NativeDetectorClass }).BarcodeDetector;
   if (Native) {
     try {
-      if ((await Native.getSupportedFormats()).includes('ean_13')) {
-        const detector = new Native({ formats: ['ean_13'] });
-        return { kind: 'native', read: async (source) => isbns((await detector.detect(source)).map((b) => b.rawValue)) };
+      if ((await Native.getSupportedFormats()).includes(format.native)) {
+        const detector = new Native({ formats: [format.native] });
+        return { kind: 'native', read: async (source) => format.values((await detector.detect(source)).map((b) => b.rawValue)) };
       }
     } catch {
       // Fall through to zxing.
@@ -61,11 +70,11 @@ async function createReader(): Promise<IsbnReader> {
       canvas.height = Math.round(height * scale);
       context.drawImage(source, 0, 0, canvas.width, canvas.height);
       const results = await readBarcodes(context.getImageData(0, 0, canvas.width, canvas.height), {
-        formats: ['EAN13'],
+        formats: [format.zxing],
         tryHarder: true,
         maxNumberOfSymbols: 1,
       });
-      return isbns(results.filter((r) => r.isValid).map((r) => r.text));
+      return format.values(results.filter((r) => r.isValid).map((r) => r.text));
     },
   };
 }

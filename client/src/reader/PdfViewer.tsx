@@ -29,16 +29,18 @@ import { useObjectUrl } from './useObjectUrl';
 
 /** The browser's own PDF viewer where there is one; pdf.js otherwise (e.g. Android Chrome). */
 export default function PdfViewer({ data, options, position, onPosition }: ViewerProps) {
-  // The built-in viewer is a sandboxed frame, so its position can't be followed.
-  if (navigator.pdfViewerEnabled && !options.forcePdfjs) return <BuiltinPdfViewer data={data} />;
+  // The built-in viewer is a sandboxed frame, so its position can't be followed, only set.
+  if (navigator.pdfViewerEnabled && !options.forcePdfjs) return <BuiltinPdfViewer data={data} position={position} />;
   return <PdfJsViewer data={data} position={position} onPosition={onPosition} />;
 }
 
-function BuiltinPdfViewer({ data }: { data: Blob }) {
+function BuiltinPdfViewer({ data, position }: Pick<ViewerProps, 'data' | 'position'>) {
   // The built-in viewer needs the media type; stored files don't carry one.
   const pdf = useMemo(() => (data.type === 'application/pdf' ? data : new Blob([data], { type: 'application/pdf' })), [data]);
   const url = useObjectUrl(pdf);
-  return url ? <Frame src={url} title="PDF" /> : null;
+  // Built-in viewers open at `#page=N`.
+  const page = Math.floor(Number(position));
+  return url ? <Frame src={page > 1 ? `${url}#page=${page}` : url} title="PDF" /> : null;
 }
 
 type PdfDocument = Awaited<ReturnType<Awaited<ReturnType<typeof loadPdfjs>>['getDocument']>['promise']>;

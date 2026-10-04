@@ -1,11 +1,12 @@
 import { createDevice, createItem, createLibrary, type FileRef } from '@nexlibris/common';
 import { describe, expect, it } from 'vitest';
 import { planSync } from '../../devices/plan';
+import type { DeviceType } from '../../devices/types';
 import { xteinkConverter } from '../../formats/convert/converters';
 import { DEFAULT_OPTIMIZE_OPTIONS, optimizerVersion } from '../../formats/convert/xteink/options';
 import { crosspoint, optimizeOptions } from './index';
 
-const x4 = crosspoint.deviceTypes.find((t) => t.id === 'crosspoint.x4')!;
+const x4 = crosspoint.connectionTypes.find((t) => t.id === 'crosspoint.x4') as DeviceType;
 
 describe('CrossPoint optimizer settings', () => {
   it('records non-default options in the converter version', () => {

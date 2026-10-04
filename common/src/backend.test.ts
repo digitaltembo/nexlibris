@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { hashBlob, StoredLibraryBackend } from './backend';
 import { migrateLibrary, migrateOperation, NewerSchemaError } from './migrate';
-import { createItem, createLibrary } from './operations';
+import { applyOperations, createCategory, createItem, createLibrary } from './operations';
 import { MemoryStorage } from './storage';
 import { SCHEMA_VERSION } from './types';
 
@@ -88,7 +88,83 @@ describe('loading a stored library', () => {
   });
 });
 
+describe('change IDs (schema 2)', () => {
+  it('records this instance as the origin of its changes, numbered by revision', async () => {
+    const storage = new MemoryStorage();
+    const backend = new StoredLibraryBackend(storage);
+    const { origin } = await backend.getLibrary();
+    expect(origin).toMatch(/^[0-9a-f-]{36}$/);
+    await backend.apply([{ type: 'addItem', item: createItem({ title: 'Dune' }) }]);
+    await backend.apply([{ type: 'addItem', item: createItem({ title: 'Emma' }) }]);
+    expect((await backend.getChanges(0)).map((c) => [c.origin, c.seq])).toEqual([
+      [origin, 1],
+      [origin, 2],
+    ]);
+    // Each new library is its own instance.
+    expect((await new StoredLibraryBackend(new MemoryStorage()).getLibrary()).origin).not.toBe(origin);
+  });
+
+  it('gives a schema 1 library an origin, and its logged changes IDs, without rewriting the log', async () => {
+    const storage = new MemoryStorage();
+    const dune = createItem({ title: 'Dune' });
+    const { origin: _, ...v1 } = { ...createLibrary('Old'), schemaVersion: 1, revision: 1, items: { [dune.id]: dune } };
+    const v1Log = JSON.stringify({ revision: 1, at: '2026-01-01T00:00:00.000Z', op: { type: 'addItem', item: dune } }) + '\n';
+    await storage.writeText('library.json', JSON.stringify(v1));
+    await storage.appendText('changes.jsonl', v1Log);
+
+    const backend = new StoredLibraryBackend(storage);
+    const library = await backend.getLibrary();
+    expect(library.schemaVersion).toBe(SCHEMA_VERSION);
+    expect(library.origin).toMatch(/^[0-9a-f-]{36}$/);
+    await backend.apply([{ type: 'updateItem', id: dune.id, patch: { title: 'Dune Messiah' } }]);
+
+    // The old lines are left as they were; the new one is appended with its ID.
+    expect((await storage.readText('changes.jsonl'))!.startsWith(v1Log)).toBe(true);
+    // The origin is saved with the migrated library, so it's the same once reopened.
+    const reopened = new StoredLibraryBackend(storage);
+    expect((await reopened.getLibrary()).origin).toBe(library.origin);
+    expect((await reopened.getChanges(0)).map((c) => [c.origin, c.seq, c.revision])).toEqual([
+      [library.origin, 1, 1],
+      [library.origin, 2, 2],
+    ]);
+  });
+
+  it('keeps local files under local/, outside the library, and refuses other paths', async () => {
+    const storage = new MemoryStorage();
+    const backend = new StoredLibraryBackend(storage);
+    await backend.writeLocalFile('thumbs/ab/abcd.jpg', new Blob(['jpeg']));
+    expect(await (await backend.readLocalFile('thumbs/ab/abcd.jpg'))?.text()).toBe('jpeg');
+    expect(await storage.exists('local/thumbs/ab/abcd.jpg')).toBe(true);
+    expect(await backend.readLocalFile('thumbs/ab/missing.jpg')).toBeUndefined();
+    for (const path of ['thumbs', '../library.json', 'thumbs/../../library.json', 'thumbs/.hidden', '/thumbs/a', 'Thumbs/a']) {
+      expect(() => backend.readLocalFile(path)).toThrow('Bad local file path');
+    }
+  });
+});
+
 describe('migrateLibrary', () => {
+  it('takes a schema 2 library to schema 3 unchanged, and then it takes categories', () => {
+    const v2 = { ...createLibrary('Mine'), schemaVersion: 2 };
+    const library = migrateLibrary(JSON.parse(JSON.stringify(v2)));
+    expect(library).toEqual({ ...v2, schemaVersion: 4 });
+    const category = createCategory({ name: 'Moods', entries: [{ label: 'Cosy', query: 'tag:cosy' }] });
+    expect(applyOperations(library, [{ type: 'setCategory', category }]).library.categories).toEqual({ [category.id]: category });
+  });
+
+  it('takes a schema 3 library to schema 4 with its metadata normalized, and its logged operations', () => {
+    const item = { ...createItem({ title: 'Dune' }), metadata: { published: '1965-07-31T23:00:00+00:00', seriesIndex: '1', pages: '412', mood: 'sandy', blank: '' } };
+    const v3 = { ...createLibrary('Mine'), schemaVersion: 3, items: { [item.id]: item } };
+    const library = migrateLibrary(JSON.parse(JSON.stringify(v3)));
+    expect(library.schemaVersion).toBe(4);
+    expect(library.items[item.id]!.metadata).toEqual({ published: '1965-08-01', seriesIndex: 1, pages: 412, mood: 'sandy' });
+    expect(migrateOperation({ type: 'setMetadata', id: item.id, key: 'published', value: 'June 1990' }, 3)).toEqual({
+      type: 'setMetadata',
+      id: item.id,
+      key: 'published',
+      value: '1990-06',
+    });
+  });
+
   it('runs each step from the stored version up', () => {
     const migrations = {
       1: { library: (l: Record<string, unknown>) => ({ ...l, shelves: [] }) },
@@ -97,7 +173,7 @@ describe('migrateLibrary', () => {
         operation: (op: Record<string, unknown>) => (op.type === 'old' ? { ...op, type: 'new' } : op),
       },
     };
-    const library = createLibrary('Mine');
+    const library = { ...createLibrary('Mine'), schemaVersion: 1 };
     expect(migrateLibrary(library, migrations, 3)).toMatchObject({ schemaVersion: 3, shelves: [], renamed: 'Mine' });
     expect(migrateOperation({ type: 'old' } as never, 1, migrations, 3)).toEqual({ type: 'new' });
     expect(() => migrateLibrary({ ...library, schemaVersion: 4 }, migrations, 3)).toThrow(NewerSchemaError);

@@ -10,7 +10,7 @@ import JSZip from 'jszip';
 import { describe, expect, it } from 'vitest';
 import type { Converter } from '../../formats/convert/converters';
 import { parseXml } from '../../formats/xml';
-import type { DeviceType } from '../types';
+import type { CatalogType } from '../types';
 import { buildCatalog, slug, type CatalogBook, type CatalogFile } from './catalog';
 import { exportCatalog, MANIFEST_PATH, type CatalogSink } from './export';
 import { zipSink } from './sinks';
@@ -92,6 +92,29 @@ describe('OPDS catalog', () => {
     ]);
   });
 
+  it('lists the user’s categories between Series and Tags, as calibre3opds’s custom feeds', () => {
+    const dune = book('Dune', ['Frank Herbert']);
+    const emma = book('Emma', ['Jane Austen']);
+    const files = buildCatalog([dune, emma], {
+      title: 'Lib',
+      categories: [
+        { name: 'Moods', entries: [{ label: 'Sandy', itemIds: [dune.item.id] }, { label: 'Witty', itemIds: [emma.item.id, 'gone'] }] },
+        { name: 'Classics', entries: [{ label: 'Old', itemIds: [emma.item.id] }] },
+        { name: 'Empty', entries: [] },
+      ],
+    });
+    const byPath = feeds(files);
+    const root = xml(byPath.get('navigation/index.xml')!);
+    expect(titles(root)).toEqual(['Recent books', 'By title', 'Authors', 'Series', 'Classics', 'Moods', 'Tags']);
+    // One entry links straight to its books; several open a list of them.
+    expect(links(root, 'subsection')).toContain('/navigation/custom/classics/page-1.xml');
+    expect(titles(xml(byPath.get('navigation/custom/classics/page-1.xml')!))).toEqual(['Emma']);
+    const moods = xml(byPath.get('navigation/custom/moods/index.xml')!);
+    expect(titles(moods)).toEqual(['Sandy', 'Witty']);
+    expect(links(moods, 'subsection')).toEqual(['/navigation/custom/moods/sandy/page-1.xml', '/navigation/custom/moods/witty/page-1.xml']);
+    expect(titles(xml(byPath.get('navigation/custom/moods/witty/page-1.xml')!))).toEqual(['Emma']);
+  });
+
   it('paginates, and names books apart when their stems clash', () => {
     const books = Array.from({ length: 5 }, (_, i) => book('Same', ['Anon'], {}, `2026-01-0${i + 1}T00:00:00Z`));
     const files = buildCatalog(books, { title: 'Lib', pageSize: 2 });
@@ -137,17 +160,14 @@ const optimizer: Converter = {
   run: async (data) => new Blob([`${await data.text()} for x4`]),
 };
 
-const type: DeviceType = {
-  id: 'test.reader',
-  label: 'Reader',
+const type: CatalogType = {
+  kind: 'catalog',
+  id: 'test.catalog',
+  label: 'Catalog',
   formats: ['x4.epub', 'epub'],
   settings: [],
-  folder: () => '/Books',
   makes: () => optimizer,
   prepare: { key: (item) => item.title, run: async (item, _f, data) => new Blob([`${await data.text()} titled ${item.title}`]) },
-  target: () => {
-    throw new Error('unused');
-  },
 };
 
 async function setup() {
@@ -183,10 +203,17 @@ describe('catalog export', () => {
     expect(first).toMatchObject({ books: 1, written: 2, unchanged: 0, skipped: ['Notes'], warnings: [] });
     expect(files.get('books/dune_author.x4.epub')).toBe('dune for x4 titled Dune');
     expect(files.get('books/dune_author.epub')).toBe('dune titled Dune');
-    expect((await backend.getLibrary()).items[dune.id]!.files.map((f) => f.format)).toEqual(['epub', 'x4.epub']);
+    const stored = (await backend.getLibrary()).items[dune.id]!.files;
+    expect(stored.map((f) => f.format)).toEqual(['epub', 'x4.epub']);
+    // Each book file, for recording what the connection holds (covers and feeds aren't books).
+    expect(first.placed).toEqual({
+      'books/dune_author.x4.epub': { itemId: dune.id, hash: stored[1]!.hash, size: 23, key: 'Dune' },
+      'books/dune_author.epub': { itemId: dune.id, hash: stored[0]!.hash, size: 16, key: 'Dune' },
+    });
 
     const second = await run(sink);
     expect(second).toMatchObject({ written: 0, unchanged: 2, removed: 0, operations: [] });
+    expect(Object.keys(second.placed).sort()).toEqual(Object.keys(first.placed).sort());
 
     await backend.apply([{ type: 'updateItem', id: dune.id, patch: { title: 'Dune Messiah' } }]);
     const third = await run(sink);

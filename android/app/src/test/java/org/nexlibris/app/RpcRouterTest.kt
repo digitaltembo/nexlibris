@@ -7,6 +7,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
+import java.io.File
 
 /** Requests here are shaped exactly as client/src/backends/androidBridge.ts sends them. */
 class RpcRouterTest {
@@ -43,5 +44,25 @@ class RpcRouterTest {
 
         val missing = router.handle(request("GET", "api/storage/readChunk", """{"path":"nope","offset":0,"length":10}"""))
         assertEquals("No file: nope", missing.getString("message"))
+    }
+
+    @Test
+    fun servesTheSyncFolderAlongsideTheLibrary() {
+        val library = StorageService(File(temp.root, "library"))
+        val folder = StorageService(File(temp.root, "sync"))
+        val router = RpcRouter(storageRoutes(library), usbFolderRoutes({ folder }, library, { JSONObject().put("path", "Documents/sync") }, { JSONObject() }))
+        router.handle(request("POST", "api/usbFolder/writeText", """{"path":"library.json","text":"{}"}"""))
+        assertEquals("{}", folder.readText("library.json"))
+        assertEquals(null, library.readText("library.json"))
+        val hash = library.putStream("book".byteInputStream()).hash
+        assertEquals(true, router.handle(request("POST", "api/usbFolder/toFolder", """{"hash":"$hash"}""")).getBoolean("ok"))
+        assertEquals("[\"$hash\"]", router.handle(request("GET", "api/usbFolder/list", """{"path":"files/${hash.take(2)}"}""")).get("value").toString())
+        assertEquals(
+            "Documents/sync",
+            router.handle(request("GET", "api/usbFolder/info", "{}")).getJSONObject("value").getString("path"),
+        )
+        // With no folder chosen yet, the folder's calls say so.
+        val missing = RpcRouter(usbFolderRoutes({ throw IllegalStateException("Choose the sync folder first.") }, library, { JSONObject() }, { JSONObject() }))
+        assertEquals("Choose the sync folder first.", missing.handle(request("GET", "api/usbFolder/exists", """{"path":"a"}""")).getString("message"))
     }
 }

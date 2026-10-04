@@ -1,48 +1,13 @@
 import { createItem, type ItemId } from '@nexlibris/common';
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useRef, useState, type FormEvent } from 'react';
 import styled from 'styled-components';
 import { formatIsbn, itemsWithIsbn, normalizeIsbn } from '../isbn/isbn';
 import { itemFromBook, lookupIsbn, type BookInfo } from '../isbn/openLibrary';
 import { cameraAvailable, isbnReader, readIsbnFromImage } from '../isbn/scanner';
 import { useLibrary } from '../library/LibraryContext';
 import { Button, FileButton, Muted, Row, Spacer } from '../styles/ui';
+import { CameraScanner } from './CameraScanner';
 import { Modal, ModalFooter } from './Modal';
-
-const Viewfinder = styled.div`
-  position: relative;
-  margin: 16px 0 8px;
-  border-radius: var(--radius);
-  overflow: hidden;
-  background: #000;
-  aspect-ratio: 4 / 3;
-
-  video {
-    display: block;
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-  }
-
-  /* Where to hold the barcode. */
-  &::after {
-    content: '';
-    position: absolute;
-    inset: 30% 12%;
-    border: 2px solid var(--highlight);
-    border-radius: 8px;
-    box-shadow: 0 0 0 100vmax rgb(0 0 0 / 0.25);
-  }
-`;
-
-const CameraNote = styled(Muted)`
-  position: absolute;
-  inset: auto 0 8px;
-  z-index: 1;
-  text-align: center;
-  color: #fff;
-  font-size: 0.85rem;
-  text-shadow: 0 1px 2px #000;
-`;
 
 const Controls = styled(Row)`
   flex-wrap: wrap;
@@ -205,7 +170,15 @@ export function IsbnDialog({ onClose, onOpen }: { onClose(): void; onOpen(id: It
         without a file.
       </Muted>
 
-      {scanning && <Camera onIsbn={offer} onError={(message) => (setError(message), setScanning(false))} />}
+      {scanning && (
+        <CameraScanner
+          reader={isbnReader}
+          onValue={offer}
+          onError={(message) => (setError(message), setScanning(false))}
+          hint="Hold the barcode inside the frame."
+          otherwise="Use a photo of the barcode, or type the ISBN."
+        />
+      )}
 
       <Controls>
         {cameraAvailable() && (
@@ -336,75 +309,3 @@ function EntryRow({ entry, existing, wasAdded, adding, onAdd, onRetry, onOpen }:
   );
 }
 
-/**
- * The camera, read for barcodes several times a second while it's shown. An ISBN counts once
- * two frames in a row agree on it: a blurred or skewed frame can misread as another number
- * whose check digit happens to work.
- */
-function Camera({ onIsbn, onError }: { onIsbn(isbn: string): void; onError(message: string): void }) {
-  const video = useRef<HTMLVideoElement>(null);
-  const [note, setNote] = useState('Starting the camera…');
-  const callbacks = useRef({ onIsbn, onError });
-  callbacks.current = { onIsbn, onError };
-
-  useEffect(() => {
-    let stopped = false;
-    let stream: MediaStream | undefined;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-
-    (async () => {
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
-          audio: false,
-        });
-        if (stopped || !video.current) return;
-        video.current.srcObject = stream;
-        await video.current.play();
-        setNote('Loading the barcode reader…');
-        const reader = await isbnReader();
-        if (stopped) return;
-        setNote('Hold the barcode inside the frame.');
-        let previous: string[] = [];
-        const scan = async () => {
-          if (stopped) return;
-          const frame = video.current;
-          try {
-            if (frame && frame.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
-              const read = await reader.read(frame);
-              for (const isbn of read) if (previous.includes(isbn)) callbacks.current.onIsbn(isbn);
-              previous = read;
-            }
-          } catch {
-            // A frame that can't be read (e.g. while the camera settles) is skipped.
-          }
-          timer = setTimeout(() => void scan(), 150);
-        };
-        void scan();
-      } catch (e) {
-        if (stopped) return;
-        const name = e instanceof DOMException ? e.name : '';
-        callbacks.current.onError(
-          name === 'NotAllowedError'
-            ? 'Camera access was refused. Allow it in the browser or system settings, or use a photo instead.'
-            : name === 'NotFoundError' || name === 'OverconstrainedError'
-              ? 'No camera found. Use a photo of the barcode, or type the ISBN.'
-              : `Couldn’t start the camera: ${errorMessage(e)}`,
-        );
-      }
-    })();
-
-    return () => {
-      stopped = true;
-      clearTimeout(timer);
-      stream?.getTracks().forEach((track) => track.stop());
-    };
-  }, []);
-
-  return (
-    <Viewfinder>
-      <video ref={video} muted playsInline />
-      <CameraNote as="p">{note}</CameraNote>
-    </Viewfinder>
-  );
-}

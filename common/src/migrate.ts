@@ -1,5 +1,6 @@
 import type { Operation } from './operations';
-import { SCHEMA_VERSION, type Library } from './types';
+import { normalizeMetadata, normalizeValue } from './metadata';
+import { SCHEMA_VERSION, type Library, type MetadataValue } from './types';
 
 /**
  * Schema migrations. When the stored shape of a library changes, bump `SCHEMA_VERSION` and add a
@@ -13,8 +14,34 @@ interface Migration {
   operation?(op: Record<string, unknown>): Record<string, unknown>;
 }
 
-/** `MIGRATIONS[n]` takes version n to n + 1. None yet: version 1 is the first. */
-export const MIGRATIONS: Record<number, Migration> = {};
+/** `MIGRATIONS[n]` takes version n to n + 1. */
+export const MIGRATIONS: Record<number, Migration> = {
+  // An ID for this instance, recorded on its changes (`Library.origin`). Changes logged before it are this
+  // instance's own; `StoredLibraryBackend` reads them as `{origin, seq: revision}` rather than rewriting the log.
+  1: { library: (library) => ({ ...library, origin: crypto.randomUUID() }) },
+  // Browse categories (`Library.categories`, and the setCategory and removeCategory operations). Nothing to change:
+  // the version says an older nexlibris can't read them, and refuses the library rather than dropping them.
+  2: { library: (library) => library },
+  // Typed metadata (`BookMetadata`): dates as partial ISO dates, the series index and pages as numbers.
+  3: {
+    library: (library) => ({
+      ...library,
+      items: Object.fromEntries(
+        Object.entries(library.items as Record<string, StoredItem>).map(([id, item]) => [id, { ...item, metadata: normalizeMetadata(item.metadata) }]),
+      ),
+    }),
+    operation: (op) => {
+      if (op.type === 'setMetadata') return { ...op, value: normalizeValue(op.key as string, op.value as MetadataValue | undefined) };
+      if (op.type === 'addItem') {
+        const item = op.item as StoredItem;
+        return { ...op, item: { ...item, metadata: normalizeMetadata(item.metadata) } };
+      }
+      return op;
+    },
+  },
+};
+
+type StoredItem = { metadata: Record<string, MetadataValue> } & Record<string, unknown>;
 
 export class NewerSchemaError extends Error {
   constructor(readonly version: number) {

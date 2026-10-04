@@ -1,6 +1,6 @@
 import type { Device, FileRef, Item, ItemId, Library, PlacedFile } from '@nexlibris/common';
 import type { Converter } from '../formats/convert/converters';
-import type { Catalog, DeviceTarget, DeviceType, RemoteFile } from './types';
+import type { Catalog, ConnectionType, DeviceTarget, DeviceType, RemoteFile } from './types';
 import { deviceItems } from './selection';
 
 /** A file to put on the device. */
@@ -46,7 +46,8 @@ export interface DeviceListing {
   catalogs?: Catalog[];
 }
 
-interface Wanted {
+/** A file the plan wants on the device, and how to make it. */
+export interface Wanted {
   item: Item;
   file: FileRef;
   key?: string;
@@ -67,7 +68,7 @@ export function staleFiles(item: Item, converter: Converter | undefined): FileRe
 }
 
 /** What to send for an item: its best file in a format the device takes, or one to make with the type's converter. */
-function chooseFile(item: Item, type: DeviceType, makes: Converter | undefined): { file: FileRef; convert?: Converter } | undefined {
+export function chooseFile(item: Item, type: ConnectionType, makes: Converter | undefined): { file: FileRef; convert?: Converter } | undefined {
   const stale = staleFiles(item, makes);
   const files = item.files.filter((f) => !stale.includes(f));
   for (const format of type.formats) {
@@ -155,8 +156,7 @@ export function planSync(library: Library, device: Device, type: DeviceType, lis
 
 /** Lists the folders a sync touches (where books go, and wherever earlier syncs put files), and the catalogs. */
 export async function listDevice(device: Device, type: DeviceType, target: DeviceTarget): Promise<DeviceListing> {
-  const folders = new Set([type.folder(device), ...Object.keys(device.placed).map(parentOf)]);
-  const files = (await Promise.all([...folders].map((folder) => target.list(folder)))).flat();
+  const files = (await Promise.all([...syncFolders(device, type)].map((folder) => target.list(folder)))).flat();
   const catalogs = type.catalog?.(device) && target.listCatalogs ? await target.listCatalogs() : undefined;
   return { files, ...(catalogs && { catalogs }) };
 }
@@ -164,6 +164,10 @@ export async function listDevice(device: Device, type: DeviceType, target: Devic
 const sameUrl = (a: string, b: string) => a.trim().replace(/\/+$/, '') === b.trim().replace(/\/+$/, '');
 
 export const parentOf = (path: string) => path.slice(0, path.lastIndexOf('/')) || '/';
+
+/** The folders a sync lists: the type's folder for books, and each folder it has put a book in. */
+export const syncFolders = (device: Device, type: DeviceType) =>
+  new Set([type.folder(device), ...Object.keys(device.placed).map(parentOf)]);
 
 /** Characters FAT file systems (and so SD cards) don't allow, plus control characters. */
 // oxlint-disable-next-line no-control-regex -- matching control characters is the point.

@@ -1,6 +1,8 @@
 import {
   LOCAL_USER,
   SCHEMA_VERSION,
+  type Category,
+  type CategoryId,
   type Creator,
   type Device,
   type DeviceId,
@@ -16,6 +18,7 @@ import {
   type UserData,
   type UserId,
 } from './types';
+import { normalizeMetadata, normalizeValue } from './metadata';
 
 /** Top-level item fields that are replaced wholesale by `updateItem`. */
 export type ItemPatch = Partial<Pick<Item, 'kind' | 'title' | 'creators' | 'identifiers' | 'cover'>>;
@@ -54,10 +57,20 @@ export type Operation =
   | { type: 'addDeviceItems'; id: DeviceId; itemIds: ItemId[] }
   | { type: 'removeDeviceItems'; id: DeviceId; itemIds: ItemId[] }
   /** What a sync did: files it put on the device, by path, and paths it removed or found gone. */
-  | { type: 'recordDeviceSync'; id: DeviceId; placed: Record<string, PlacedFile>; removed: string[] };
+  | { type: 'recordDeviceSync'; id: DeviceId; placed: Record<string, PlacedFile>; removed: string[] }
+  /** Adds a browse category, or replaces it whole. */
+  | { type: 'setCategory'; category: Category }
+  | { type: 'removeCategory'; id: CategoryId };
 
 export interface Change {
+  /** This instance's revision once the change was applied. */
   revision: number;
+  /**
+   * The change's ID across instances: the instance it was made on and that instance's revision then.
+   * Unique, and increasing per origin (with gaps, where changes from elsewhere were applied between).
+   */
+  origin: string;
+  seq: number;
   /** ISO timestamp of when the operation was applied. */
   at: string;
   op: Operation;
@@ -74,7 +87,7 @@ export class OperationError extends Error {
 }
 
 export function createLibrary(name: string, id: string = crypto.randomUUID()): Library {
-  return { schemaVersion: SCHEMA_VERSION, id, name, revision: 0, items: {}, userData: {} };
+  return { schemaVersion: SCHEMA_VERSION, id, name, revision: 0, origin: crypto.randomUUID(), items: {}, userData: {} };
 }
 
 export interface NewItem {
@@ -83,7 +96,7 @@ export interface NewItem {
   creators?: Creator[];
   identifiers?: Record<string, string>;
   tags?: string[];
-  metadata?: Record<string, MetadataValue>;
+  metadata?: Record<string, MetadataValue | undefined>;
   files?: FileRef[];
   cover?: Item['cover'];
 }
@@ -96,7 +109,7 @@ export function createItem(fields: NewItem, now: string = new Date().toISOString
     creators: fields.creators ?? [],
     identifiers: fields.identifiers ?? {},
     tags: mergeTags([], fields.tags ?? []),
-    metadata: fields.metadata ?? {},
+    metadata: normalizeMetadata(fields.metadata ?? {}),
     files: fields.files ?? [],
     ...(fields.cover && { cover: fields.cover }),
     addedAt: now,
@@ -172,8 +185,10 @@ export function applyOperation(library: Library, op: Operation, at: string): Lib
     case 'setMetadata': {
       const item = requireItem(op.id);
       const metadata = { ...item.metadata };
-      if (op.value === undefined) delete metadata[op.key];
-      else metadata[op.key] = op.value;
+      // Normalized as it's stored, e.g. "June 1990" as 1990-06; one that normalizes to nothing removes the key.
+      const value = normalizeValue(op.key, op.value);
+      if (value === undefined) delete metadata[op.key];
+      else metadata[op.key] = value;
       return withItem({ ...item, metadata });
     }
     case 'addTags': {
@@ -283,7 +298,23 @@ export function applyOperation(library: Library, op: Operation, at: string): Lib
       Object.assign(placed, op.placed);
       return withDevice({ ...device, placed, lastSyncedAt: at });
     }
+    case 'setCategory': {
+      const name = op.category.name.trim();
+      if (!name) throw new OperationError('A category needs a name', op);
+      const entries = op.category.entries.map((e) => ({ label: e.label.trim(), query: e.query.trim() }));
+      if (entries.some((e) => !e.query)) throw new OperationError('Each entry of a category needs a search', op);
+      return { ...next, categories: { ...library.categories, [op.category.id]: { id: op.category.id, name, entries } } };
+    }
+    case 'removeCategory': {
+      if (!library.categories?.[op.id]) throw new OperationError(`No category with id ${op.id}`, op);
+      const { [op.id]: _removed, ...categories } = library.categories;
+      return { ...next, categories };
+    }
   }
+}
+
+export function createCategory(fields: Omit<Category, 'id'>): Category {
+  return { id: crypto.randomUUID(), ...fields };
 }
 
 /** Applies operations in order, all or nothing. */
@@ -295,7 +326,7 @@ export function applyOperations(
   const changes: Change[] = [];
   for (const op of ops) {
     library = applyOperation(library, op, at);
-    changes.push({ revision: library.revision, at, op });
+    changes.push({ revision: library.revision, origin: library.origin, seq: library.revision, at, op });
   }
   return { library, changes };
 }

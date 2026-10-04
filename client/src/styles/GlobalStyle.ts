@@ -100,6 +100,21 @@ export const GlobalStyle = createGlobalStyle`
     outline: 2px solid var(--accent);
     outline-offset: 1px;
   }
+
+  /* The desktop app on macOS: the window buttons sit over the top-left corner (backends/desktopBridge.ts). */
+  :root[data-title-bar='inset'] {
+    --title-bar-inset: 72px;
+    --title-bar-height: 28px;
+  }
+
+  /* Matches of a search in the text of books. */
+  mark {
+    padding: 0 1px;
+    border-radius: 2px;
+    background: var(--soft);
+    color: inherit;
+    font-weight: 600;
+  }
 `;
 
 /** Rendered while something covers the whole window, so the page behind it doesn't scroll. */

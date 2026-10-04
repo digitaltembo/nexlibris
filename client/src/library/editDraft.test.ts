@@ -19,10 +19,8 @@ describe('diffDraft', () => {
     const draft = draftFromItem(item, undefined);
     draft.title = ' Dune Messiah ';
     draft.tags = ['sci-fi', 'Sequel'];
-    draft.metadata = [
-      ['series', 'Dune'],
-      ['seriesIndex', '2'],
-    ];
+    draft.fields = { ...draft.fields, seriesIndex: '2', originallyPublished: '1969' };
+    draft.metadata = [['mood', 'sandy']];
     draft.description = '';
     draft.review = 'Better than expected';
 
@@ -30,7 +28,9 @@ describe('diffDraft', () => {
       { type: 'updateItem', id: item.id, patch: { title: 'Dune Messiah' } },
       { type: 'addTags', id: item.id, tags: ['Sequel'] },
       { type: 'removeTags', id: item.id, tags: ['Desert'] },
+      { type: 'setMetadata', id: item.id, key: 'mood', value: 'sandy' },
       { type: 'setMetadata', id: item.id, key: 'seriesIndex', value: 2 },
+      { type: 'setMetadata', id: item.id, key: 'originallyPublished', value: '1969' },
       { type: 'setMetadata', id: item.id, key: 'description', value: undefined },
       { type: 'setReview', userId: LOCAL_USER, itemId: item.id, text: 'Better than expected' },
     ]);

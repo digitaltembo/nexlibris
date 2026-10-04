@@ -1,41 +1,83 @@
 import { createItem, userData, type FileRef, type Item, type ItemId } from '@nexlibris/common';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import styled from 'styled-components';
+import { BulkConvertDialog } from './components/BulkConvertDialog';
+import { Breadcrumbs, CrumbAction, CrumbCount } from './components/Breadcrumbs';
+import { BrowseEntries } from './components/BrowseEntries';
 import { BulkEditor } from './components/BulkEditor';
+import { CategoriesDialog } from './components/CategoriesDialog';
+import { CleanupDialog } from './components/CleanupDialog';
 import { BackupDialog } from './components/BackupDialog';
-import { DevicesDialog } from './components/DevicesDialog';
-import { ColumnsDialog } from './components/ColumnsDialog';
+import { AppMenu, MenuButton, type MenuEntry } from './components/AppMenu';
+import { ConnectionsDialog } from './components/ConnectionsDialog';
 import { FiltersDialog } from './components/FiltersDialog';
 import { IsbnDialog } from './components/IsbnDialog';
+import { MenuIcon } from './components/icons';
 import { ItemDetail } from './components/ItemDetail';
 import { LibraryGrid, type CollectionProps } from './components/LibraryGrid';
 import { LibraryList } from './components/LibraryList';
+import { SearchBox } from './components/SearchBox';
+import { SearchDialog, type SearchMode } from './components/SearchDialog';
+import { TextResults } from './components/TextResults';
+import { useTextIndex } from './fulltext/TextIndexContext';
+import { SettingsDialog, SORT_LABELS } from './components/SettingsDialog';
+import { ViewSwitcher } from './components/ViewSwitcher';
+import { viewType } from './plugins';
+import { knownView, VIEWS, type View } from './views/views';
 import { IMPORT_ACCEPT } from './formats/formats';
+import { ALL_BOOKS, browse, crumbs, parentPath, viewCount, type BrowsePath } from './library/browse';
 import { availableFields, DEFAULT_COLUMNS, visibleColumns } from './library/columns';
 import { describeRule, filterFields, filtersQuery, parseFilters } from './library/filters';
-import { importFiles, type ImportResult, type ImportSource } from './library/importFiles';
+import { ALREADY_IN_LIBRARY, importFiles, type ImportResult, type ImportSource } from './library/importFiles';
+import { droppedFiles } from './library/droppedFiles';
+import { ImportProgress, importProgressLabel, type ImportProgressState } from './components/ImportProgress';
 import { nativeImportAvailable, pickNativeFiles } from './library/nativeImport';
+import { hasMenuBar, useMenuBar, type MenuBar } from './library/nativeMenu';
+import { followTitleBar } from './backends/desktopBridge';
+import { clickItem, NO_SELECTION, toggleItem, type SelectionState } from './library/selection';
 import { useBackToClose } from './library/useBackToClose';
 import { useLibrary } from './library/LibraryContext';
 import { DEFAULT_DESC, filterItems, sortItems, type Sort, type SortKey } from './library/search';
 import { usePersistentState } from './library/usePersistentState';
 import { Reader } from './reader/Reader';
-import { besidePanel, Button, FileButton, Muted, Tag, TagButton, TagLabel, TagList, TagRemove } from './styles/ui';
+import { useBluetoothHosting } from './sync/bluetoothHost';
+import { useSyncHosting } from './sync/hosting';
+import { NARROW } from './styles/GlobalStyle';
+import { besidePanel, Button, Muted, Tag, TagButton, TagLabel, TagList, TagRemove } from './styles/ui';
 
-type View = 'grid' | 'list';
-
-const Toolbar = styled.header<{ $withPanel: boolean }>`
+/**
+ * The top bar and the breadcrumbs, held at the top while the books scroll under them. Its height is
+ * `--header-height`, for anything else that sticks below it (the list's column headers).
+ */
+const Header = styled.div`
   position: sticky;
   top: 0;
   z-index: 1;
+  background: var(--bg);
+`;
+
+const Toolbar = styled.header<{ $withPanel: boolean }>`
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  padding: 10px 16px;
+  padding: 10px 16px 10px calc(16px + var(--title-bar-inset, 0px));
   background: var(--bg);
   border-bottom: 1px solid var(--border);
   ${besidePanel}
+
+  /* Without a title bar, the top bar moves the window, except where a dialog or the reader covers it
+     (drag regions would take their clicks). */
+  :root[data-title-bar='inset']:not(:has(dialog[open], [data-covers-window])) & {
+    -webkit-app-region: drag;
+
+    button,
+    input,
+    select,
+    a {
+      -webkit-app-region: no-drag;
+    }
+  }
 
   h1 {
     margin: 0 8px 0 0;
@@ -57,49 +99,32 @@ const ChipLabel = styled(TagLabel).attrs({ as: 'button', type: 'button' })`
   cursor: pointer;
 `;
 
-const Search = styled.input`
-  flex: 1 1 180px;
+/** What's going on (an import, a selection), beside the search. */
+const Activity = styled.span`
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+
+  ${NARROW} {
+    flex-basis: 100%;
+    gap: 4px;
+  }
 `;
 
-const Segmented = styled.div`
-  display: inline-flex;
+/** Select all: there for touch screens, which have no Cmd/Ctrl+A, but quiet. */
+const SubtleButton = styled.button.attrs({ type: 'button' })`
+  padding: 2px 4px;
+  border: none;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.9em;
+  cursor: pointer;
 
-  > button {
-    padding: 6px 12px;
-    border: 1px solid var(--border);
-    border-radius: 0;
-    background: var(--surface);
+  &:hover {
     color: var(--text);
-  }
-
-  > button:first-child {
-    border-radius: var(--radius) 0 0 var(--radius);
-  }
-
-  > button:last-child {
-    border-left: none;
-    border-radius: 0 var(--radius) var(--radius) 0;
-  }
-
-  > button[aria-pressed='true'] {
-    background: var(--highlight);
-    color: var(--highlight-text);
-    border-color: var(--highlight);
-    font-weight: 600;
-  }
-`;
-
-const SortControl = styled.div`
-  display: inline-flex;
-
-  > select {
-    border-radius: var(--radius) 0 0 var(--radius);
-  }
-
-  > button {
-    padding: 6px 10px;
-    border-left: none;
-    border-radius: 0 var(--radius) var(--radius) 0;
+    text-decoration: underline;
   }
 `;
 
@@ -130,6 +155,8 @@ const Notice = styled.div<{ $withPanel: boolean }>`
 
 const Main = styled.main<{ $withPanel: boolean }>`
   padding: 16px;
+  /* What the books stack (a shelf's leaning book, a browse entry's covers) stays under the header. */
+  isolation: isolate;
   ${besidePanel}
 `;
 
@@ -152,152 +179,221 @@ const DropOverlay = styled.div`
   pointer-events: none;
 `;
 
-const SORT_LABELS: Record<SortKey, string> = {
-  title: 'Title',
-  author: 'Author',
-  series: 'Series',
-  rating: 'Rating',
-  added: 'Date added',
-};
+/** Keeps `--header-height` at the header's height, which changes as the top bar wraps. */
+function useHeaderHeight() {
+  return useCallback((header: HTMLElement | null) => {
+    if (!header) return;
+    const observer = new ResizeObserver(() => {
+      document.documentElement.style.setProperty('--header-height', `${header.offsetHeight}px`);
+    });
+    observer.observe(header);
+    return () => observer.disconnect();
+  }, []);
+}
 
 export function App() {
   const { library, backend, apply, refresh } = useLibrary();
+  useSyncHosting(backend, refresh);
+  useBluetoothHosting(backend, refresh);
   const [query, setQuery] = useState('');
+  /** A search of the text inside books (`fulltext/`), shown instead of the books; never at the same time as `query`. */
+  const [textQuery, setTextQuery] = useState('');
+  const { progress: indexing, pause: pauseIndexing } = useTextIndex();
   /** The filters' rules, as search text (`library/filters.ts`); applied along with `query`. */
   const [filterQuery, setFilterQuery] = useState('');
   const [editingFilters, setEditingFilters] = useState(false);
-  const [view, setView] = usePersistentState<View>('nexlibris:view', 'grid');
+  const [storedView, setView] = usePersistentState<View>('nexlibris:view', 'grid');
+  const view = knownView(storedView);
+  const PluginView = viewType(view)?.component;
+  const headerHeight = useHeaderHeight();
   const [sort, setSort] = usePersistentState<Sort>('nexlibris:sort', {
     key: 'title',
     desc: false,
   });
   const [listColumns, setListColumns] = usePersistentState<string[]>('nexlibris:listColumns', DEFAULT_COLUMNS);
-  const [choosingColumns, setChoosingColumns] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [cleaningUp, setCleaningUp] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuBar = hasMenuBar();
+  /** The search dialog, open in one mode or the other. */
+  const [searching, setSearching] = useState<SearchMode | false>(false);
+  const openSearch = (mode: SearchMode = textQuery ? 'text' : 'books') => setSearching(mode);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
   const [backingUp, setBackingUp] = useState(false);
-  const [managingDevices, setManagingDevices] = useState(false);
+  const [managingConnections, setManagingConnections] = useState(false);
   const [addingByIsbn, setAddingByIsbn] = useState(false);
-  const [activeId, setActiveId] = useState<ItemId>();
-  const [selecting, setSelecting] = useState(false);
-  const [selection, setSelection] = useState<ReadonlySet<ItemId>>(new Set());
-  const anchorRef = useRef<ItemId>(undefined);
+  const [selectionState, setSelectionState] = useState<SelectionState>(NO_SELECTION);
+  const { selection, previewId } = selectionState;
+  const [bulkEditing, setBulkEditing] = useState(false);
+  const [bulkConverting, setBulkConverting] = useState(false);
   /** Files done and total, while an import runs. */
-  const [importing, setImporting] = useState<{ done: number; total: number }>();
+  const [importProgress, setImportProgress] = useState<ImportProgressState>();
   const [lastImport, setLastImport] = useState<ImportResult>();
+  // Files the library already has are counted, not listed: importing a folder again lists only what's new.
+  const importSkipped = lastImport?.skipped.filter((s) => s.reason !== ALREADY_IN_LIBRARY) ?? [];
+  const importKnown = (lastImport?.skipped.length ?? 0) - importSkipped.length;
   const [dragging, setDragging] = useState(false);
-  const [reading, setReading] = useState<{ itemId: ItemId; file: FileRef }>();
+  /** The book being read; `at`, a place to open at (a passage a text search found). */
+  const [reading, setReading] = useState<{ itemId: ItemId; file: FileRef; at?: string }>();
+  /** Where the library view is (`library/browse.ts`); All books unless browsing. */
+  const [path, setPath] = usePersistentState<BrowsePath>('nexlibris:browse', ALL_BOOKS);
+  /** A sort chosen in the list's headers for a level with an order of its own; forgotten on leaving it. */
+  const [leafSort, setLeafSort] = useState<Sort>();
+  const [editingCategories, setEditingCategories] = useState(false);
 
   const allItems = Object.values(library.items);
   const { ratings } = userData(library);
-  const items = useMemo(() => {
+  /** The books the search and filters leave, wherever the view is. */
+  const matching = useMemo(() => {
     const context = { ratings };
-    const filtered = filterItems(filterItems(Object.values(library.items), filterQuery, context), query, context);
-    return sortItems(filtered, sort, ratings);
-  }, [library.items, filterQuery, query, sort, ratings]);
+    return filterItems(filterItems(Object.values(library.items), filterQuery, context), query, context);
+  }, [library.items, filterQuery, query, ratings]);
+  const categories = useMemo(() => Object.values(library.categories ?? {}), [library.categories]);
+  const browsed = useMemo(() => browse(matching, path, categories, { ratings }), [matching, path, categories, ratings]);
+  /** The books shown: a browse level's, in its own order where it has one (series, recent), else the chosen sort. */
+  const shownSort = leafSort ?? (browsed.kind === 'books' ? browsed.sort : undefined) ?? sort;
+  const items = useMemo(
+    () => (browsed.kind === 'books' ? sortItems(browsed.items, shownSort, ratings) : []),
+    [browsed, shownSort, ratings],
+  );
+  /** The books a text search looks in: this place's, or (at a list of authors, tags, …) all that match. */
+  const textItems = browsed.kind === 'books' ? browsed.items : matching;
   const countMatches = (q: string) => filterItems(filterItems(allItems, q, { ratings }), query, { ratings }).length;
   const filterFieldList = useMemo(() => filterFields(Object.values(library.items)), [library.items]);
   const filters = filterQuery ? parseFilters(filterQuery, filterFieldList) : undefined;
   const fields = useMemo(() => availableFields(Object.values(library.items)), [library.items]);
-  const active = activeId ? library.items[activeId] : undefined;
+  const active = previewId ? library.items[previewId] : undefined;
   const selectedItems = [...selection].map((id) => library.items[id]).filter((i): i is Item => i !== undefined);
   const readingItem = reading && library.items[reading.itemId];
   const closeReader = useCallback(() => setReading(undefined), []);
-  const showBulk = selecting && selectedItems.length > 0;
-  const showDetail = !selecting && active !== undefined;
+  const showBulk = bulkEditing && selectedItems.length > 0;
+  const showDetail = !showBulk && active !== undefined;
+  /** Books selected other than by opening one: the bulk actions show. */
+  const hasSelection = selectedItems.length > 0 && !showDetail;
 
-  const stopSelecting = () => {
-    setSelecting(false);
-    setSelection(new Set());
+  const clearSelection = () => {
+    setSelectionState(NO_SELECTION);
+    setBulkEditing(false);
+  };
+
+  /** Goes to another place in the library; a selection of several is left behind, an open preview isn't. */
+  const navigate = (to: BrowsePath) => {
+    setPath(to);
+    setLeafSort(undefined);
+    if (!showDetail) clearSelection();
+  };
+
+  // A place that's gone (a removed category, say) falls back to the Library.
+  const missing = browsed.kind === 'missing';
+  useEffect(() => {
+    if (missing) setPath([]);
+  }, [missing, setPath]);
+
+  /** The list's headers sort the chosen sort, or this level's own order where it has one. */
+  const onSort = (next: Sort) => (browsed.kind === 'books' && browsed.sort ? setLeafSort(next) : setSort(next));
+
+  /** Selects just this book and opens its preview. */
+  const openItem = (id: ItemId) => {
+    setSelectionState({ selection: new Set([id]), anchor: id, previewId: id });
+    setBulkEditing(false);
   };
 
   // Back closes these, innermost (registered last) first.
-  useBackToClose(selecting, stopSelecting);
-  useBackToClose(showDetail, () => setActiveId(undefined));
-  useBackToClose(choosingColumns, () => setChoosingColumns(false));
+  useBackToClose(hasSelection, clearSelection);
+  useBackToClose(showBulk, () => setBulkEditing(false));
+  useBackToClose(showDetail, clearSelection);
+  useBackToClose(bulkConverting, () => setBulkConverting(false));
+  useBackToClose(menuOpen, () => setMenuOpen(false));
+  useBackToClose(settingsOpen, () => setSettingsOpen(false));
+  useBackToClose(editingCategories, () => setEditingCategories(false));
+  useBackToClose(cleaningUp, () => setCleaningUp(false));
   useBackToClose(backingUp, () => setBackingUp(false));
-  useBackToClose(managingDevices, () => setManagingDevices(false));
+  useBackToClose(managingConnections, () => setManagingConnections(false));
   useBackToClose(editingFilters, () => setEditingFilters(false));
+  useBackToClose(searching !== false, () => setSearching(false));
   useBackToClose(reading !== undefined, closeReader);
 
-  const onActivate: CollectionProps['onActivate'] = (id, { shiftKey, metaKey, ctrlKey }) => {
-    if (!selecting && (metaKey || ctrlKey)) {
-      // Cmd/Ctrl-click starts a selection, keeping the open item in it.
-      setSelecting(true);
-      setSelection(new Set(activeId && activeId !== id ? [activeId, id] : [id]));
-      anchorRef.current = id;
-      return;
-    }
-    if (!selecting) {
-      setActiveId(id);
-      return;
-    }
-    const next = new Set(selection);
-    const anchorIndex = items.findIndex((i) => i.id === anchorRef.current);
-    const index = items.findIndex((i) => i.id === id);
-    if (shiftKey && anchorIndex >= 0 && index >= 0) {
-      const [from, to] = anchorIndex < index ? [anchorIndex, index] : [index, anchorIndex];
-      for (const item of items.slice(from, to + 1)) next.add(item.id);
-    } else if (next.has(id)) {
-      next.delete(id);
-    } else {
-      next.add(id);
-    }
-    anchorRef.current = id;
-    setSelection(next);
+  const onActivate: CollectionProps['onActivate'] = (id, keys) => {
+    const next = clickItem(selectionState, id, items.map((i) => i.id), keys);
+    if (next.previewId) setBulkEditing(false);
+    setSelectionState(next);
   };
 
-  const runImport = async (files: ImportSource[], skipped: ImportResult['skipped'] = []) => {
-    if (!files.length && !skipped.length) return;
-    setImporting({ done: 0, total: files.length });
+  const onLongPress: CollectionProps['onLongPress'] = (id) => setSelectionState(toggleItem(selectionState, id));
+
+  /** Stops the import running, if any. */
+  const importStop = useRef<AbortController>(undefined);
+  const importBusy = importProgress !== undefined;
+
+  /**
+   * Runs an import, one at a time: `load` gets the files (from a picker, a drop, the native app),
+   * showing `first` meanwhile, then they're imported with their progress shown.
+   */
+  const runImport = async (
+    first: ImportProgressState,
+    load: (signal: AbortSignal) => Promise<{ files: ImportSource[]; skipped: ImportResult['skipped'] } | undefined>,
+  ) => {
+    if (importStop.current) return;
+    const stop = new AbortController();
+    importStop.current = stop;
+    setImportProgress(first);
+    const resumeIndexing = pauseIndexing();
     try {
-      const result = await importFiles(backend, files, {
-        onProgress: (done, total) => setImporting({ done, total }),
+      const loaded = await load(stop.signal);
+      if (stop.signal.aborted) {
+        setLastImport({ added: [], merged: [], skipped: [], warnings: [], stopped: true });
+        return;
+      }
+      if (!loaded || (!loaded.files.length && !loaded.skipped.length)) return;
+      setImportProgress({ phase: 'importing', done: 0, total: 0 });
+      const result = await importFiles(backend, loaded.files, {
+        signal: stop.signal,
+        onProgress: (done, total, current) => setImportProgress({ phase: 'importing', done, total, current }),
         onSaved: () => void refresh(),
       });
-      result.skipped.unshift(...skipped);
+      result.skipped.unshift(...loaded.skipped);
       setLastImport(result);
       await refresh();
       const touched = [...result.added, ...result.merged.map((m) => m.item)];
-      if (touched.length === 1 && !selecting) setActiveId(touched[0]!.id);
+      // One book imported: open it, unless that would drop a selection of several.
+      if (touched.length === 1 && selectionRef.current.selection.size < 2) openItem(touched[0]!.id);
+    } catch (e) {
+      setLastImport({ added: [], merged: [], skipped: [{ name: 'Import', reason: e instanceof Error ? e.message : String(e) }], warnings: [] });
     } finally {
-      setImporting(undefined);
+      resumeIndexing();
+      importStop.current = undefined;
+      setImportProgress(undefined);
     }
   };
 
-  const [pickingFiles, setPickingFiles] = useState(false);
-  const importLabel = importing ? `Importing ${importing.done}/${importing.total}…` : 'Import files';
+  /** Imports files picked in the page (a file or folder input): they're there already. */
+  const importPicked = (files: File[]) =>
+    void runImport({ phase: 'importing', done: 0, total: 0 }, async () => ({ files, skipped: [] }));
+
   /** In the Android and desktop apps: the native picker, which stores the files itself (much faster on Android). */
-  const importNatively = async () => {
-    setPickingFiles(true);
-    let picked;
-    try {
-      picked = await pickNativeFiles();
-    } catch (e) {
-      setLastImport({ added: [], merged: [], skipped: [{ name: 'Import', reason: e instanceof Error ? e.message : String(e) }], warnings: [] });
-      return;
-    } finally {
-      setPickingFiles(false);
-    }
-    if (picked) await runImport(picked.files, picked.skipped);
-  };
+  const importNatively = (folder: boolean) =>
+    void runImport({ phase: 'finding' }, (signal) =>
+      pickNativeFiles({ folder, signal, onCopy: (copied) => setImportProgress({ phase: 'copying', ...copied }) }),
+    );
 
   const addBlankItem = async () => {
     const item = createItem({ title: 'Untitled' });
     await apply([{ type: 'addItem', item }]);
-    stopSelecting();
-    setActiveId(item.id);
+    openItem(item.id);
   };
 
   const runImportRef = useRef(runImport);
   runImportRef.current = runImport;
 
+  const selectionRef = useRef(selectionState);
+  selectionRef.current = selectionState;
+
   /** Selects every item currently shown, i.e. matching the search. */
-  const selectAll = () => {
-    setSelecting(true);
-    setSelection(new Set(items.map((i) => i.id)));
-  };
+  const selectAll = () => setSelectionState({ selection: new Set(items.map((i) => i.id)) });
   const selectAllRef = useRef(selectAll);
   selectAllRef.current = selectAll;
-  const overlayOpen = reading !== undefined || choosingColumns || backingUp || managingDevices;
+  const overlayOpen = reading !== undefined || settingsOpen || menuOpen || backingUp || managingConnections || editingCategories || searching;
 
   // Cmd/Ctrl+A selects all visible items, except where it should select text.
   useEffect(() => {
@@ -313,19 +409,42 @@ export function App() {
     return () => window.removeEventListener('keydown', onKey);
   }, [overlayOpen]);
 
-  // Escape leaves selection mode, unless it's meant for a text field.
+  // "/" and Cmd/Ctrl+K open the search, as in many apps, and Cmd/Ctrl+Shift+F the search inside books
+  // (in the desktop app, its menu has these).
+  const inText = textQuery !== '';
   useEffect(() => {
-    if (!selecting) return;
+    if (overlayOpen) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape' || e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-      setSelecting(false);
-      setSelection(new Set());
+      const command = (e.metaKey || e.ctrlKey) && !e.altKey;
+      const slash = e.key === '/' && !e.metaKey && !e.ctrlKey && !e.altKey;
+      const k = command && e.key.toLowerCase() === 'k' && !e.shiftKey;
+      const f = command && e.key.toLowerCase() === 'f' && e.shiftKey;
+      if (!slash && !k && !f) return;
+      const target = e.target as HTMLElement | null;
+      if (slash && target?.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])')) return;
+      if (document.querySelector('dialog[open]')) return;
+      e.preventDefault();
+      setSearching(f || inText ? 'text' : 'books');
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [selecting]);
+  }, [overlayOpen, inText]);
 
-  // Accept files dropped anywhere on the page.
+  // Escape clears the selection (and so the preview or bulk panel), unless it's meant for a text field or a dialog.
+  const anySelected = selection.size > 0;
+  useEffect(() => {
+    if (!anySelected || reading) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (document.querySelector('dialog[open]')) return;
+      setSelectionState(NO_SELECTION);
+      setBulkEditing(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [anySelected, reading]);
+
+  // Accept files and folders dropped anywhere on the page.
   useEffect(() => {
     let depth = 0;
     const hasFiles = (e: DragEvent) => e.dataTransfer?.types.includes('Files') ?? false;
@@ -345,7 +464,10 @@ export function App() {
       e.preventDefault();
       depth = 0;
       setDragging(false);
-      void runImportRef.current(Array.from(e.dataTransfer?.files ?? []));
+      if (!e.dataTransfer) return;
+      // Read in the drop event, while the dropped items can still be read.
+      const reading = droppedFiles(e.dataTransfer, (found) => setImportProgress({ phase: 'reading', found }));
+      void runImportRef.current({ phase: 'reading', found: 0 }, async () => ({ files: await reading, skipped: [] }));
     };
     window.addEventListener('dragenter', onEnter);
     window.addEventListener('dragleave', onLeave);
@@ -359,114 +481,249 @@ export function App() {
     };
   }, []);
 
+  /** Import: the app's own picker where there is one, else the page's file input. */
+  const startImport = () => (nativeImportAvailable() ? importNatively(false) : fileInputRef.current?.click());
+  /** Import a folder, such as a Calibre library: every book in it and its subfolders. */
+  const startImportFolder = () => (nativeImportAvailable() ? importNatively(true) : folderInputRef.current?.click());
+
+  /** The menu bar's Select All: the text in a field, else every item shown. */
+  const selectAllCommand = () => {
+    const active = document.activeElement;
+    if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) active.select();
+    else if (!overlayOpen) selectAll();
+  };
+
+  const menuEntries: MenuEntry[] = [
+    { label: 'Search inside books…', onSelect: () => openSearch('text') },
+    'separator',
+    { label: importProgress ? importProgressLabel(importProgress) : 'Import files…', onSelect: startImport, disabled: importBusy },
+    ...(importProgress ? [] : [{ label: 'Import folder…', onSelect: startImportFolder, disabled: importBusy }]),
+    { label: 'New item', onSelect: () => void addBlankItem() },
+    { label: 'Add by ISBN…', onSelect: () => setAddingByIsbn(true) },
+    'separator',
+    { label: 'Select all', onSelect: selectAll, disabled: items.length === 0 },
+    'separator',
+    { label: 'Connections…', onSelect: () => setManagingConnections(true) },
+    { label: 'Backup…', onSelect: () => setBackingUp(true) },
+    'separator',
+    { label: 'Browse categories…', onSelect: () => setEditingCategories(true) },
+    { label: 'Clean up library…', onSelect: () => setCleaningUp(true) },
+    { label: 'Settings…', onSelect: () => setSettingsOpen(true) },
+  ];
+
+  const menuBarMenus: MenuBar[] = [
+    {
+      label: 'File',
+      items: [
+        { id: 'import', label: 'Import Files…', accelerator: 'CmdOrCtrl+O', enabled: !importBusy, run: startImport },
+        { id: 'importFolder', label: 'Import Folder…', accelerator: 'CmdOrCtrl+Shift+O', enabled: !importBusy, run: startImportFolder },
+        { id: 'newItem', label: 'New Item', accelerator: 'CmdOrCtrl+N', run: () => void addBlankItem() },
+        { id: 'addByIsbn', label: 'Add by ISBN…', run: () => setAddingByIsbn(true) },
+        { type: 'separator' },
+        { id: 'backup', label: 'Backup…', run: () => setBackingUp(true) },
+        { type: 'separator' },
+        { id: 'settings', label: 'Settings…', accelerator: 'CmdOrCtrl+,', appMenu: true, run: () => setSettingsOpen(true) },
+      ],
+    },
+    {
+      label: 'Edit',
+      items: [
+        { role: 'undo' },
+        { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+        { id: 'selectAll', label: 'Select All', accelerator: 'CmdOrCtrl+A', run: selectAllCommand },
+        { type: 'separator' },
+        { id: 'deselectAll', label: 'Deselect All', enabled: selection.size > 0, run: clearSelection },
+        { type: 'separator' },
+        { id: 'find', label: 'Find…', accelerator: 'CmdOrCtrl+F', run: () => openSearch('books') },
+        { id: 'findText', label: 'Find Inside Books…', accelerator: 'CmdOrCtrl+Shift+F', run: () => openSearch('text') },
+        { id: 'filters', label: 'Filters…', accelerator: 'CmdOrCtrl+Shift+F', run: () => setEditingFilters(true) },
+        { id: 'clearFilters', label: 'Clear Filters', enabled: filterQuery !== '', run: () => setFilterQuery('') },
+      ],
+    },
+    {
+      label: 'View',
+      items: [
+        ...VIEWS.map((v, i) => ({
+          id: `view:${v.id}`,
+          label: `as ${v.label}`,
+          ...(i < 9 && { accelerator: `CmdOrCtrl+${i + 1}` }),
+          kind: 'radio' as const,
+          checked: view === v.id,
+          run: () => setView(v.id),
+        })),
+        { type: 'separator' },
+        {
+          label: 'Sort By',
+          submenu: [
+            ...Object.entries(SORT_LABELS).map(([key, label]) => ({
+              id: `sort:${key}`,
+              label,
+              kind: 'radio' as const,
+              checked: sort.key === key,
+              run: () => setSort({ key: key as SortKey, desc: DEFAULT_DESC[key as SortKey] }),
+            })),
+            { type: 'separator' },
+            { id: 'sort:desc', label: 'Descending', kind: 'checkbox', checked: sort.desc, run: () => setSort({ ...sort, desc: !sort.desc }) },
+          ],
+        },
+        { id: 'columns', label: 'Columns…', run: () => setSettingsOpen(true) },
+        { type: 'separator' },
+        { role: 'reload' },
+        { role: 'toggleDevTools' },
+        { type: 'separator' },
+        { role: 'resetZoom' },
+        { role: 'zoomIn' },
+        { role: 'zoomOut' },
+        { type: 'separator' },
+        { role: 'togglefullscreen' },
+      ],
+    },
+    {
+      label: 'Go',
+      items: [
+        { id: 'go:library', label: 'Library', accelerator: 'CmdOrCtrl+Shift+L', run: () => navigate([]) },
+        { id: 'go:up', label: 'Up a Level', accelerator: 'CmdOrCtrl+[', enabled: path.length > 0, run: () => navigate(parentPath(path)) },
+        { type: 'separator' },
+        { id: 'go:all', label: 'All Books', run: () => navigate(ALL_BOOKS) },
+        { id: 'go:recent', label: 'Recent Books', run: () => navigate(['recent']) },
+        { id: 'go:authors', label: 'Authors', run: () => navigate(['authors']) },
+        { id: 'go:series', label: 'Series', run: () => navigate(['series']) },
+        ...[...categories]
+          .sort((a, b) => a.name.localeCompare(b.name))
+          .map((c) => ({ id: `go:category:${c.id}`, label: c.name, run: () => navigate(['category', c.id]) })),
+        { id: 'go:tags', label: 'Tags', run: () => navigate(['tags']) },
+      ],
+    },
+    {
+      label: 'Library',
+      items: [
+        { id: 'bulkEdit', label: 'Bulk Edit…', enabled: selectedItems.length > 0, run: () => setBulkEditing(true) },
+        { id: 'bulkConvert', label: 'Bulk Convert…', enabled: selectedItems.length > 0, run: () => setBulkConverting(true) },
+        { type: 'separator' },
+        { id: 'categories', label: 'Browse Categories…', run: () => setEditingCategories(true) },
+        { id: 'cleanup', label: 'Clean Up Library…', run: () => setCleaningUp(true) },
+        { id: 'connections', label: 'Connections…', run: () => setManagingConnections(true) },
+      ],
+    },
+  ];
+  useMenuBar(menuBar ? menuBarMenus : []);
+  useEffect(() => followTitleBar(), []);
+
   const collection: CollectionProps = {
     items,
-    activeId,
-    selecting,
     selection,
     onActivate,
+    onLongPress,
   };
 
   const withPanel = showBulk || showDetail;
 
   return (
     <>
-      <Toolbar $withPanel={withPanel}>
-        <h1>nexlibris</h1>
-        <Search
-          type="search"
-          placeholder={`Search ${allItems.length} ${allItems.length === 1 ? 'item' : 'items'}…`}
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
-        <Button $variant="secondary" aria-pressed={!!filterQuery} onClick={() => setEditingFilters(true)}>
-          {filters?.rules.length ? `Filters (${filters.rules.length})` : 'Filters…'}
-        </Button>
-        <Segmented role="group" aria-label="View">
-          {(['grid', 'list'] as const).map((v) => (
-            <button key={v} type="button" aria-pressed={view === v} onClick={() => setView(v)}>
-              {v === 'grid' ? 'Grid' : 'List'}
-            </button>
-          ))}
-        </Segmented>
-        {/* In the list view, the column headers sort. */}
-        {view === 'grid' && (
-          <SortControl>
-            <select
-              value={sort.key}
-              aria-label="Sort by"
-              onChange={(e) => {
-                const key = e.target.value as SortKey;
-                setSort({ key, desc: DEFAULT_DESC[key] });
-              }}
-            >
-              {Object.entries(SORT_LABELS).map(([key, label]) => (
-                <option key={key} value={key}>
-                  {label}
-                </option>
-              ))}
-            </select>
-            <Button
-              $variant="secondary"
-              aria-label={sort.desc ? 'Sorted descending; sort ascending' : 'Sorted ascending; sort descending'}
-              onClick={() => setSort({ ...sort, desc: !sort.desc })}
-            >
-              {sort.desc ? '↓' : '↑'}
-            </Button>
-          </SortControl>
-        )}
-        {view === 'list' && (
-          <Button $variant="secondary" onClick={() => setChoosingColumns(true)}>
-            Columns…
-          </Button>
-        )}
-        {selecting ? (
-          <>
-            <Button $variant="secondary" onClick={selectAll}>
-              Select all{query && ' matching'}
-            </Button>
-            <Button onClick={stopSelecting}>Done</Button>
-          </>
-        ) : (
-          <>
-            <Button $variant="secondary" disabled={allItems.length === 0} onClick={() => setSelecting(true)}>
-              Select
-            </Button>
-            {nativeImportAvailable() ? (
-              <Button disabled={importing !== undefined || pickingFiles} onClick={() => void importNatively()}>
-                {pickingFiles ? 'Copying files…' : importLabel}
+      <Header ref={headerHeight}>
+        <Toolbar $withPanel={withPanel}>
+          {!menuBar && (
+            <MenuButton onClick={() => setMenuOpen(true)}>
+              <MenuIcon />
+            </MenuButton>
+          )}
+          <h1>nexlibris</h1>
+          <SearchBox
+            placeholder={`Search ${allItems.length} ${allItems.length === 1 ? 'item' : 'items'}…`}
+            value={textQuery || query}
+            inText={textQuery !== ''}
+            onOpen={() => openSearch()}
+            onClear={() => {
+              setQuery('');
+              setTextQuery('');
+            }}
+            filterCount={filters ? filters.rules.length : filterQuery ? 1 : 0}
+            onFilters={() => setEditingFilters(true)}
+          />
+          {importProgress ? (
+            <ImportProgress
+              progress={importProgress}
+              // The native picker can't be closed from here; once it's closed, the import can be stopped.
+              onStop={importProgress.phase === 'finding' ? undefined : () => importStop.current?.abort()}
+            />
+          ) : (
+            indexing && (
+              <Activity role="status" title="Reading books’ text so it can be searched">
+                <Muted>
+                  Indexing text {indexing.done + 1}/{indexing.total}
+                </Muted>
+              </Activity>
+            )
+          )}
+          {hasSelection && (
+            <Activity aria-label="Selection">
+              <Muted>{selectedItems.length} selected</Muted>
+              <Button $variant="secondary" $size="small" aria-pressed={showBulk} onClick={() => setBulkEditing(true)}>
+                Bulk edit
               </Button>
-            ) : (
-              <FileButton>
-                {importLabel}
-                <input
-                  type="file"
-                  accept={IMPORT_ACCEPT}
-                  multiple
-                  hidden
-                  disabled={importing !== undefined}
-                  onChange={(e) => {
-                    void runImport(Array.from(e.target.files ?? []));
-                    e.target.value = '';
-                  }}
-                />
-              </FileButton>
+              <Button $variant="secondary" $size="small" onClick={() => setBulkConverting(true)}>
+                Bulk convert
+              </Button>
+              {items.some((i) => !selection.has(i.id)) && (
+                <SubtleButton onClick={selectAll}>Select all{(query || filterQuery) && ' shown'}</SubtleButton>
+              )}
+              <Button $variant="icon" aria-label="Clear selection" title="Clear selection" onClick={clearSelection}>
+                ×
+              </Button>
+            </Activity>
+          )}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept={IMPORT_ACCEPT}
+            multiple
+            hidden
+            onChange={(e) => {
+              importPicked(Array.from(e.target.files ?? []));
+              e.target.value = '';
+            }}
+          />
+          <input
+            ref={(input) => {
+              folderInputRef.current = input;
+              // Not a React prop: picks a folder, whose files come with their paths.
+              if (input) input.webkitdirectory = true;
+            }}
+            type="file"
+            hidden
+            onChange={(e) => {
+              importPicked(Array.from(e.target.files ?? []));
+              e.target.value = '';
+            }}
+          />
+        </Toolbar>
+
+        {allItems.length > 0 && (
+          <Breadcrumbs
+            withPanel={withPanel}
+            crumbs={[
+              ...crumbs(allItems, path, categories).map((c) => ({
+                label: c.label,
+                onSelect: () => {
+                  setTextQuery('');
+                  navigate(c.path);
+                },
+              })),
+              ...(textQuery ? [{ label: `Inside books: “${textQuery}”`, onSelect: () => undefined }] : []),
+            ]}
+          >
+            {!textQuery && <CrumbCount>{viewCount(browsed)}</CrumbCount>}
+            {!textQuery && (path.length === 0 || path[0] === 'category') && (
+              <CrumbAction onClick={() => setEditingCategories(true)}>Edit categories…</CrumbAction>
             )}
-            <Button $variant="secondary" onClick={() => void addBlankItem()}>
-              New item
-            </Button>
-            <Button $variant="secondary" onClick={() => setAddingByIsbn(true)}>
-              Add by ISBN…
-            </Button>
-            <Button $variant="secondary" onClick={() => setManagingDevices(true)}>
-              Devices…
-            </Button>
-            <Button $variant="secondary" onClick={() => setBackingUp(true)}>
-              Backup…
-            </Button>
-          </>
+            {!textQuery && <ViewSwitcher view={view} onView={setView} />}
+          </Breadcrumbs>
         )}
-      </Toolbar>
+      </Header>
 
       {filterQuery && (
         <Notice $withPanel={withPanel} role="status" aria-label="Filters">
@@ -494,28 +751,24 @@ export function App() {
         </Notice>
       )}
 
-      {selecting && selectedItems.length === 0 && (
-        <Notice $withPanel={withPanel} role="status">
-          <Muted>Click items to select them. Shift-click selects a range.</Muted>
-        </Notice>
-      )}
-
       {lastImport && (
         <Notice $withPanel={withPanel} role="status">
           <span>
+            {lastImport.stopped && 'Stopped. '}
             Imported {lastImport.added.length} item{lastImport.added.length === 1 ? '' : 's'}
             {lastImport.merged.length > 0 &&
               `, and added files to ${lastImport.merged.length} book${lastImport.merged.length === 1 ? '' : 's'} already in the library`}
-            {lastImport.skipped.length > 0 && `, skipped ${lastImport.skipped.length}`}.
+            {importKnown > 0 && `; ${importKnown} file${importKnown === 1 ? ' was' : 's were'} in the library already`}
+            {importSkipped.length > 0 && `; skipped ${importSkipped.length}`}.
           </span>
-          {(lastImport.merged.length > 0 || lastImport.skipped.length > 0 || lastImport.warnings.length > 0) && (
+          {(lastImport.merged.length > 0 || importSkipped.length > 0 || lastImport.warnings.length > 0) && (
             <ul>
               {lastImport.merged.map((m) => (
                 <li key={`m${m.item.id}`}>
                   {m.names.join(', ')}: added to “{m.item.title}”
                 </li>
               ))}
-              {lastImport.skipped.map((s, i) => (
+              {importSkipped.map((s, i) => (
                 <li key={`s${i}`}>
                   {s.name}: {s.reason}
                 </li>
@@ -533,31 +786,55 @@ export function App() {
         </Notice>
       )}
 
-      <Main $withPanel={withPanel}>
+      <Main
+        $withPanel={withPanel}
+        // A click on empty space clears a selection of several (but leaves an open preview).
+        onClick={(e) => {
+          if (hasSelection && !(e.target as Element).closest('button, a, input, select, tr')) clearSelection();
+        }}
+      >
         {allItems.length === 0 ? (
           <Empty>
             <p>Your library is empty.</p>
             <Muted as="p">
-              Drop EPUB, PDF, MOBI, AZW3, CBZ, CBR, TXT or RTF files anywhere on this page, or use “Import files”.
+              Drop EPUB, PDF, MOBI, AZW3, CBZ, CBR, TXT or RTF files, or a folder of them such as a Calibre library,
+              anywhere on this page, or choose {menuBar ? 'File → Import Files… or Import Folder…' : 'Import files… or Import folder… from the menu'}.
             </Muted>
           </Empty>
+        ) : textQuery ? (
+          <TextResults
+            query={textQuery}
+            items={textItems}
+            onRead={(item, file, at) => setReading({ itemId: item.id, file, at })}
+            onOpenItem={openItem}
+          />
+        ) : browsed.kind === 'entries' && browsed.entries.length > 0 ? (
+          <BrowseEntries entries={browsed.entries} layout={view === 'list' ? 'list' : 'grid'} onOpen={navigate} />
         ) : items.length === 0 ? (
           <Empty>
-            <Muted>{query ? `Nothing matches “${query}”${filterQuery ? ' with these filters' : ''}.` : 'Nothing matches these filters.'}</Muted>
+            <Muted>
+              {query || filterQuery
+                ? query
+                  ? `Nothing here matches “${query}”${filterQuery ? ' with these filters' : ''}.`
+                  : 'Nothing here matches these filters.'
+                : 'Nothing here.'}
+            </Muted>
           </Empty>
         ) : view === 'list' ? (
-          <LibraryList {...collection} columns={visibleColumns(listColumns, fields)} sort={sort} onSort={setSort} />
+          <LibraryList {...collection} columns={visibleColumns(listColumns, fields)} sort={shownSort} onSort={onSort} />
+        ) : PluginView ? (
+          <PluginView {...collection} />
         ) : (
           <LibraryGrid {...collection} />
         )}
       </Main>
 
-      {showBulk && <BulkEditor items={selectedItems} onClearSelection={() => setSelection(new Set())} />}
+      {showBulk && <BulkEditor items={selectedItems} onClose={() => setBulkEditing(false)} onDeleted={clearSelection} />}
       {showDetail && (
         <ItemDetail
           key={active.id}
           item={active}
-          onClose={() => setActiveId(undefined)}
+          onClose={clearSelection}
           onSelectTag={(tag) => {
             setQuery('');
             setFilterQuery(filtersQuery({ any: false, rules: [{ field: 'tag', condition: 'anyOf', values: [tag] }] }));
@@ -566,7 +843,38 @@ export function App() {
         />
       )}
       {backingUp && <BackupDialog onClose={() => setBackingUp(false)} />}
-      {managingDevices && <DevicesDialog onClose={() => setManagingDevices(false)} />}
+      {managingConnections && <ConnectionsDialog onClose={() => setManagingConnections(false)} />}
+      {searching && (
+        <SearchDialog
+          query={query}
+          filterQuery={filterQuery}
+          items={allItems}
+          fields={filterFieldList}
+          ratings={ratings}
+          mode={searching}
+          onSearch={(q, mode) => {
+            setQuery(mode === 'books' ? q : '');
+            setTextQuery(mode === 'text' ? q : '');
+            setSearching(false);
+          }}
+          onRead={(item, file, at) => setReading({ itemId: item.id, file, at })}
+          onClose={() => setSearching(false)}
+          onFilterQuery={setFilterQuery}
+          onEditFilters={() => setEditingFilters(true)}
+          onOpenItem={openItem}
+          {...(browsed.kind === 'books' &&
+            path.join('/') !== ALL_BOOKS.join('/') && {
+              scope: {
+                label: crumbs(allItems, path, categories).at(-1)!.label,
+                filter: (list: Item[]) => {
+                  const here = browse(list, path, categories, { ratings });
+                  return here.kind === 'books' ? here.items : list;
+                },
+              },
+            })}
+          onLeaveScope={() => navigate(ALL_BOOKS)}
+        />
+      )}
       {editingFilters && (
         <FiltersDialog
           title="Filters"
@@ -582,22 +890,29 @@ export function App() {
           onClose={() => setAddingByIsbn(false)}
           onOpen={(id) => {
             setAddingByIsbn(false);
-            stopSelecting();
-            setActiveId(id);
+            openItem(id);
           }}
         />
       )}
-      {choosingColumns && (
-        <ColumnsDialog
-          selected={listColumns}
+      {settingsOpen && (
+        <SettingsDialog
+          view={view}
+          onView={setView}
+          sort={sort}
+          onSort={setSort}
+          columns={listColumns}
           fields={fields}
-          onChange={setListColumns}
-          onClose={() => setChoosingColumns(false)}
+          onColumns={setListColumns}
+          onClose={() => setSettingsOpen(false)}
         />
       )}
+      {bulkConverting && <BulkConvertDialog items={selectedItems} onClose={() => setBulkConverting(false)} />}
+      {editingCategories && <CategoriesDialog onClose={() => setEditingCategories(false)} />}
+      {cleaningUp && <CleanupDialog onClose={() => setCleaningUp(false)} pauseIndexing={pauseIndexing} />}
+      {menuOpen && <AppMenu entries={menuEntries} onClose={() => setMenuOpen(false)} />}
       {dragging && <DropOverlay>Drop files to import</DropOverlay>}
       {reading && readingItem && (
-        <Reader key={reading.file.hash} item={readingItem} file={reading.file} onClose={closeReader} />
+        <Reader key={reading.file.hash} item={readingItem} file={reading.file} at={reading.at} onClose={closeReader} />
       )}
     </>
   );

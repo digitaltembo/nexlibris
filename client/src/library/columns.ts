@@ -1,13 +1,26 @@
 import type { Item } from '@nexlibris/common';
 import type { SortKey } from './search';
 
-export type BuiltinColumn = 'cover' | 'creators' | 'series' | 'tags' | 'rating' | 'formats' | 'added' | 'updated';
+export type BuiltinColumn =
+  | 'cover'
+  | 'creators'
+  | 'titleSort'
+  | 'authorSort'
+  | 'series'
+  | 'tags'
+  | 'rating'
+  | 'formats'
+  | 'added'
+  | 'updated';
 /** A built-in column, or `field:<key>` for a metadata field. */
 export type ColumnId = BuiltinColumn | `field:${string}`;
 
 export const BUILTIN_COLUMNS: { id: BuiltinColumn; label: string; sort?: SortKey }[] = [
   { id: 'cover', label: 'Cover' },
   { id: 'creators', label: 'Creators', sort: 'author' },
+  // What title and author sort by: the stored sort fields, else the forms worked out from the title and names.
+  { id: 'titleSort', label: 'Title sort', sort: 'title' },
+  { id: 'authorSort', label: 'Author sort', sort: 'author' },
   { id: 'series', label: 'Series', sort: 'series' },
   { id: 'tags', label: 'Tags' },
   { id: 'rating', label: 'Rating', sort: 'rating' },
@@ -19,7 +32,7 @@ export const BUILTIN_COLUMNS: { id: BuiltinColumn; label: string; sort?: SortKey
 export const DEFAULT_COLUMNS: ColumnId[] = ['cover', 'creators', 'series', 'tags', 'rating', 'formats', 'added'];
 
 /** Shown by their built-in columns, so not offered as field columns. */
-const COVERED_FIELDS = new Set(['series', 'seriesIndex']);
+const COVERED_FIELDS = new Set(['series', 'seriesIndex', 'titleSort', 'authorSort']);
 
 export const fieldColumn = (key: string): ColumnId => `field:${key}`;
 export const fieldKey = (id: ColumnId): string | undefined => (id.startsWith('field:') ? id.slice(6) : undefined);

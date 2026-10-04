@@ -1,4 +1,5 @@
-import { createItem, mergeTags, type Creator, type Item, type LibraryBackend, type MetadataValue } from '@nexlibris/common';
+import { createItem, mergeTags, normalizeDate, type Creator, type Item, type LibraryBackend, type MetadataValue } from '@nexlibris/common';
+import { coverColor } from '../library/coverColor';
 import { isbn13to10 } from './isbn';
 
 /**
@@ -46,6 +47,8 @@ interface EditionRecord {
 
 interface WorkRecord {
   description?: string | { value?: string };
+  /** When the work was first published, e.g. "1965" or "August 1965". */
+  first_publish_date?: string;
   subjects?: string[];
   /** Newer records: a series by reference, with the work's place in it. */
   series?: { series?: { key?: string }; position?: string }[];
@@ -84,6 +87,7 @@ export async function lookupIsbn(isbn: string, fetchFn: typeof fetch = (input, i
   };
   set('publisher', data.publishers?.[0]?.name?.trim());
   set('published', publishedDate(data.publish_date));
+  set('originallyPublished', publishedDate(work?.first_publish_date));
   set('pages', data.number_of_pages && data.number_of_pages > 0 ? data.number_of_pages : undefined);
   set('language', language(edition?.languages?.[0]?.key));
   set('description', text(work?.description) ?? text(edition?.description));
@@ -144,7 +148,7 @@ export async function itemFromBook(backend: LibraryBackend, book: BookInfo, fetc
     creators: book.creators,
     identifiers: book.identifiers,
     tags: book.tags,
-    metadata: book.metadata,
+    metadata: { ...book.metadata, coverColor: cover && (await coverColor(cover.data)) },
     ...(cover && { cover: { hash: (await backend.putFile(cover.data)).hash, mediaType: cover.mediaType } }),
   });
 }
@@ -164,17 +168,8 @@ function language(key: string | undefined): string | undefined {
   return code ? (LANGUAGES[code] ?? code) : undefined;
 }
 
-/** "2020" and "1990-10-01" as they are; "October 1, 1990" as 1990-10-01; anything else as it is. */
-export function publishedDate(value: string | undefined): string | undefined {
-  const trimmed = value?.trim();
-  if (!trimmed || /^\d{4}(-\d{2}){0,2}$/.test(trimmed)) return trimmed || undefined;
-  const parsed = Date.parse(`${trimmed} UTC`);
-  if (Number.isNaN(parsed) || !/\d{4}/.test(trimmed)) return trimmed;
-  const date = new Date(parsed);
-  // A month and year ("June 1990") parses to the 1st; keep it to the month.
-  const iso = date.toISOString().slice(0, 10);
-  return /\b\d{1,2}\b/.test(trimmed.replace(/\d{4}/, '')) ? iso : iso.slice(0, 7);
-}
+/** "2020" and "1990-10-01" as they are; "October 1, 1990" as 1990-10-01; anything else as it is (see `normalizeDate`). */
+export const publishedDate = normalizeDate;
 
 /** "Dune chronicles -- bk. 1", "Discworld ; 12", "Foundation, #2": the name and its number. */
 export function parseSeries(value: string | undefined): { name: string; index?: number } | undefined {

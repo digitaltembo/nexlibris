@@ -1,4 +1,4 @@
-import { mergeTags, type Cover, type Creator, type MetadataValue } from '@nexlibris/common';
+import { mergeTags, type BookMetadata, type Cover, type Creator } from '@nexlibris/common';
 
 export type FormatId = 'epub' | 'x4.epub' | 'x3.epub' | 'pdf' | 'cbz' | 'cbr' | 'txt' | 'rtf' | 'mobi' | 'azw3' | 'azw';
 
@@ -47,7 +47,7 @@ export interface ParsedItem {
   creators: Creator[];
   identifiers: Record<string, string>;
   tags: string[];
-  metadata: Record<string, MetadataValue>;
+  metadata: BookMetadata;
   cover?: { data: Blob; mediaType: Cover['mediaType'] };
 }
 

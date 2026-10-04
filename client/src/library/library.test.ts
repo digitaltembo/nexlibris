@@ -1,7 +1,7 @@
-import { createItem, MemoryStorage, StoredLibraryBackend } from '@nexlibris/common';
+import { createItem, LOCAL_USER, MemoryStorage, StoredLibraryBackend } from '@nexlibris/common';
 import JSZip from 'jszip';
 import { describe, expect, it, vi } from 'vitest';
-import { importFiles } from './importFiles';
+import { importFiles, type ImportSource } from './importFiles';
 import { metadataToText, textToMetadata } from './metadataText';
 import { availableFields, visibleColumns } from './columns';
 import { filterItems, sortItems } from './search';
@@ -19,6 +19,27 @@ async function epubFile(name: string, title: string, extra = ''): Promise<File> 
   );
   return new File([await zip.generateAsync({ type: 'blob' })], name);
 }
+
+/** A file as picked with its folder, as a folder input or drop gives it. */
+const inFolder = (path: string, data: Blob | string): ImportSource => {
+  const blob = typeof data === 'string' ? new Blob([data]) : data;
+  return { name: path.split('/').pop()!, webkitRelativePath: path, arrayBuffer: () => blob.arrayBuffer() };
+};
+
+/** A `metadata.opf` as Calibre writes it beside each book. */
+const calibreOpf = (title: string, author: string, uuid: string, extra = '') => `<?xml version='1.0' encoding='utf-8'?>
+<package xmlns="http://www.idpf.org/2007/opf" unique-identifier="uuid_id" version="2.0">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:opf="http://www.idpf.org/2007/opf">
+    <dc:identifier opf:scheme="calibre" id="calibre_id">7</dc:identifier>
+    <dc:identifier opf:scheme="uuid" id="uuid_id">${uuid}</dc:identifier>
+    <dc:title>${title}</dc:title>
+    <dc:creator opf:file-as="x" opf:role="aut">${author}</dc:creator>
+    <dc:date>0101-01-01T00:00:00+00:00</dc:date>
+    <dc:language>eng</dc:language>
+    ${extra}
+  </metadata>
+  <guide><reference type="cover" title="Cover" href="cover.jpg"/></guide>
+</package>`;
 
 describe('importFiles', () => {
   it('adds EPUBs as items with their file, skipping duplicates and other formats', async () => {
@@ -57,20 +78,39 @@ describe('importFiles', () => {
       new File(['Dune, as text.'], 'Dune.txt'),
       await epubFile('emma.epub', 'Emma'),
     ];
-    const progress: number[] = [];
+    const progress: (number | string)[][] = [];
     let saves = 0;
-    const result = await importFiles(backend, files, { onProgress: (done) => progress.push(done), onSaved: () => saves++ });
+    const result = await importFiles(backend, files, {
+      onProgress: (done, total, current) => progress.push(current ? [done, total, current] : [done, total]),
+      onSaved: () => saves++,
+    });
 
     expect(result.added.map((i) => [i.title, i.files.map((f) => f.format)])).toEqual([
       ['Dune', ['epub', 'txt', 'x4.epub']],
       ['Emma', ['epub']],
     ]);
-    expect(progress).toEqual([3, 4]);
+    // Counted by book, each named as it's started.
+    expect(progress).toEqual([
+      [0, 2, 'dune.x4.epub'],
+      [1, 2],
+      [1, 2, 'emma.epub'],
+      [2, 2],
+    ]);
     expect(saves).toBe(1);
     // A text file has no author to match an item by, so it's a new item; exact duplicates are skipped.
     const again = await importFiles(backend, [files[1]!, new File(['Dune, again.'], 'dune.txt')]);
     expect(again.added.map((i) => i.files.map((f) => f.name))).toEqual([['dune.txt']]);
     expect(again.skipped).toEqual([{ name: 'dune.epub', reason: 'already in the library' }]);
+  });
+
+  it('stops before the next book when asked, keeping what it imported', async () => {
+    const backend = new StoredLibraryBackend(new MemoryStorage());
+    const stop = new AbortController();
+    const files = [new File(['a'], 'a.txt'), new File(['b'], 'b.txt'), new File(['c'], 'c.txt')];
+    const result = await importFiles(backend, files, { signal: stop.signal, onProgress: (done) => done === 1 && stop.abort() });
+    expect(result.stopped).toBe(true);
+    expect(result.added.map((i) => i.title)).toEqual(['a']);
+    expect(Object.values((await backend.getLibrary()).items).map((i) => i.title)).toEqual(['a']);
   });
 
   it('adds files to the book already in the library, matched by ISBN or by title and author', async () => {
@@ -114,6 +154,100 @@ describe('importFiles', () => {
     expect(putFile).not.toHaveBeenCalled();
   });
 
+  it('imports a Calibre library folder: one item per book folder, with its metadata.opf, cover and rating', async () => {
+    const backend = new StoredLibraryBackend(new MemoryStorage());
+    const dune = 'Calibre Library/Frank Herbert/Dune (7)';
+    const messiah = 'Calibre Library/Frank Herbert/Dune Messiah (8)';
+    const files = [
+      inFolder('Calibre Library/metadata.db', 'sqlite'),
+      inFolder('Calibre Library/metadata_db_prefs_backup.json', '{}'),
+      inFolder('Calibre Library/.caltrash/b/old.epub', 'gone'),
+      inFolder(`${dune}/Dune - Frank Herbert.epub`, await epubFile('x.epub', 'Dune (retail)', '<dc:publisher>Chilton</dc:publisher>')),
+      // Named differently from the EPUB, but in the same book folder.
+      inFolder(`${dune}/Dune.txt`, 'A beginning is the time.'),
+      inFolder(`${dune}/cover.jpg`, 'jpeg'),
+      inFolder(
+        `${dune}/metadata.opf`,
+        calibreOpf(
+          'Dune',
+          'Frank Herbert',
+          'b0a6-dune',
+          `<dc:subject>Science Fiction</dc:subject>
+          <dc:identifier opf:scheme="ISBN">9780441013593</dc:identifier>
+          <meta name="calibre:series" content="Dune"/><meta name="calibre:series_index" content="1.0"/>
+          <meta name="calibre:rating" content="8.0"/><meta name="calibre:timestamp" content="2021-03-04T05:06:07+00:00"/>`,
+        ),
+      ),
+      inFolder(`${messiah}/Dune Messiah - Frank Herbert.txt`, 'Twelve years.'),
+      inFolder(`${messiah}/metadata.opf`, calibreOpf('Dune Messiah', 'Frank Herbert', 'c1d2-messiah', '<meta name="calibre:rating" content="0"/>')),
+    ];
+    const progress: number[] = [];
+    const result = await importFiles(backend, files, { onProgress: (done) => progress.push(done) });
+
+    expect(result.skipped).toEqual([]);
+    expect(result.warnings).toEqual([]);
+    expect(progress).toEqual([0, 1, 1, 2]);
+    const [first, second] = result.added;
+    expect(first).toMatchObject({
+      title: 'Dune',
+      creators: [{ name: 'Frank Herbert', role: 'aut' }],
+      identifiers: { uuid: 'b0a6-dune', isbn: '9780441013593' },
+      tags: ['Science Fiction'],
+      // Calibre's metadata, with what only the file has.
+      metadata: { series: 'Dune', seriesIndex: 1, language: 'eng', publisher: 'Chilton' },
+      addedAt: '2021-03-04T05:06:07.000Z',
+    });
+    expect(first!.files.map((f) => f.format)).toEqual(['epub', 'txt']);
+    expect(await (await backend.getFile(first!.cover!.hash))!.text()).toBe('jpeg');
+    expect(second).toMatchObject({ title: 'Dune Messiah', identifiers: { uuid: 'c1d2-messiah' } });
+    // Calibre's date for none isn't taken as the publication date.
+    expect(second!.metadata.published).toBeUndefined();
+    expect(second!.files.map((f) => f.format)).toEqual(['txt']);
+    const library = await backend.getLibrary();
+    expect(library.userData[LOCAL_USER]?.ratings).toEqual({ [first!.id]: 4 });
+
+    // Imported again after adding a format in Calibre, the book gets the new format and nothing else.
+    const again = await importFiles(backend, [
+      ...files,
+      inFolder(`${messiah}/Dune Messiah - Frank Herbert.epub`, await epubFile('y.epub', 'Messiah')),
+    ]);
+    expect(again.added).toEqual([]);
+    expect(again.merged.map((m) => [m.item.title, m.names])).toEqual([['Dune Messiah', ['Dune Messiah - Frank Herbert.epub']]]);
+  });
+
+  it('matches a Calibre book to the item with its UUID, though its title was edited since', async () => {
+    const backend = new StoredLibraryBackend(new MemoryStorage());
+    const item = createItem({ title: 'Dune (1965)', identifiers: { uuid: 'B0A6-DUNE' }, files: [{ hash: 'h', size: 1, format: 'epub' }] });
+    await backend.apply([{ type: 'addItem', item }]);
+    const book = 'Calibre Library/Frank Herbert/Dune (7)';
+    const result = await importFiles(backend, [
+      inFolder(`${book}/Dune - Frank Herbert.txt`, 'A beginning.'),
+      inFolder(`${book}/metadata.opf`, calibreOpf('Dune', 'Frank Herbert', 'b0a6-dune')),
+    ]);
+    expect(result.added).toEqual([]);
+    expect(result.merged.map((m) => [m.item.id, m.names])).toEqual([[item.id, ['Dune - Frank Herbert.txt']]]);
+  });
+
+  it('groups formats in plain folders by name, and across folders by title and author', async () => {
+    const backend = new StoredLibraryBackend(new MemoryStorage());
+    const author = '<dc:creator>Jane Austen</dc:creator>';
+    const result = await importFiles(backend, [
+      inFolder('Books/epub/Emma.epub', await epubFile('Emma.epub', 'Emma', author)),
+      inFolder('Books/x4/Austen - Emma.x4.epub', await epubFile('e.x4.epub', 'Emma', `${author}<dc:date>2025</dc:date>`)),
+      inFolder('Books/pdf-and-text/emma.txt', 'Emma Woodhouse.'),
+      inFolder('Books/pdf-and-text/emma.rtf', '{\\rtf1 Emma}'),
+      inFolder('Books/pdf-and-text/notes.doc', 'no'),
+      inFolder('Books/.DS_Store', ''),
+    ]);
+    // The text files have no author to match the EPUB by, so they stay a book of their own.
+    expect(result.added.map((i) => [i.title, i.files.map((f) => f.format)])).toEqual([
+      ['Emma', ['epub']],
+      ['emma', ['rtf', 'txt']],
+    ]);
+    expect(result.merged.map((m) => [m.item.title, m.names])).toEqual([['Emma', ['Austen - Emma.x4.epub']]]);
+    expect(result.skipped.map((s) => s.name)).toEqual(['notes.doc']);
+  });
+
     it('keeps the readable formats of a book when one of them is broken', async () => {
     const backend = new StoredLibraryBackend(new MemoryStorage());
     const result = await importFiles(backend, [new File(['junk'], 'b.epub'), new File(['text'], 'b.txt')]);
@@ -148,9 +282,25 @@ describe('filterItems and sortItems', () => {
     const titles = (items: { title: string }[]) => items.map((i) => i.title);
     expect(titles(sortItems([emma, dune], { key: 'title', desc: false }))).toEqual(['Dune', 'Emma']);
     expect(titles(sortItems([dune, emma], { key: 'title', desc: true }))).toEqual(['Emma', 'Dune']);
-    expect(titles(sortItems([dune, emma], { key: 'author', desc: false }))).toEqual(['Dune', 'Emma']);
+    // By surname: Austen, then Herbert.
+    expect(titles(sortItems([dune, emma], { key: 'author', desc: false }))).toEqual(['Emma', 'Dune']);
     expect(titles(sortItems([dune, emma], { key: 'rating', desc: true }, { [emma.id]: 3 }))).toEqual(['Emma', 'Dune']);
     expect(titles(sortItems([dune, emma], { key: 'rating', desc: false }, { [emma.id]: 3 }))).toEqual(['Emma', 'Dune']);
+  });
+
+  it('sorts titles and authors by their sort fields, else by forms worked out from them', () => {
+    const titles = (items: { title: string }[]) => items.map((i) => i.title);
+    const hobbit = createItem({ title: 'The Hobbit', creators: [{ name: 'J. R. R. Tolkien', role: 'aut' }] });
+    const ice = createItem({ title: 'Ice', creators: [{ name: 'Anna Kavan', role: 'aut' }] });
+    const kafka = createItem({
+      title: 'Amerika',
+      creators: [{ name: 'Franz Kafka', role: 'aut' }],
+      metadata: { titleSort: 'Man Who Disappeared, The', authorSort: 'Aardvark, Franz' },
+    });
+    // Hobbit, Ice, Man Who Disappeared.
+    expect(titles(sortItems([kafka, ice, hobbit], { key: 'title', desc: false }))).toEqual(['The Hobbit', 'Ice', 'Amerika']);
+    // Aardvark, Kavan, Tolkien.
+    expect(titles(sortItems([hobbit, ice, kafka], { key: 'author', desc: false }))).toEqual(['Amerika', 'Ice', 'The Hobbit']);
   });
 });
 
@@ -167,7 +317,7 @@ describe('list columns', () => {
   it('offers fields used in the library, except ones with their own column', () => {
     const items = [
       createItem({ title: 'A', metadata: { publisher: 'X', series: 'S', seriesIndex: 1 } }),
-      createItem({ title: 'B', metadata: { language: 'en', publisher: 'Y' } }),
+      createItem({ title: 'B', metadata: { language: 'en', publisher: 'Y', titleSort: 'B', authorSort: 'Z' } }),
     ];
     expect(availableFields(items)).toEqual(['language', 'publisher']);
   });

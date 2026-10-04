@@ -50,6 +50,7 @@ describe('Open Library lookup', () => {
       metadata: {
         publisher: 'Ace',
         published: '2020',
+        originallyPublished: '1965',
         pages: 896,
         language: 'en',
         description: 'A placeholder description of the work.',

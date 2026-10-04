@@ -1,6 +1,7 @@
 import { LOCAL_USER, userData, type FileRef, type Item, type MetadataValue } from '@nexlibris/common';
 import { useState } from 'react';
 import styled from 'styled-components';
+import { BOOK_FIELDS, fieldLabel, isFixedField, type BookField } from '../library/bookFields';
 import { diffDraft, draftFromItem, type ItemDraft } from '../library/editDraft';
 import { savedPosition } from '../library/useReadingPosition';
 import { useLibrary } from '../library/LibraryContext';
@@ -91,14 +92,58 @@ const MutedLine = styled(Line)`
   color: var(--muted);
 `;
 
+/** A cover colour, shown beside its value. */
+const Swatch = styled.span<{ $color: string }>`
+  display: inline-block;
+  width: 0.9em;
+  height: 0.9em;
+  margin-right: 6px;
+  vertical-align: -0.1em;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: ${(p) => p.$color};
+`;
+
+/** The fixed fields' inputs, label beside input. */
+const FieldInputs = styled.div`
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 6px 10px;
+  align-items: center;
+
+  label {
+    display: contents;
+    color: var(--muted);
+  }
+
+  span {
+    display: flex;
+    align-items: center;
+  }
+
+  input {
+    flex: 1;
+    min-width: 0;
+  }
+`;
+
 const Timestamps = styled.p`
   margin: 24px 0 0;
   color: var(--muted);
   font-size: 0.85em;
 `;
 
-/** Fields shown in their own places rather than in the generic details list. */
-const FEATURED_FIELDS = new Set(['series', 'seriesIndex', 'description']);
+/** Fields shown in their own places rather than in the details list. */
+const FEATURED_FIELDS = new Set(['series', 'seriesIndex', 'description', 'subtitle']);
+
+/** The details list: the fixed fields in their order, then the custom ones by name. */
+function detailFields(item: Item): [key: string, value: MetadataValue][] {
+  const fixed = BOOK_FIELDS.map((f): [string, MetadataValue | undefined] => [f.key, item.metadata[f.key]]);
+  const custom = Object.entries(item.metadata)
+    .filter(([key]) => !isFixedField(key))
+    .sort(([a], [b]) => a.localeCompare(b));
+  return [...fixed, ...custom].filter((entry): entry is [string, MetadataValue] => entry[1] !== undefined && !FEATURED_FIELDS.has(entry[0]));
+}
 
 export function byline(item: Item): string {
   return item.creators.map((c) => (c.role === 'aut' ? c.name : `${c.name} (${roleLabel(c.role).toLowerCase()})`)).join(', ');
@@ -136,6 +181,7 @@ export function ItemDetail({ item, onClose, onSelectTag, onRead }: Props) {
           ) : (
             <>
               <Title>{item.title}</Title>
+              {item.metadata.subtitle && <MutedLine>{item.metadata.subtitle}</MutedLine>}
               {item.creators.length > 0 && <Line>{byline(item)}</Line>}
               {seriesLabel(item) && <MutedLine>{seriesLabel(item)}</MutedLine>}
             </>
@@ -170,7 +216,7 @@ export function ItemDetail({ item, onClose, onSelectTag, onRead }: Props) {
 
 function ItemView({ item, review, onSelectTag, onRead }: Omit<Props, 'onClose'> & { review: string | undefined }) {
   const description = typeof item.metadata.description === 'string' ? item.metadata.description : undefined;
-  const fields = Object.entries(item.metadata).filter(([key]) => !FEATURED_FIELDS.has(key));
+  const fields = detailFields(item);
   const identifiers = Object.entries(item.identifiers);
 
   return (
@@ -207,8 +253,11 @@ function ItemView({ item, review, onSelectTag, onRead }: Omit<Props, 'onClose'> 
           <Fields>
             {fields.map(([key, value]) => (
               <div key={key}>
-                <dt>{key}</dt>
-                <dd>{metadataToText(value)}</dd>
+                <dt>{fieldLabel(key)}</dt>
+                <dd>
+                  {key === 'coverColor' && typeof value === 'string' && <Swatch $color={value} />}
+                  {metadataToText(value)}
+                </dd>
               </div>
             ))}
             {identifiers.map(([scheme, value]) => (
@@ -292,7 +341,16 @@ function ItemEditor({ item, review, draft, onChange, onDone }: EditorProps) {
       </PanelSection>
 
       <PanelSection>
-        <SectionHeading>Fields</SectionHeading>
+        <SectionHeading>Details</SectionHeading>
+        <FieldInputs>
+          {BOOK_FIELDS.map((field) => (
+            <FieldInput key={field.key} field={field} value={draft.fields[field.key] ?? ''} onChange={(text) => set('fields', { ...draft.fields, [field.key]: text })} />
+          ))}
+        </FieldInputs>
+      </PanelSection>
+
+      <PanelSection>
+        <SectionHeading>Other fields</SectionHeading>
         <KeyValueEditor keyPlaceholder="field" entries={draft.metadata} onChange={(metadata) => set('metadata', metadata)} />
       </PanelSection>
 
@@ -319,5 +377,22 @@ function ItemEditor({ item, review, draft, onChange, onDone }: EditorProps) {
         </Button>
       </PanelFooter>
     </div>
+  );
+}
+
+function FieldInput({ field, value, onChange }: { field: BookField; value: string; onChange(text: string): void }) {
+  return (
+    <label>
+      {field.label}
+      <span>
+        {field.kind === 'color' && /^#[0-9a-f]{6}$/i.test(value) && <Swatch $color={value} />}
+        <input
+          value={value}
+          placeholder={field.hint}
+          {...(field.kind === 'number' && { inputMode: 'decimal' as const })}
+          onChange={(e) => onChange(e.target.value)}
+        />
+      </span>
+    </label>
   );
 }

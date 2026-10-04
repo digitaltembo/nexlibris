@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Plain http is allowed because a sync hub (the desktop app) serves its API over http on the local
+  network, at an address only known once paired, which a domain-config can't name. The app's own
+  pages are served from assets over https; the WebView doesn't use this for them.
+-->
+<network-security-config xmlns:tools="http://schemas.android.com/tools">
+    <base-config cleartextTrafficPermitted="true" tools:ignore="InsecureBaseConfiguration" />
+</network-security-config>
