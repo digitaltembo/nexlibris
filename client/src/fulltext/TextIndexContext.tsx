@@ -1,9 +1,24 @@
 import type { FileRef, Item } from '@nexlibris/common';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useLibrary } from '../library/LibraryContext';
-import { EXTRACTOR_VERSION, type TextDoc } from './extract';
+import { EXTRACTOR_VERSION } from './extract';
 import type { BookMatch } from './match';
 import { parseTextQuery, TextIndex, textFile } from './textIndex';
+import type { TextWork } from './textWork';
+import { startTextWork } from './textWorker';
+import type { Remote } from './workerRpc';
+
+/** The text worker as a {@link Remote}, started when it's first called. */
+function lazyWork(): Remote<TextWork> {
+  let started: Promise<Remote<TextWork>> | undefined;
+  return new Proxy({} as Remote<TextWork>, {
+    get: (_, method: keyof TextWork | 'then') =>
+      method === 'then' ? undefined : async (...args: unknown[]) => {
+        started ??= startTextWork();
+        return ((await started)[method] as (...a: unknown[]) => Promise<unknown>)(...args);
+      },
+  });
+}
 
 interface TextIndexState {
   index: TextIndex;
@@ -33,7 +48,9 @@ const restAfter = (workedMs: number) => Math.min(2000, Math.max(30, workedMs));
  */
 export function TextIndexProvider({ children }: { children: ReactNode }) {
   const { backend, library } = useLibrary();
-  const index = useMemo(() => new TextIndex(backend), [backend]);
+  // One worker for the page, started on first use.
+  const work = useMemo(() => lazyWork(), []);
+  const index = useMemo(() => new TextIndex(backend, work), [backend, work]);
   const [progress, setProgress] = useState<TextIndexState['progress']>();
   const [revision, setRevision] = useState(0);
   const items = useRef<Item[]>([]);
@@ -108,7 +125,6 @@ export function useTextIndex(): TextIndexState {
 export interface TextHit {
   item: Item;
   file: FileRef;
-  doc: TextDoc;
   match: BookMatch;
 }
 
@@ -172,9 +188,9 @@ export function useTextSearch(query: string, items: Item[], limit = Infinity): T
       const hits: TextHit[] = [];
       for (const candidate of await index.candidates(items, terms)) {
         if (cancelled) return;
-        const found = await index.match(candidate.file.hash, terms);
-        if (found) {
-          hits.push({ item: candidate.item, file: candidate.file, ...found });
+        const match = await index.match(candidate.file.hash, terms);
+        if (match) {
+          hits.push({ item: candidate.item, file: candidate.file, match });
           if (!cancelled && !again) setState({ hits: [...hits], searching: true, coverage });
         }
         if (hits.length >= limit) break;

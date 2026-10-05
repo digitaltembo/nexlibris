@@ -13,6 +13,7 @@ import {
   type FileProgress,
   type FileTransferResult,
   type FirstSyncMode,
+  type NewPairing,
   type PairedPeer,
   type Pairing,
   type PairingCode,
@@ -41,6 +42,7 @@ import {
 import { bluetoothHost, bluetoothSyncHub } from '../sync/bluetoothHost';
 import { connectHub, describeAddress, transportOf, type HubConnection, type Transport } from '../sync/connect';
 import { describeConflict } from '../sync/describe';
+import { formatSize } from './ItemFiles';
 import {
   androidFolderPath,
   canSyncThroughFolder,
@@ -52,10 +54,11 @@ import {
 } from '../sync/folder';
 import { syncHost } from '../sync/hosting';
 import { fileFetched } from '../sync/files';
-import { addInstances, keptBy } from '../sync/instances';
+import { addInstances, EVERY_BOOK, keptBy, letGo, type LeftBooks } from '../sync/instances';
 import { canSyncOverNetwork, hubClient, instanceName } from '../sync/hub';
 import { Button, Muted, Row, Spacer } from '../styles/ui';
 import { CameraScanner } from './CameraScanner';
+import { KeptBooks, PeerKeptBooks } from './KeptBooks';
 import { Modal, ModalFooter } from './Modal';
 import { QrCode } from './QrCode';
 
@@ -126,7 +129,7 @@ const Form = styled.form`
 `;
 
 const errorMessage = (e: unknown) => (e instanceof Error ? e.message : String(e));
-const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
+const plural = (n: number, word: string, many = `${word}s`) => `${n} ${n === 1 ? word : many}`;
 const when = (iso: string | undefined) => (iso ? new Date(iso).toLocaleString() : 'never');
 
 /**
@@ -202,6 +205,13 @@ function NetworkHosting() {
   const [checkedAt, setCheckedAt] = useState(0);
   /** How many devices were paired when the code was made, to see when one more is. */
   const pairedBefore = useRef(0);
+  /** The books whose files the next device to pair keeps, carried by its code. */
+  const [keep, setKeep] = useState(EVERY_BOOK);
+  const newCode = (keepFiles: string) =>
+    void run(async () => {
+      pairedBefore.current = status?.peers.length ?? 0;
+      setCode(await syncHost().newCode({ keepFiles }));
+    });
 
   const run = async (task: () => Promise<SyncHostStatus | void>) => {
     setError(undefined);
@@ -249,13 +259,7 @@ function NetworkHosting() {
             {status.enabled ? 'Turn off' : 'Turn on'}
           </Button>
           {status.enabled && (
-            <Button $variant="secondary" disabled={!address} onClick={() =>
-                void run(async () => {
-                  pairedBefore.current = status.peers.length;
-                  setCode(await syncHost().newCode(null));
-                })
-              }
-            >
+            <Button $variant="secondary" disabled={!address} onClick={() => newCode(keep)}>
               Pair a device…
             </Button>
           )}
@@ -270,6 +274,16 @@ function NetworkHosting() {
         <Section>
           <h3>Pair a device</h3>
           <Muted as="p">In nexlibris on the other device, add a connection to another nexlibris (“A computer on this network”), and scan this or enter the address and code.</Muted>
+          <p>
+            <KeptBooks
+              name="the device"
+              query={keep}
+              onChange={(query) => {
+                setKeep(query);
+                newCode(query);
+              }}
+            />
+          </p>
           <QrCode text={pairingText(address, shownCode.code)} label={`Pairing code ${shownCode.code} for ${address}`} />
           <p>
             <Code>{address}</Code>
@@ -292,6 +306,7 @@ function NetworkHosting() {
                 <Button $variant="secondary" $size="small" onClick={() => void run(() => syncHost().unpair({ origin: peer.origin }))}>
                   Forget
                 </Button>
+                <PeerKeptBooks origin={peer.origin} name={peer.name} />
               </li>
             ))}
           </List>
@@ -308,7 +323,9 @@ type Step =
   | { kind: 'preview'; preview: SyncPreview }
   | { kind: 'syncing'; preview: SyncPreview }
   | { kind: 'files'; result: SyncResult; progress?: FileProgress }
-  | { kind: 'done'; result: SyncResult; files?: FileTransferResult; filesError?: string };
+  | { kind: 'done'; result: SyncResult; files?: FileTransferResult; filesError?: string; left?: LeftBooks };
+
+
 
 /**
  * Previewing and running syncs with a connected instance, as the connection's Sync. Afterwards,
@@ -394,7 +411,12 @@ export function SyncInstance({
         onProgress: (progress) => setStep({ kind: 'files', result, progress }),
       });
       if (moved.downloaded) fileFetched();
-      setStep({ kind: 'done', result, files: moved });
+      const left = await letGo(backend, files, result);
+      if (left) {
+        setPairing(left.pairing);
+        await refresh();
+      }
+      setStep({ kind: 'done', result, files: moved, ...(left && { left: left.left }) });
     } catch (e) {
       setStep({ kind: 'done', result, filesError: errorMessage(e) });
     }
@@ -431,7 +453,14 @@ export function SyncInstance({
       {step.kind === 'files' && <FilesProgress progress={step.progress} hubName={name} />}
 
       {step.kind === 'done' && (
-        <ResultView result={step.result} files={step.files} filesError={step.filesError} hubName={name} throughFolder={throughFolder} />
+        <ResultView
+          result={step.result}
+          files={step.files}
+          filesError={step.filesError}
+          left={step.left}
+          hubName={name}
+          throughFolder={throughFolder}
+        />
       )}
 
       {error && <ErrorText>{error}</ErrorText>}
@@ -464,7 +493,8 @@ export function SyncInstance({
 }
 
 export interface PairProps {
-  onPaired(pairing: Pairing, first?: FirstSyncMode): void;
+  /** With the books whose files the hub chose for this instance, if it did (`NewPairing.chosenFiles`). */
+  onPaired(pairing: NewPairing, first?: FirstSyncMode): void;
   onBack(): void;
 }
 
@@ -726,6 +756,8 @@ function BluetoothHosting() {
   const [status, setStatus] = useState<BluetoothHostStatus>();
   const [peers, setPeers] = useState<PairedPeer[]>([]);
   const [code, setCode] = useState<PairingCode>();
+  /** The books whose files the next device to pair keeps, carried by its code. */
+  const [keep, setKeep] = useState(EVERY_BOOK);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
 
@@ -773,7 +805,7 @@ function BluetoothHosting() {
           {status?.enabled ? 'Turn off' : 'Turn on'}
         </Button>
         {status?.running && (
-          <Button $variant="secondary" onClick={() => setCode(bluetoothSyncHub()?.newCode())}>
+          <Button $variant="secondary" onClick={() => setCode(bluetoothSyncHub()?.newCode({ keepFiles: keep }))}>
             Pair a device…
           </Button>
         )}
@@ -790,6 +822,16 @@ function BluetoothHosting() {
           <Muted as="p">
             On the computer, add a connection to another nexlibris (“A phone over Bluetooth”), choose {status?.name ? `“${status.name}”` : 'this phone'}, and enter:
           </Muted>
+          <p>
+            <KeptBooks
+              name="the computer"
+              query={keep}
+              onChange={(query) => {
+                setKeep(query);
+                setCode(bluetoothSyncHub()?.newCode({ keepFiles: query }));
+              }}
+            />
+          </p>
           <p>
             <Code>{code.code}</Code>
           </p>
@@ -810,6 +852,7 @@ function BluetoothHosting() {
               >
                 Forget
               </Button>
+              <PeerKeptBooks origin={peer.origin} name={peer.name} />
             </li>
           ))}
         </List>
@@ -913,6 +956,12 @@ function FilesProgress({ progress, hubName }: { progress?: FileProgress; hubName
             ? `Sending files to ${hubName}: ${progress.done} of ${progress.total}`
             : `Fetching files from ${hubName}: ${progress.done} of ${progress.total}`}
       </Muted>
+      {progress?.direction === 'download' && progress.books !== undefined && (
+        <Muted as="p">
+          {plural(progress.books, 'book’s file', 'books’ files')} and {plural(progress.total - progress.books, 'cover')}
+          {progress.notKept ? `; ${plural(progress.notKept, 'book’s file', 'books’ files')} not chosen for here, left on ${hubName} until opened` : ''}.
+        </Muted>
+      )}
       {progress && <progress value={progress.done} max={Math.max(progress.total, 1)} />}
     </Section>
   );
@@ -922,12 +971,14 @@ function ResultView({
   result,
   files,
   filesError,
+  left,
   hubName,
   throughFolder,
 }: {
   result: SyncResult;
   files?: FileTransferResult;
   filesError?: string;
+  left?: LeftBooks;
   hubName: string;
   throughFolder?: boolean;
 }) {
@@ -968,6 +1019,13 @@ function ResultView({
         </ErrorText>
       )}
       {filesError && <ErrorText>The files weren’t moved: {filesError} Sync again to retry.</ErrorText>}
+      {left && (
+        <Muted as="p">
+          {plural(left.books, 'book')} no longer chosen for here {left.books === 1 ? 'was' : 'were'} removed from this
+          library (still on {hubName})
+          {left.files > 0 && `, freeing ${formatSize(left.bytes)}`}.
+        </Muted>
+      )}
     </Section>
   );
 }

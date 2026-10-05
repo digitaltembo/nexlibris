@@ -11,7 +11,7 @@ import {
   type Library,
 } from '@nexlibris/common';
 import { describe, expect, it } from 'vitest';
-import { listDevice, planSync } from './plan';
+import { listDevice, planSync, type PlanOptions } from './plan';
 import { runSync } from './run';
 import type { Converter } from '../formats/convert/converters';
 import type { DeviceTarget, DeviceType, RemoteFile } from './types';
@@ -93,10 +93,10 @@ const withMetadata: DeviceType = {
   },
 };
 
-async function sync(backend: StoredLibraryBackend, deviceId: string, target: FakeDevice, deviceType = type) {
+async function sync(backend: StoredLibraryBackend, deviceId: string, target: FakeDevice, deviceType = type, options?: PlanOptions) {
   const library = await backend.getLibrary();
   const device = library.devices![deviceId]!;
-  const plan = planSync(library, device, deviceType, await listDevice(device, deviceType, target));
+  const plan = planSync(library, device, deviceType, await listDevice(device, deviceType, target), options);
   const result = await runSync(deviceId, plan, target, backend, deviceType.prepare);
   await backend.apply(result.operations);
   return { plan, result, device: (await backend.getLibrary()).devices![deviceId]! };
@@ -215,8 +215,14 @@ describe('device sync', () => {
     const target = new FakeDevice();
     target.files.set('/Books/Dune - Frank Herbert.epub', 'my own copy');
     target.files.set('/Books/Other.epub', 'someone else');
+    // Not taking copies already there, one where a book goes is in the way.
+    const refused = planSync(await backend.getLibrary(), (await backend.getLibrary()).devices![deviceId]!, type, await listDevice((await backend.getLibrary()).devices![deviceId]!, type, target), { keepFound: false });
+    expect(refused.conflicts).toMatchObject([{ path: '/Books/Dune - Frank Herbert.epub' }]);
+    // Taking them, it's Dune's copy, kept as it is.
     const first = await sync(backend, deviceId, target);
-    expect(first.plan.conflicts).toMatchObject([{ path: '/Books/Dune - Frank Herbert.epub' }]);
+    expect(first.plan.conflicts).toEqual([]);
+    expect(first.plan.kept.map((k) => k.path)).toEqual(['/Books/Dune - Frank Herbert.epub']);
+    expect(first.result).toMatchObject({ sent: 1, kept: 1 });
     expect(target.files.get('/Books/Dune - Frank Herbert.epub')).toBe('my own copy');
 
     // Edited on the device: no longer the sync's, so it's neither replaced nor removed.
@@ -224,7 +230,7 @@ describe('device sync', () => {
     await backend.apply([{ type: 'removeDeviceItems', id: deviceId, itemIds: [emma.id] }]);
     const second = await sync(backend, deviceId, target);
     expect(second.plan.removals).toEqual([]);
-    expect(second.device.placed).toEqual({});
+    expect(Object.keys(second.device.placed)).toEqual(['/Books/Dune - Frank Herbert.epub']);
     expect(target.files.get('/Books/Emma A Novel - Jane Austen.epub')).toBe('emma, annotated on the device');
     expect(target.files.get('/Books/Other.epub')).toBe('someone else');
   });
@@ -305,5 +311,139 @@ describe('device sync', () => {
     const { plan } = await sync(backend, device.id, target);
     expect(plan.removals).toEqual(['/Books/Ancillary Sword - Ann Leckie.epub']);
     expect([...target.files.keys()].sort()).toEqual(['/Books/Ancillary Justice - Ann Leckie.epub', '/Books/Notes - Ann Leckie.epub']);
+  });
+});
+
+/** A device that can move files, and keeps folders, which it removes only when empty. */
+class MovingDevice extends FakeDevice {
+  moves: string[] = [];
+  async move(from: string, to: string) {
+    if (!this.folders.has(to.slice(0, to.lastIndexOf('/')))) throw new Error(`no folder for ${to}`);
+    this.files.set(to, this.files.get(from)!);
+    this.files.delete(from);
+    this.moves.push(`${from} → ${to}`);
+  }
+  override async remove(path: string) {
+    if (this.files.delete(path)) return;
+    const inside = (p: string) => p.startsWith(`${path}/`);
+    if ([...this.files.keys(), ...this.folders].some(inside)) throw new Error('Folder is not empty');
+    this.folders.delete(path);
+  }
+}
+
+describe('device sync with path templates', () => {
+  const templated = (folder: string, fileName?: string): DeviceType => ({
+    ...type,
+    folder: () => folder,
+    ...(fileName && { fileName: () => fileName }),
+  });
+  const syncWith = async (backend: StoredLibraryBackend, deviceId: string, target: FakeDevice, deviceType: DeviceType) => {
+    const library = await backend.getLibrary();
+    const device = library.devices![deviceId]!;
+    const plan = planSync(library, device, deviceType, await listDevice(device, deviceType, target, library));
+    const result = await runSync(deviceId, plan, target, backend, undefined);
+    await backend.apply(result.operations);
+    return { plan, result };
+  };
+
+  it('puts books where the templates say, and moves them when the templates change', async () => {
+    const { backend, deviceId } = await setup();
+    const target = new MovingDevice();
+    await syncWith(backend, deviceId, target, templated('/library/<author>/<title>/'));
+    expect([...target.files.keys()]).toEqual([
+      '/library/Frank Herbert/Dune/Dune - Frank Herbert.epub',
+      '/library/Jane Austen/Emma A Novel/Emma A Novel - Jane Austen.epub',
+    ]);
+
+    const { plan, result } = await syncWith(backend, deviceId, target, templated('/library/<authorSort>', '<title>'));
+    expect(plan.uploads).toEqual([]);
+    expect(target.moves).toEqual([
+      '/library/Frank Herbert/Dune/Dune - Frank Herbert.epub → /library/Herbert, Frank/Dune.epub',
+      '/library/Jane Austen/Emma A Novel/Emma A Novel - Jane Austen.epub → /library/Austen, Jane/Emma A Novel.epub',
+    ]);
+    expect(result).toMatchObject({ sent: 0, moved: 2, removed: 0, errors: [] });
+    // The folders they left are gone (the fake makes only the folders asked for, not their parents).
+    expect([...target.folders].filter((f) => f.startsWith('/library')).sort()).toEqual(['/library/Austen, Jane', '/library/Herbert, Frank']);
+
+    const again = await syncWith(backend, deviceId, target, templated('/library/<authorSort>', '<title>'));
+    expect(again.plan).toMatchObject({ uploads: [], moves: [], removals: [], unchanged: 2 });
+  });
+
+  it('sends books again where the device can’t move them', async () => {
+    const { backend, deviceId } = await setup();
+    const target = new FakeDevice();
+    await syncWith(backend, deviceId, target, templated('/Books'));
+    const { plan } = await syncWith(backend, deviceId, target, templated('/Books/<author>'));
+    expect(plan.moves).toEqual([]);
+    expect(plan.uploads.map((u) => [u.path, u.supersedes])).toEqual([
+      ['/Books/Frank Herbert/Dune - Frank Herbert.epub', '/Books/Dune - Frank Herbert.epub'],
+      ['/Books/Jane Austen/Emma A Novel - Jane Austen.epub', '/Books/Emma A Novel - Jane Austen.epub'],
+    ]);
+    expect([...target.files.keys()].sort()).toEqual(['/Books/Frank Herbert/Dune - Frank Herbert.epub', '/Books/Jane Austen/Emma A Novel - Jane Austen.epub']);
+  });
+
+  it('leaves alone a file it didn’t send at a book’s new path that isn’t that book', async () => {
+    const { backend, deviceId, dune } = await setup();
+    const target = new MovingDevice();
+    target.files.set('/Books/Frank Herbert/Dune - Frank Herbert.pdf', 'a pdf');
+    const typePdf: DeviceType = { ...templated('/Books/<author>'), formats: ['pdf', 'epub'] };
+    await backend.apply([{ type: 'attachFile', id: dune.id, file: { ...(await backend.putFile(new Blob(['dune pdf']))), format: 'pdf' } }]);
+    const library = await backend.getLibrary();
+    const device = library.devices![deviceId]!;
+    const plan = planSync(library, device, typePdf, await listDevice(device, typePdf, target, library), { keepFound: false });
+    expect(plan.conflicts).toEqual([{ path: '/Books/Frank Herbert/Dune - Frank Herbert.pdf', itemId: dune.id, reason: 'A file nexlibris didn’t send is already there.' }]);
+  });
+
+  it('takes copies of chosen books already on the device as theirs, moving them where they go', async () => {
+    const { backend, deviceId, dune, emma } = await setup();
+    const target = new MovingDevice();
+    target.folders.add('/Calibre/Herbert');
+    target.files.set('/Calibre/Herbert/Dune.epub', 'dune from calibre');
+    target.files.set('/library/Jane Austen/Emma A Novel.epub', 'emma from calibre');
+    target.files.set('/Calibre/Stranger.epub', 'not in the library');
+    const deviceType = templated('/library/<author>', '<title>');
+    const library = await backend.getLibrary();
+    const device = library.devices![deviceId]!;
+    const listing = await listDevice(device, deviceType, target, library);
+    // The device's index knows Dune by its metadata, wherever it is; Emma is found by its name where it goes.
+    const found = [
+      { path: '/Calibre/Herbert/Dune.epub', size: 17, title: 'Dune', author: 'Frank Herbert' },
+      { path: '/Calibre/Stranger.epub', size: 18, title: 'Stranger', author: 'Nobody' },
+      ...listing.files,
+    ];
+    const plan = planSync(library, device, deviceType, { ...listing, found });
+    expect(plan.uploads).toEqual([]);
+    expect(plan.moves).toMatchObject([{ from: '/Calibre/Herbert/Dune.epub', to: '/library/Frank Herbert/Dune.epub', found: true }]);
+    expect(plan.kept).toMatchObject([{ path: '/library/Jane Austen/Emma A Novel.epub', placed: { itemId: emma.id, found: true } }]);
+    const result = await runSync(deviceId, plan, target, backend, undefined);
+    await backend.apply(result.operations);
+    expect(result).toMatchObject({ sent: 0, moved: 1, kept: 1, errors: [] });
+    expect(target.files.get('/library/Frank Herbert/Dune.epub')).toBe('dune from calibre');
+    expect(target.files.get('/Calibre/Stranger.epub')).toBe('not in the library');
+
+    // Dune's library file is the optimized x4.epub, which the found copy stands for: nothing to do now.
+    const again = await syncWith(backend, deviceId, target, deviceType);
+    expect(again.plan).toMatchObject({ uploads: [], moves: [], kept: [], unchanged: 2 });
+    // Once the library's file changes, nexlibris's copy replaces it.
+    const { hash, size } = await backend.putFile(new Blob(['dune x4, second edition']));
+    await backend.apply([
+      { type: 'detachFile', id: dune.id, hash: dune.files.find((f) => f.format === 'x4.epub')!.hash },
+      { type: 'attachFile', id: dune.id, file: { hash, size, format: 'x4.epub' } },
+    ]);
+    await syncWith(backend, deviceId, target, deviceType);
+    expect(target.files.get('/library/Frank Herbert/Dune.epub')).toBe('dune x4, second edition');
+  });
+
+  it('takes found copies that need converting as current, rather than sending them again', async () => {
+    const { backend, deviceId, emma } = await setup();
+    const converter = { id: 'test.x4', version: 1, from: ['epub'], to: 'x4.epub' } as unknown as Converter;
+    const converting: DeviceType = { ...type, makes: () => converter };
+    const target = new MovingDevice();
+    target.files.set('/Books/Emma A Novel - Jane Austen.epub', 'optimized elsewhere');
+    const first = await sync(backend, deviceId, target, converting);
+    expect(first.plan.kept).toMatchObject([{ placed: { itemId: emma.id, hash: emma.files[0]!.hash, found: true } }]);
+    const second = await sync(backend, deviceId, target, converting);
+    expect(second.plan.uploads).toEqual([]);
+    expect(target.files.get('/Books/Emma A Novel - Jane Austen.epub')).toBe('optimized elsewhere');
   });
 });

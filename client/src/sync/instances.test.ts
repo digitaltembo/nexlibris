@@ -1,6 +1,6 @@
 import { applyOperations, createItem, createLibrary, MemoryStorage, readPairings, savePairing, StoredLibraryBackend, type Library, type Operation } from '@nexlibris/common';
 import { describe, expect, it } from 'vitest';
-import { addInstances, carryOverPairings, EVERY_BOOK, folderKeepRule, INSTANCE_TYPE, keptBy } from './instances';
+import { addInstances, carryOverPairings, EVERY_BOOK, folderKeepRule, INSTANCE_TYPE, keptBy, pairedConnections } from './instances';
 
 const file = (c: string) => ({ hash: c.repeat(64), size: 1, format: 'epub' });
 const reading = createItem({ title: 'Reading', tags: ['reading'], files: [file('a')] });
@@ -53,5 +53,20 @@ describe('instance connections', () => {
     expect((await readPairings(backend))[0]!.keepFiles).toBeUndefined();
     // Once is enough.
     expect(await carryOverPairings(backend, 'Pixel')).toBeUndefined();
+  });
+
+  it('gives a newly paired instance the books the hub chose, and the hub a connection', () => {
+    const library = createLibrary('Phone');
+    const hub = { origin: 'desktop-origin', name: 'Desktop', libraryName: 'Books' };
+    const pairing = { hub, address: 'http://x', key: 'k', truth: 'theirs' as const, chosenFiles: 'tag:travel' };
+    const after = applyOperations(library, pairedConnections(library, pairing, 'Pixel')).library;
+    expect(after.devices![library.origin]).toMatchObject({ name: 'Pixel', type: INSTANCE_TYPE, query: 'tag:travel' });
+    expect(after.devices![hub.origin]).toMatchObject({ name: 'Desktop', query: EVERY_BOOK });
+
+    // Paired again with another choice: this instance's connection takes it; with none, it's left as it is.
+    const again = applyOperations(after, pairedConnections(after, { ...pairing, chosenFiles: 'rating:4+' }, 'Pixel')).library;
+    expect(again.devices![library.origin]!.query).toBe('rating:4+');
+    const { chosenFiles: _, ...plain } = pairing;
+    expect(pairedConnections(again, plain, 'Pixel')).toEqual([]);
   });
 });

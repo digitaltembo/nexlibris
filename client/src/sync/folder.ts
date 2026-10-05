@@ -41,18 +41,6 @@ export class HandleStorage extends OpfsStorage implements FolderStorage {
     for await (const name of (folder as unknown as { keys(): AsyncIterable<string> }).keys()) if (!name.startsWith('.')) names.push(name);
     return names;
   }
-
-  async remove(path: string): Promise<void> {
-    const parts = path.split('/');
-    const name = parts.pop()!;
-    try {
-      let folder = this.root;
-      for (const part of parts) folder = await folder.getDirectoryHandle(part);
-      await folder.removeEntry(name);
-    } catch (e) {
-      if (!(e instanceof DOMException && e.name === 'NotFoundError')) throw e;
-    }
-  }
 }
 
 const usbFolder = () => createMessageClient(usbFolderApiMeta, androidTransport()).usbFolder;
@@ -62,7 +50,6 @@ function androidFolder(): { storage: FolderStorage; copy: FolderCopy } {
   const api = usbFolder();
   const storage = Object.assign(new RpcStorage(api), {
     list: (dir: string) => api.list({ path: dir }),
-    remove: async (path: string) => void (await api.remove({ path })),
   });
   return {
     storage,

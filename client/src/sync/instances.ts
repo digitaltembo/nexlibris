@@ -1,15 +1,22 @@
 import {
   createDevice,
+  leaveOutside,
   readPairings,
   savePairing,
   type Device,
+  type HubFiles,
   type Item,
   type KeepRule,
   type Library,
   type LibraryBackend,
+  type NewPairing,
+  type Pairing,
+  type SyncResult,
   type Operation,
+  type ScopeRule,
 } from '@nexlibris/common';
 import { deviceItems } from '../devices/selection';
+import { freeFiles, itemFiles, type Freed } from '../library/freeFiles';
 import { keepRule } from './files';
 
 /**
@@ -44,6 +51,21 @@ export function addInstances(library: Library, instances: InstanceInfo[], query 
   return ops;
 }
 
+/**
+ * Connections for both sides of a pairing just made, so the other shows here now (they reach the
+ * other side on the sync). This instance's keeps the files the hub chose when it showed the code,
+ * if it chose (replacing an earlier choice), so even the first sync fetches only those.
+ */
+export function pairedConnections(library: Library, pairing: NewPairing, selfName: string): Operation[] {
+  const chosen = pairing.chosenFiles;
+  const own = library.devices?.[library.origin];
+  return [
+    ...addInstances(library, [{ origin: library.origin, name: selfName }], chosen ?? EVERY_BOOK),
+    ...(own && chosen && own.query !== chosen ? [{ type: 'updateDevice' as const, id: own.id, patch: { query: chosen } }] : []),
+    ...addInstances(library, [{ origin: pairing.hub.origin, name: pairing.hub.name }]),
+  ];
+}
+
 /** Which items' files an instance keeps, by its connection; undefined (all of them) when it has none. */
 export function keptBy(library: Library, origin: string): ((item: Item) => boolean) | undefined {
   const device = library.devices?.[origin];
@@ -51,6 +73,22 @@ export function keptBy(library: Library, origin: string): ((item: Item) => boole
   const kept = new Set(deviceItems(library, device).map((item) => item.id));
   return (item) => kept.has(item.id);
 }
+
+/**
+ * The books a hub shows an instance (`scope.ts`): those its connection picks, and every one when it
+ * keeps every book's files (the connection's `has:file` doesn't leave out books without files here)
+ * or has no connection and sent no rules. Books kept off it (`Device.excluded`) are left out either way.
+ */
+export const instanceScope: ScopeRule = (library, origin, keeps) => {
+  const device = library.devices?.[origin];
+  if (!device) return keeps?.trim() === EVERY_BOOK ? undefined : keepRule(keeps, library);
+  if (!isInstanceConnection(device)) return undefined;
+  if (device.query?.trim() === EVERY_BOOK) {
+    const excluded = new Set(device.excluded);
+    return excluded.size ? (item) => !excluded.has(item.id) : undefined;
+  }
+  return keptBy(library, origin);
+};
 
 /** For a folder hub: a device's connection where the library has one, else the search it recorded there. */
 export const folderKeepRule: KeepRule = (peer, library) => keptBy(library, peer.origin) ?? keepRule(peer.keepFiles, library);
@@ -77,4 +115,24 @@ export async function carryOverPairings(backend: LibraryBackend, name: string): 
     await savePairing(backend, rest);
   }
   return updated;
+}
+
+/** Books let go of after a sync, as this instance's connection no longer picks them, and the space their files took. */
+export interface LeftBooks extends Freed {
+  books: number;
+}
+
+/**
+ * After a sync and its files: lets go of the books this instance's connection no longer picks
+ * (`SyncResult.outside`), those whose files and cover the hub has, and deletes their files here.
+ */
+export async function letGo(backend: LibraryBackend, files: HubFiles, result: SyncResult): Promise<{ pairing: Pairing; left: LeftBooks } | undefined> {
+  const library = await backend.getLibrary();
+  const outside = result.outside.map((id) => library.items[id]).filter((item): item is Item => !!item);
+  if (!outside.length) return undefined;
+  const lacking = new Set(await files.missing([...new Set(outside.flatMap(itemFiles))]));
+  const gone = outside.filter((item) => !itemFiles(item).some((hash) => lacking.has(hash)));
+  if (!gone.length) return undefined;
+  const pairing = await leaveOutside(backend, result.pairing, gone.map((item) => item.id));
+  return { pairing, left: { books: gone.length, ...(await freeFiles(backend, gone)) } };
 }

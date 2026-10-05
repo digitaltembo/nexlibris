@@ -50,7 +50,8 @@ function itemPart(library: Library, item: Item) {
 }
 
 function devicePart(device: Device) {
-  return { name: device.name, query: device.query, settings: device.settings, items: [...device.items].sort(), placed: device.placed };
+  const excluded = device.excluded?.length ? [...device.excluded].sort() : undefined;
+  return { name: device.name, query: device.query, settings: device.settings, items: [...device.items].sort(), excluded, placed: device.placed };
 }
 
 const compare = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
@@ -135,6 +136,7 @@ export function planRepair(source: Library, dest: Library, parts?: string[]): Re
       fix(['device', id, 'query']);
       for (const key of new Set([...Object.keys(a.settings), ...Object.keys(b.settings)])) fix(['device', id, 'setting', key]);
       for (const itemId of new Set([...a.items, ...b.items])) fix(['device', id, 'item', itemId]);
+      for (const itemId of new Set([...(a.excluded ?? []), ...(b.excluded ?? [])])) fix(['device', id, 'excluded', itemId]);
       for (const path of new Set([...Object.keys(a.placed), ...Object.keys(b.placed)])) fix(['device', id, 'placed', path]);
     }
   }

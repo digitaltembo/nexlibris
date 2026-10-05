@@ -5,6 +5,8 @@ import { parseXml } from '../formats/xml';
 import { extractText, MAX_BOOK_TEXT, MAX_SECTION_SOURCE, type TextDoc } from './extract';
 import { findPassages, locate, parseTextQuery, placeOf, score, wordList } from './match';
 import { TextIndex } from './textIndex';
+import { TextWork } from './textWork';
+import { inThread } from './workerRpc';
 
 const epub = () =>
   buildEpub({
@@ -139,7 +141,7 @@ describe('TextIndex', () => {
       const { hash, size } = await backend.putFile(new Blob([text!]));
       items.push(createItem({ title: title!, files: [{ hash, size, format: 'txt' }] }));
     }
-    const index = new TextIndex(backend);
+    const index = new TextIndex(backend, inThread(new TextWork()));
     for (const { file } of await index.pending(items)) await index.add(file);
     expect(await index.pending(items)).toEqual([]);
 
@@ -151,8 +153,14 @@ describe('TextIndex', () => {
     ]);
     expect((await index.candidates(items, parseTextQuery('harpoon'))).map((r) => r.item.title)).toEqual(['Jaws', 'Moby-Dick']);
 
+    // Stored compressed, and read back after the worker has let go of them.
+    const jaws = items[1]!.files[0]!.hash;
+    expect((await backend.readLocalFile(`fulltext/${jaws}.json.gz`))!.size).toBeGreaterThan(0);
+    const fresh = new TextIndex(backend, inThread(new TextWork()));
+    expect((await fresh.match(jaws, parseTextQuery('shark')))?.passages[0]).toMatchObject({ snippet: 'A shark, then a whale, then a harpoon, then another harpoon.', locator: (2 / 60).toFixed(4) });
+
     await index.prune(items.slice(1));
-    expect(await backend.readLocalState(`fulltext-${items[0]!.files[0]!.hash}`)).toBeNull();
+    expect(await backend.readLocalFile(`fulltext/${items[0]!.files[0]!.hash}.json.gz`)).toBeUndefined();
     expect((await index.candidates(items.slice(1), parseTextQuery('harpoon'))).map((r) => r.item.title)).toEqual(['Jaws']);
   });
 });

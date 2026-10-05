@@ -1,7 +1,9 @@
 import { hashBlob, type Device, type Item, type Library, type LibraryBackend, type Operation, type PlacedFile } from '@nexlibris/common';
-import { importFiles, loose } from '../library/importFiles';
-import { chooseFile, desiredFiles, type Wanted } from './plan';
-import { deviceItems } from './selection';
+import { importFiles } from '../library/importFiles';
+import { matchItem } from './match';
+import { chooseFile, desiredFiles, isCurrent, type Wanted } from './plan';
+import { addToDevice, deviceItems } from './selection';
+export { matchItem } from './match';
 import { isDevice, type ConnectionType, type DeviceTarget, type RemoteBook } from './types';
 
 /**
@@ -78,29 +80,7 @@ function placedStatus(
   if (!plan) return 'current';
   // Not wanted at this path: the sync sends it again under its own name, replacing this copy.
   if (!wanted) return 'update';
-  return !wanted.convert && wanted.file.hash === placed.hash && wanted.key === placed.key ? 'current' : 'update';
-}
-
-/** The file name without the folder or the extension (`.x4.epub` included). */
-const stem = (path: string) => path.slice(path.lastIndexOf('/') + 1).replace(/(\.x[34])?\.[^.]+$/i, '');
-
-/**
- * The library item a book on a connection is: the same title and an author in common, from what
- * the connection knows of it, or else its file named as a sync names books (`Title - Author`).
- */
-export function matchItem(library: Library, book: RemoteBook): Item | undefined {
-  const items = Object.values(library.items);
-  const title = book.title && loose(book.title);
-  const author = book.author && loose(book.author);
-  if (title && author) {
-    const found = items.find((item) => loose(item.title) === title && item.creators.some((c) => loose(c.name) === author));
-    if (found) return found;
-  }
-  const name = loose(stem(book.path));
-  return items.find((item) => {
-    const author = item.creators[0]?.name;
-    return loose(author ? `${item.title} - ${author}` : item.title) === name;
-  });
+  return isCurrent(placed, wanted) ? 'current' : 'update';
 }
 
 /**
@@ -112,8 +92,8 @@ export function linkOperations(library: Library, device: Device, type: Connectio
   const choice = chooseFile(item, type, type.makes?.(device));
   if (!choice) throw new Error(`${item.title} has no file this connection takes, so a sync would remove it.`);
   const ops: Operation[] = [];
-  if (!deviceItems(library, device).some((i) => i.id === item.id)) ops.push({ type: 'addDeviceItems', id: device.id, itemIds: [item.id] });
-  const placed: PlacedFile = { itemId: item.id, hash: choice.file.hash, size: book.size };
+  if (!deviceItems(library, device).some((i) => i.id === item.id)) ops.push(...addToDevice(device, [item.id]));
+  const placed: PlacedFile = { itemId: item.id, hash: choice.file.hash, size: book.size, linked: true, found: true };
   const key = type.prepare?.key(item, choice.file);
   if (key !== undefined) placed.key = key;
   ops.push({ type: 'recordDeviceSync', id: device.id, placed: { [book.path]: placed }, removed: [] });

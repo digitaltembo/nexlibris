@@ -9,6 +9,8 @@ export interface Storage {
   readBlob(path: string): Promise<Blob | undefined>;
   writeBlob(path: string, blob: Blob): Promise<void>;
   exists(path: string): Promise<boolean>;
+  /** Deletes the file; nothing happens if there's none. */
+  remove(path: string): Promise<void>;
 }
 
 export class MemoryStorage implements Storage {
@@ -32,5 +34,8 @@ export class MemoryStorage implements Storage {
   }
   async exists(path: string) {
     return this.files.has(path);
+  }
+  async remove(path: string) {
+    this.files.delete(path);
   }
 }

@@ -49,6 +49,18 @@ export class OpfsStorage implements Storage {
     return (await this.fileHandle(path, false)) !== undefined;
   }
 
+  async remove(path: string) {
+    const parts = path.split('/');
+    const name = parts.pop()!;
+    try {
+      let dir = this.root;
+      for (const part of parts) dir = await dir.getDirectoryHandle(part);
+      await dir.removeEntry(name);
+    } catch (e) {
+      if (!(e instanceof DOMException && e.name === 'NotFoundError')) throw e;
+    }
+  }
+
   protected fileHandle(path: string, create: true): Promise<FileSystemFileHandle>;
   protected fileHandle(path: string, create: false): Promise<FileSystemFileHandle | undefined>;
   protected async fileHandle(path: string, create: boolean) {

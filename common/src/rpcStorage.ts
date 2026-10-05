@@ -57,6 +57,10 @@ export class RpcStorage implements Storage {
     return this.api.exists({ path });
   }
 
+  async remove(path: string) {
+    await this.api.remove({ path });
+  }
+
   async readBlob(path: string) {
     const size = await this.api.size({ path });
     if (size === null) return undefined;

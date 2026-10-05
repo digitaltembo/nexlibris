@@ -42,6 +42,7 @@ export type Target =
   | ['device', DeviceId, 'name' | 'query']
   | ['device', DeviceId, 'setting', string]
   | ['device', DeviceId, 'item', ItemId]
+  | ['device', DeviceId, 'excluded', ItemId]
   | ['device', DeviceId, 'placed', string]
   /** A browse category, compared whole. */
   | ['category', CategoryId, 'definition'];
@@ -101,6 +102,9 @@ export function operationTargets(op: Operation): Target[] {
     case 'addDeviceItems':
     case 'removeDeviceItems':
       return op.itemIds.map((itemId) => ['device', op.id, 'item', itemId]);
+    case 'excludeDeviceItems':
+    case 'unexcludeDeviceItems':
+      return op.itemIds.map((itemId) => ['device', op.id, 'excluded', itemId]);
     case 'recordDeviceSync':
       return [...Object.keys(op.placed), ...op.removed].map((path) => ['device', op.id, 'placed', path]);
     case 'setCategory':
@@ -135,6 +139,8 @@ export function valueOf(library: Library, target: Target): unknown {
         return device.settings[target[3]];
       case 'item':
         return device.items.includes(target[3]);
+      case 'excluded':
+        return !!device.excluded?.includes(target[3]);
       case 'placed':
         return device.placed[target[3]];
       default:
@@ -339,6 +345,9 @@ function correctionOp(
         return value
           ? { type: 'addDeviceItems', id, itemIds: [target[3]!] }
           : { type: 'removeDeviceItems', id, itemIds: [target[3]!] };
+      case 'excluded':
+        // Kept off whether or not the item exists anywhere.
+        return { type: value ? 'excludeDeviceItems' : 'unexcludeDeviceItems', id, itemIds: [target[3]!] };
       case 'placed':
         return value
           ? { type: 'recordDeviceSync', id, placed: { [target[3]!]: value as PlacedFile }, removed: [] }

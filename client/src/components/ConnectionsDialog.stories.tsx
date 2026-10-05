@@ -8,7 +8,9 @@ import { useLibrary } from '../library/LibraryContext';
 import { connectionType } from '../plugins';
 import { addInstances } from '../sync/instances';
 import { SAMPLE_PLACED_PATH, sampleCatalog, sampleDevice } from '../stories/sampleLibrary';
-import { ConnectionsDialog, ContentsView } from './ConnectionsDialog';
+import { planSync } from '../devices/plan';
+import { isDevice } from '../devices/types';
+import { ConnectionsDialog, ContentsView, PlanSummary } from './ConnectionsDialog';
 
 const meta = { component: ConnectionsDialog, args: { onClose: fn() } } satisfies Meta<typeof ConnectionsDialog>;
 export default meta;
@@ -54,6 +56,23 @@ export const ReaderWithoutIndex: Story = {
     />
   ),
 };
+
+function Preview() {
+  const { library } = useLibrary();
+  const stored = library.devices?.[sampleDevice.id] ?? sampleDevice;
+  const emma = Object.values(library.items).find((item) => item.title === 'Emma');
+  const device = { ...stored, items: [...stored.items, ...(emma ? [emma.id] : [])] };
+  const type = connectionType(device.type)!;
+  const [keepFound, setKeepFound] = useState(true);
+  if (!isDevice(type)) return null;
+  const found = [...onTheReader, { path: '/Calibre/Le Guin/Left Hand.epub', size: 700_000, title: 'The Left Hand of Darkness', author: 'Ursula K. Le Guin' }];
+  const files = onTheReader.map(({ path, size }) => ({ path, size }));
+  const plan = planSync(library, device, type, { files, found, canMove: true }, { keepFound });
+  return <PlanSummary description="X4, CrossPoint 1.2.0" plan={plan} title={(id) => library.items[id]?.title ?? id} keepFound={keepFound} onKeepFound={setKeepFound} />;
+}
+
+/** A sync's preview: Emma, put on the reader by hand, kept, and The Left Hand of Darkness, put there by other software, moved where it goes (untick to send them anyway). */
+export const SyncPreview: Story = { render: () => <Preview /> };
 
 /** "On it…" for a catalog: what its last export wrote. */
 export const CatalogContents: Story = {

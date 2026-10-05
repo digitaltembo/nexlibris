@@ -35,9 +35,12 @@ describe('sync hub', () => {
     await browser.apply([{ type: 'addItem', item: createItem({ title: 'In the browser' }) }]);
 
     await expect(pairWithHub(browser, client(), ADDRESS, 'AAAA-AAAA', 'Chrome')).rejects.toThrow(/expired/);
-    const { code } = hub.newCode();
+    const { code } = hub.newCode({ keepFiles: ' tag:travel ' });
     const pairing = await pairWithHub(browser, client(), ADDRESS, code.toLowerCase(), 'Chrome');
     expect(pairing.hub.name).toBe('Pixel');
+    // The hub's choice of books comes back with the pairing, but isn't saved with it.
+    expect(pairing.chosenFiles).toBe('tag:travel');
+    expect((await readPairings(browser))[0]).not.toHaveProperty('chosenFiles');
     // Used up.
     await expect(pairWithHub(browser, client(), ADDRESS, code, 'Chrome')).rejects.toThrow(/expired/);
     expect((await hub.peers()).map((peer) => peer.name)).toEqual(['Chrome']);
@@ -64,7 +67,8 @@ describe('sync hub', () => {
     expect(hub.codePending()).toBe(false);
 
     const { code } = hub.newCode();
-    const { key } = await pairWithHub(browser, client(), ADDRESS, code, 'X');
+    const { key, chosenFiles } = await pairWithHub(browser, client(), ADDRESS, code, 'X');
+    expect(chosenFiles).toBeUndefined();
     const put = await fetchOver(`${ADDRESS}/api/sync/files/${'a'.repeat(64)}`, {
       method: 'PUT',
       headers: { Authorization: `Bearer ${key}` },

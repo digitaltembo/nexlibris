@@ -10,6 +10,7 @@ export type BuiltinColumn =
   | 'tags'
   | 'rating'
   | 'formats'
+  | 'size'
   | 'added'
   | 'updated';
 /** A built-in column, or `field:<key>` for a metadata field. */
@@ -25,6 +26,8 @@ export const BUILTIN_COLUMNS: { id: BuiltinColumn; label: string; sort?: SortKey
   { id: 'tags', label: 'Tags' },
   { id: 'rating', label: 'Rating', sort: 'rating' },
   { id: 'formats', label: 'Formats' },
+  // As Calibre's: the largest file's size.
+  { id: 'size', label: 'Size (MB)', sort: 'size' },
   { id: 'added', label: 'Added', sort: 'added' },
   { id: 'updated', label: 'Updated' },
 ];

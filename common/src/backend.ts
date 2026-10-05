@@ -22,6 +22,8 @@ export interface LibraryBackend {
   getFile(hash: FileHash): Promise<Blob | undefined>;
   /** Whether the file's contents are stored here (M6 sync can leave a book's file on the hub only). */
   hasFile(hash: FileHash): Promise<boolean>;
+  /** Deletes a stored file; nothing happens if it isn't stored. Callers check nothing refers to it (`library/freeFiles.ts`). */
+  deleteFile(hash: FileHash): Promise<void>;
   /**
    * State that belongs to this instance rather than the library (M6 sync's pairings and sync
    * bases): not part of the library, its change log or its backups. Undefined if never written.
@@ -34,6 +36,7 @@ export interface LibraryBackend {
    */
   readLocalFile(path: string): Promise<Blob | undefined>;
   writeLocalFile(path: string, data: Blob): Promise<void>;
+  deleteLocalFile(path: string): Promise<void>;
 }
 
 /** The library moved on since the caller looked: an `apply` with an `expectRevision` that no longer holds. */
@@ -135,6 +138,10 @@ export class StoredLibraryBackend implements LibraryBackend {
     return this.storage.exists(filePath(hash));
   }
 
+  deleteFile(hash: FileHash): Promise<void> {
+    return this.storage.remove(filePath(hash));
+  }
+
   async readLocalState<T>(key: string): Promise<T | undefined> {
     const text = await this.storage.readText(localStatePath(key));
     return text ? (JSON.parse(text) as T) : undefined;
@@ -150,6 +157,10 @@ export class StoredLibraryBackend implements LibraryBackend {
 
   writeLocalFile(path: string, data: Blob): Promise<void> {
     return this.storage.writeBlob(localFilePath(path), data);
+  }
+
+  deleteLocalFile(path: string): Promise<void> {
+    return this.storage.remove(localFilePath(path));
   }
 
   /**

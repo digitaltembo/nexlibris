@@ -14,6 +14,7 @@ import {
   StoredLibraryBackend,
   syncApiMeta,
   type MessageImpl,
+  type ScopeRule,
   type SyncApi,
 } from '@nexlibris/common';
 import { mkdtempSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
@@ -29,9 +30,13 @@ afterEach(async () => {
 });
 
 /** A hub: the host over HTTP on localhost, relaying to a library as the desktop's page would. */
-async function hub(dir = realpathSync(mkdtempSync(join(tmpdir(), 'nexlibris-sync-'))), file = join(dir, 'local', 'sync-host.json')) {
+async function hub(
+  dir = realpathSync(mkdtempSync(join(tmpdir(), 'nexlibris-sync-'))),
+  file = join(dir, 'local', 'sync-host.json'),
+  scope?: ScopeRule,
+) {
   const backend = new StoredLibraryBackend(new MemoryStorage(), 'Desk');
-  const service = createSyncService(backend, { name: () => 'Desk Mac' });
+  const service = createSyncService(backend, { name: () => 'Desk Mac', ...(scope && { scope }) });
   const impl: MessageImpl<SyncApi> = {
     sync: {
       ...service,
@@ -66,9 +71,11 @@ describe('sync host', () => {
     const phone = new StoredLibraryBackend(new MemoryStorage(), 'Phone');
     await phone.apply([{ type: 'addItem', item: createItem({ title: 'Piranesi' }) }]);
 
-    const { code } = await h.host.newCode();
+    const { code } = await h.host.newCode({ keepFiles: 'tag:travel' });
     const pairing = await pairWithHub(phone, client(h.address), h.address, code.toLowerCase(), 'Pixel');
     expect(pairing.hub.name).toBe('Desk Mac');
+    // The books chosen for the phone when the code was shown.
+    expect(pairing.chosenFiles).toBe('tag:travel');
     // The code works once.
     await expect(pairWithHub(phone, client(h.address), h.address, code, 'Pixel')).rejects.toThrow(/expired/);
 
@@ -86,6 +93,22 @@ describe('sync host', () => {
     // Keys are kept hashed.
     expect(readFileSync(h.file, 'utf8')).not.toContain(pairing.key);
     expect((await readPairings(phone))[0]!.base).toBeDefined();
+  });
+
+  it('shows a scoped phone only its books, as the paired phone whatever it says it is', async () => {
+    const asked: string[] = [];
+    const h = await hub(undefined, undefined, (_library, peer) => {
+      asked.push(peer);
+      return (item) => item.title === 'Dune';
+    });
+    await h.backend.apply(['Dune', 'Emma'].map((title) => ({ type: 'addItem' as const, item: createItem({ title }) })));
+    const phone = new StoredLibraryBackend(new MemoryStorage(), 'Phone');
+    const pairing = await pairWithHub(phone, client(h.address), h.address, (await h.host.newCode(null)).code, 'Pixel');
+    const state = await client(h.address, pairing.key).state({ since: 0, peer: 'someone-else' });
+    expect(state.scoped).toBe(true);
+    expect(Object.values(state.library.items).map((i) => i.title)).toEqual(['Dune']);
+    expect(state.changes).toHaveLength(1);
+    expect(asked).toEqual([(await phone.getLibrary()).origin]);
   });
 
   it('refuses calls without a valid key, and withdraws a code after too many wrong guesses', async () => {

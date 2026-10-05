@@ -20,11 +20,10 @@ import type { LibraryBackend } from './backend';
  * there yet sends all its files, for whichever comes next.
  */
 
-/** A folder's storage, with what a folder hub needs beyond `Storage`: listing and removing. */
+/** A folder's storage, with what a folder hub needs beyond `Storage`: listing. */
 export interface FolderStorage extends Storage {
   /** The names in a folder (files and folders); none if it doesn't exist. */
   list(dir: string): Promise<string[]>;
-  remove(path: string): Promise<void>;
 }
 
 /** Copies between the folder and the local library, where that's faster than reading and writing through the page (Android). */

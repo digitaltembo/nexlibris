@@ -39,6 +39,14 @@ export const MIGRATIONS: Record<number, Migration> = {
       return op;
     },
   },
+  // Placed files linked by hand or found by a sync (`PlacedFile.linked`, `found`). Nothing to change: files placed before were all kept
+  // where they were while current, and now only linked ones are, so others move to their devices' paths.
+  4: { library: (library) => library },
+  // Items kept off a device (`Device.excluded`, the excludeDeviceItems and unexcludeDeviceItems operations). Nothing to change.
+  5: { library: (library) => library },
+  // Dates before AD 1 (`-0570` is 570 BC). Nothing to change: none could be stored before, and the version keeps an older
+  // nexlibris, which would read -0570 as AD 570, from syncing with one that has them.
+  6: { library: (library) => library },
 };
 
 type StoredItem = { metadata: Record<string, MetadataValue> } & Record<string, unknown>;

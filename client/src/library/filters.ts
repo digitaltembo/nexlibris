@@ -190,7 +190,7 @@ export function termRule(term: Term, fields: FilterField[]): Rule | undefined {
   if (kind === 'date') {
     const last = /^last\s+(?:(\d+)\s+)?(day|week|month|year)s?$/i.exec(value);
     if (last) return { field: term.field, condition: 'inLast', values: [`${last[1] ?? 1} ${last[2]!.toLowerCase()}s`] };
-    const compared = /^(>=|<)\s*(\d{4}(?:-\d{2}){0,2})$/.exec(value);
+    const compared = /^(>=|<)\s*(-?\d{4}(?:-\d{2}){0,2})$/.exec(value);
     if (compared) return { field: term.field, condition: compared[1] === '>=' ? 'after' : 'before', values: [compared[2]!] };
   }
   return undefined;

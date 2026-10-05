@@ -55,6 +55,7 @@ function memoryStorageService(): MessageImpl<StorageApi> {
         }
         return null;
       },
+      remove: async ({ path }) => (files.delete(check(path)), null),
     },
   };
 }
@@ -83,7 +84,7 @@ describe('RpcStorage', () => {
     ]);
   });
 
-  it('reads, writes and appends text', async () => {
+  it('reads, writes, appends and removes text', async () => {
     const storage = new RpcStorage(bridge().client.storage);
     expect(await storage.readText('a.txt')).toBeUndefined();
     expect(await storage.exists('a.txt')).toBe(false);
@@ -93,6 +94,9 @@ describe('RpcStorage', () => {
     expect(await storage.readText('a.txt')).toBe('héllo wörld\n');
     expect(await storage.readText('log/new.jsonl')).toBe('x');
     expect(await storage.exists('a.txt')).toBe(true);
+    await storage.remove('a.txt');
+    expect(await storage.exists('a.txt')).toBe(false);
+    await storage.remove('a.txt');
   });
 
   it('moves blobs in chunks, byte for byte', async () => {

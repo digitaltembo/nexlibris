@@ -1,6 +1,6 @@
 import { post, type SimpleMeta } from 'estuary-rpc';
 import type { Operation } from './operations';
-import type { Library } from './types';
+import type { ItemId, Library } from './types';
 
 /**
  * M6 sync between two instances of a library, as an estuary-rpc API. One instance (the hub: the
@@ -39,20 +39,52 @@ export interface PairResult {
   /** The long-lived key for this pairing, sent with every later call. */
   key: string;
   hub: PeerInfo;
+  /**
+   * The books whose files the pairing instance keeps, as the hub chose when it showed the code: a
+   * search (`client/src/library/search.ts`), which becomes the rules of that instance's connection.
+   */
+  keepFiles?: string;
 }
 
-export interface StateRequest {
+/**
+ * Who's asking, for a hub that shows each instance only the books it keeps (`scope.ts`). A hub's
+ * host sets `peer` to the paired instance's origin, whatever was sent; `have` is the items the
+ * instance has, which it still sees, so edits to them merge.
+ */
+export interface ScopeRequest {
+  peer?: string;
+  have?: ItemId[];
+  /**
+   * The rules of the instance's own connection, as a search: what a hub that has no connection for
+   * it yet (before its first sync brings it) keeps it to.
+   */
+  keeps?: string;
+}
+
+/** A call's body as a hub's host passes it on: `state` and `apply` say who's asking, the paired instance whose key came with it. */
+export function fromPeer(endpoint: string, body: unknown, origin: string): unknown {
+  if ((endpoint !== 'state' && endpoint !== 'apply') || !body || typeof body !== 'object') return body;
+  return { ...body, peer: origin };
+}
+
+export interface StateRequest extends ScopeRequest {
   /** The hub's revision at the last sync with this peer (0 for none): changes after it are returned. */
   since: number;
 }
 
 export interface StateResult {
+  /** The hub's library, as the instance sees it when `scoped`. */
   library: Library;
-  /** The operations applied after `since`, oldest first. */
+  /** The operations applied after `since`, oldest first (cut down to what the instance sees when `scoped`). */
   changes: Operation[];
+  /**
+   * Set when the hub keeps the instance to the books its connection picks: it sees only those (and
+   * the ones it has), and books deleted there stay on the hub, kept off that instance instead.
+   */
+  scoped?: boolean;
 }
 
-export interface ApplyRequest {
+export interface ApplyRequest extends ScopeRequest {
   ops: Operation[];
   /** The hub's revision when the caller fetched its state; nothing is applied if it has moved on. */
   expectRevision: number;
@@ -60,8 +92,10 @@ export interface ApplyRequest {
 
 export interface ApplyResult {
   revision: number;
-  /** The hub's state hash afterwards (`stateDigest(library).hash`). */
+  /** The hub's state hash afterwards (`stateDigest(library).hash`), of the library as the instance sees it. */
   hash: string;
+  /** When scoped: items the instance has that its connection no longer picks, for it to let go of. */
+  outside?: ItemId[];
 }
 
 export interface DoneRequest {

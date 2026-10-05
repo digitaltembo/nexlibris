@@ -1,4 +1,4 @@
-import { createItem, type ItemId } from '@nexlibris/common';
+import { createItem, formatYear, type ItemId } from '@nexlibris/common';
 import { useCallback, useRef, useState, type FormEvent } from 'react';
 import styled from 'styled-components';
 import { formatIsbn, itemsWithIsbn, normalizeIsbn } from '../isbn/isbn';
@@ -258,7 +258,7 @@ function EntryRow({ entry, existing, wasAdded, adding, onAdd, onRetry, onOpen }:
   const book = entry.state === 'found' ? entry.book : undefined;
   const details = book && [
     book.creators.map((c) => c.name).join(', '),
-    String(book.metadata.published ?? '').slice(0, 4),
+    formatYear(String(book.metadata.published ?? '')),
     book.metadata.publisher,
   ];
   const thumbnail = book?.coverUrl?.replace(/-L\.jpg$/, '-M.jpg');

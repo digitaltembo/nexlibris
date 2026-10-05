@@ -1,7 +1,7 @@
 import type { FileRef, Item, ItemId } from '@nexlibris/common';
 import { useDeferredValue, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import styled from 'styled-components';
-import { locate, type Passage } from '../fulltext/match';
+import type { Passage } from '../fulltext/match';
 import { useTextSearch, type TextHit } from '../fulltext/TextIndexContext';
 import { describeRule, filtersQuery, parseFilters, type FilterField } from '../library/filters';
 import { filterItems } from '../library/search';
@@ -359,7 +359,7 @@ export function SearchDialog(props: Props) {
       onOpenItem(choice.id);
     } else {
       submit();
-      onRead(choice.hit.item, choice.hit.file, locate(choice.hit.doc, choice.passage));
+      onRead(choice.hit.item, choice.hit.file, choice.passage.locator);
     }
   };
 

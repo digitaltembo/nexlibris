@@ -1,3 +1,4 @@
+import { createItem } from '@nexlibris/common';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { fn } from 'storybook/test';
 import { LiveItem } from '../stories/LiveItem';
@@ -22,3 +23,15 @@ export const WithDescription: Story = { args: { item: sampleItems.find((item) =>
 
 /** No cover and no files. */
 export const Sparse: Story = { args: { item: sampleItems.find((item) => item.files.length === 0)! } };
+
+/** A date before AD 1, shown with its era ("570 BC"). Not in the story's library, so editing it does nothing. */
+export const AncientWork: Story = {
+  args: {
+    item: createItem({
+      title: 'Sappho: One Hundred Lyrics',
+      creators: [{ name: 'Sappho', role: 'aut' }, { name: 'Bliss Carman', role: 'trl' }],
+      metadata: { originallyPublished: '-0570', published: '1904', language: 'eng' },
+    }),
+  },
+  render: (args) => <ItemDetail {...args} />,
+};

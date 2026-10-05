@@ -1,9 +1,10 @@
 import { LOCAL_USER, userData, type FileRef, type Item, type MetadataValue } from '@nexlibris/common';
 import { useState } from 'react';
 import styled from 'styled-components';
-import { BOOK_FIELDS, fieldLabel, isFixedField, type BookField } from '../library/bookFields';
+import { BOOK_FIELDS, bookSize, fieldLabel, fieldText, isFixedField, type BookField } from '../library/bookFields';
 import { diffDraft, draftFromItem, type ItemDraft } from '../library/editDraft';
 import { savedPosition } from '../library/useReadingPosition';
+import { deleteItems } from '../library/freeFiles';
 import { useLibrary } from '../library/LibraryContext';
 import { metadataToText } from '../library/metadataText';
 import { roleLabel } from '../library/roles';
@@ -11,7 +12,7 @@ import { isReadable, preferredReadable } from '../reader/Reader';
 import { Cover } from './Cover';
 import { CreatorsEditor } from './CreatorsEditor';
 import { DeleteButton } from './DeleteButton';
-import { EditableFiles, ItemFiles } from './ItemFiles';
+import { EditableFiles, formatSize, ItemFiles } from './ItemFiles';
 import { KeyValueEditor } from './KeyValueEditor';
 import { Prose, RichText } from './RichText';
 import { StarRating } from './StarRating';
@@ -157,7 +158,7 @@ export function seriesLabel(item: Item): string | undefined {
 
 /** The right-hand panel: read-only, except rating and file actions, until "Edit" is chosen. */
 export function ItemDetail({ item, onClose, onSelectTag, onRead }: Props) {
-  const { library, apply } = useLibrary();
+  const { library, apply, backend } = useLibrary();
   const { ratings, reviews } = userData(library);
   const [draft, setDraft] = useState<ItemDraft>();
   const position = savedPosition(library, item.id);
@@ -196,7 +197,7 @@ export function ItemDetail({ item, onClose, onSelectTag, onRead }: Props) {
               <Button $variant="secondary" onClick={() => setDraft(draftFromItem(item, review))}>
                 Edit
               </Button>
-              <DeleteButton onDelete={() => void apply([{ type: 'removeItem', id: item.id }])} />
+              <DeleteButton onDelete={() => void deleteItems(backend, apply, [item])} />
             </Actions>
           )}
         </div>
@@ -256,7 +257,7 @@ function ItemView({ item, review, onSelectTag, onRead }: Omit<Props, 'onClose'> 
                 <dt>{fieldLabel(key)}</dt>
                 <dd>
                   {key === 'coverColor' && typeof value === 'string' && <Swatch $color={value} />}
-                  {metadataToText(value)}
+                  {fieldText(key, value)}
                 </dd>
               </div>
             ))}
@@ -276,6 +277,7 @@ function ItemView({ item, review, onSelectTag, onRead }: Omit<Props, 'onClose'> 
       </PanelSection>
 
       <Timestamps>
+        {item.files.length > 0 && `Size ${formatSize(bookSize(item))} · `}
         Added {new Date(item.addedAt).toLocaleDateString()}
         {item.updatedAt !== item.addedAt && ` · updated ${new Date(item.updatedAt).toLocaleDateString()}`}
       </Timestamps>

@@ -116,6 +116,12 @@ describe('filters', () => {
     expect(parseFilters(filtersQuery({ ...filters, any: true }), fields)).toEqual({ ...filters, any: true });
   });
 
+  it('takes dates before AD 1 as a minus year', () => {
+    const filters: Filters = { any: false, rules: [{ field: 'originallyPublished', condition: 'before', values: ['-0500'] }] };
+    expect(filtersQuery(filters)).toBe('originallyPublished:<-0500');
+    expect(parseFilters('originallyPublished:<-0500', fields)).toEqual(filters);
+  });
+
   it('leaves out rules without a value, and reads plain words as Anything', () => {
     expect(filtersQuery({ any: false, rules: [{ field: 'author', condition: 'contains', values: [' '] }] })).toBe('');
     expect(parseFilters('verne', fields)).toEqual({ any: false, rules: [{ field: 'text', condition: 'contains', values: ['verne'] }] });

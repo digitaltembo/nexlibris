@@ -1,4 +1,5 @@
-import { authorSortOf, titleSortOf, type BookMetadata, type Item } from '@nexlibris/common';
+import { authorSortOf, DATE_FIELDS, formatDate, titleSortOf, type BookMetadata, type Item, type MetadataValue } from '@nexlibris/common';
+import { metadataToText } from './metadataText';
 
 /**
  * `BookMetadata`'s fixed fields as the UI shows them: labelled, in the order they're shown and
@@ -16,7 +17,7 @@ export interface BookField {
   hint?: string;
 }
 
-const DATE_HINT = 'YYYY, YYYY-MM or YYYY-MM-DD';
+const DATE_HINT = 'YYYY, YYYY-MM, YYYY-MM-DD or 570 BC';
 
 export const BOOK_FIELDS: BookField[] = [
   { key: 'subtitle', label: 'Subtitle', kind: 'text' },
@@ -46,6 +47,13 @@ export function fieldLabel(key: string): string {
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
+const isDateField = (key: string) => (DATE_FIELDS as readonly string[]).includes(key);
+
+/** A field's value as text, shown and edited: dates with their era where it's needed ("570 BC"). */
+export function fieldText(key: string, value: MetadataValue | undefined): string {
+  return isDateField(key) && typeof value === 'string' ? formatDate(value) : metadataToText(value);
+}
+
 /** How the title sorts: its title sort, else the title with any leading article moved to the end. */
 export const titleSortKey = (item: Item) => item.metadata.titleSort || titleSortOf(item.title);
 
@@ -58,3 +66,12 @@ export function authorSortKey(item: Item): string {
 
 /** When the work was first published, as far as the library knows: the original date, else this edition's. */
 export const firstPublished = (item: Item) => item.metadata.originallyPublished || item.metadata.published || '';
+
+/** A book's size as Calibre gives it: its largest file's, in bytes (0 with no files). */
+export const bookSize = (item: Item) => item.files.reduce((max, file) => Math.max(max, file.size), 0);
+
+/** A size in MB as Calibre's Size column shows it: one decimal, and `<0.1` for a small file rather than 0.0. */
+export function sizeInMB(bytes: number): string {
+  const mb = (bytes / (1024 * 1024)).toFixed(1);
+  return bytes > 0 && mb === '0.0' ? '<0.1' : mb;
+}

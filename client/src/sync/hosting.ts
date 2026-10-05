@@ -10,6 +10,7 @@ import {
 } from '@nexlibris/common';
 import { useEffect } from 'react';
 import { desktopSend, inDesktopApp } from '../backends/desktopBridge';
+import { instanceScope } from './instances';
 
 export const syncHost = () => createMessageClient(syncHostApiMeta, desktopSend()).syncHost;
 
@@ -31,7 +32,7 @@ export function useSyncHosting(backend: LibraryBackend, refresh: () => Promise<v
       .status(null)
       .then((status) => (name = status.name))
       .catch(() => undefined);
-    const service = createSyncService(backend, { name: () => name, onApplied: () => void refresh() });
+    const service = createSyncService(backend, { name: () => name, onApplied: () => void refresh(), scope: instanceScope });
     const impl: MessageImpl<SyncApi> = { sync: { ...service, pair: handledByHost, done: handledByHost, missing: handledByHost } };
     const handle = createMessageHandler(syncApiMeta, impl);
     let id = 0;

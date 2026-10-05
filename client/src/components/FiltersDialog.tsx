@@ -319,8 +319,8 @@ function RuleValue({
       return (
         <input
           aria-label="Date"
-          placeholder="YYYY, YYYY-MM or YYYY-MM-DD"
-          pattern="\d{4}(-\d{2}){0,2}"
+          placeholder="YYYY, YYYY-MM, YYYY-MM-DD or -0570 for 570 BC"
+          pattern="-?\d{4}(-\d{2}){0,2}"
           value={value}
           onChange={(e) => onChange([e.target.value.trim()])}
         />

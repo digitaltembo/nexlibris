@@ -32,6 +32,9 @@ export const FewColumns: Story = { args: { columns: ['creators', 'rating'] } };
 /** What title and author sort by: Dune's stored author sort, and the rest worked out (shown quieter). */
 export const SortColumns: Story = { args: { columns: ['creators', 'titleSort', 'authorSort'], sort: { key: 'author', desc: false } } };
 
+/** Size (MB), as Calibre's column: each book's largest file (the header shows the sort; the app sorts the rows). */
+export const SizeColumn: Story = { args: { columns: ['creators', 'formats', 'size'], sort: { key: 'size', desc: true } } };
+
 function SortableList() {
   const [sort, setSort] = useState<Sort>({ key: 'title', desc: false });
   return (

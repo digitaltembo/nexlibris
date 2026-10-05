@@ -1,5 +1,5 @@
-import type { Item, MetadataValue } from '@nexlibris/common';
-import { authorSortKey, firstPublished, titleSortKey } from './bookFields';
+import { compareDates, DATE_FIELDS, dateYear, datePrecision, normalizeDate, type Item, type MetadataValue } from '@nexlibris/common';
+import { authorSortKey, bookSize, firstPublished, titleSortKey } from './bookFields';
 
 function flatten(value: MetadataValue | undefined): string {
   if (value === null || value === undefined) return '';
@@ -33,7 +33,7 @@ function itemText(item: Item): string {
   ].join(' '));
 }
 
-export type SortKey = 'title' | 'author' | 'series' | 'published' | 'rating' | 'added';
+export type SortKey = 'title' | 'author' | 'series' | 'published' | 'rating' | 'size' | 'added';
 
 export interface Sort {
   key: SortKey;
@@ -41,7 +41,7 @@ export interface Sort {
 }
 
 /** The direction a column sorts in when first chosen. */
-export const DEFAULT_DESC: Record<SortKey, boolean> = { title: false, author: false, series: false, published: false, rating: true, added: true };
+export const DEFAULT_DESC: Record<SortKey, boolean> = { title: false, author: false, series: false, published: false, rating: true, size: true, added: true };
 
 /*
  * Search syntax, in the style of Gmail's. Words match the start of words anywhere in an item
@@ -50,7 +50,7 @@ export const DEFAULT_DESC: Record<SortKey, boolean> = { title: false, author: fa
  *
  *   author:herbert   tag:"Science fiction"   series:dune   format:epub   publisher:ace   isbn:9780441172719
  *   tag:fantasy,"Science fiction" (either)   rating:4+   pages:<300   added:"last 30 days"   added:>=2026-09
- *   has:cover   has:file   -has:series (no series)
+ *   has:cover   has:file   -has:series (no series)   size:>2M (the largest file; bytes, or K, M, G)
  *
  * A leading `-` negates a term. Terms must all match, unless separated by `or`: `a b or c` is
  * (a and b) or c. Tags and formats match whole values; other fields match the start of words, as
@@ -102,6 +102,7 @@ const FIELD_ALIASES: Record<string, string> = {
   rating: 'rating',
   added: 'added',
   updated: 'updated',
+  size: 'size',
   isbn: 'isbn',
   identifier: 'identifier',
   has: 'has',
@@ -213,6 +214,8 @@ function fieldValues(item: Item, field: string, context: SearchContext): (string
       const rating = context.ratings?.[item.id];
       return rating === undefined ? [] : [rating];
     }
+    case 'size':
+      return item.files.length ? [bookSize(item)] : [];
     case 'added':
       return [item.addedAt];
     case 'updated':
@@ -251,7 +254,15 @@ function matchesValue(field: string, values: (string | number)[], wanted: string
     op = '>=';
     target = target.slice(0, -1);
   }
+  // Sizes are in bytes, as in Calibre, with K, M or G (or KB, MB, GB) for more: size:>2M.
+  const unit = field === 'size' ? SIZE_UNIT.exec(target) : null;
+  if (unit) target = String(Number(unit[1]) * 1024 ** ' kmg'.indexOf(unit[2]!.toLowerCase()));
   const number = target !== '' && !Number.isNaN(Number(target)) ? Number(target) : undefined;
+  // Dates compare on as much as was given, BC before AD: originallyPublished:<-500 is before 500 BC.
+  const date = op && (DATE_FIELDS as readonly string[]).includes(field) ? normalizeDate(target) : undefined;
+  if (date !== undefined && dateYear(date) !== undefined) {
+    return values.some((value) => typeof value === 'string' && dateYear(value) !== undefined && compare(compareDates(value, date, datePrecision(date)), op!));
+  }
   return values.some((value) => {
     if (typeof value === 'number' || (op && number !== undefined && !Number.isNaN(Number(value)))) {
       if (number === undefined) return false;
@@ -265,6 +276,8 @@ function matchesValue(field: string, values: (string | number)[], wanted: string
     return EXACT_FIELDS.has(field) ? have === want : have.includes(want);
   });
 }
+
+const SIZE_UNIT = /^(\d+(?:\.\d+)?)\s*([kmg])b?$/i;
 
 function compare(difference: number, op: string): boolean {
   switch (op) {
@@ -329,12 +342,14 @@ export function sortItems(items: Item[], sort: Sort, ratings: Record<string, num
     title: (a, b) => dir * byTitle(a, b),
     author: (a, b) => dir * authorSortKey(a).localeCompare(authorSortKey(b)) || byTitle(a, b),
     series: (a, b) => dir * (text(a, 'series').localeCompare(text(b, 'series')) || num(a, 'seriesIndex') - num(b, 'seriesIndex')),
-    published: (a, b) => dir * firstPublished(a).localeCompare(firstPublished(b)) || byTitle(a, b),
+    published: (a, b) => dir * compareDates(firstPublished(a), firstPublished(b)) || byTitle(a, b),
     rating: (a, b) => dir * ((ratings[a.id] ?? 0) - (ratings[b.id] ?? 0)) || byTitle(a, b),
+    size: (a, b) => dir * (bookSize(a) - bookSize(b)) || byTitle(a, b),
     added: (a, b) => dir * a.addedAt.localeCompare(b.addedAt) || byTitle(a, b),
   };
   const missing = (item: Item) =>
     (sort.key === 'series' && !text(item, 'series')) || (sort.key === 'rating' && ratings[item.id] === undefined) ||
-    (sort.key === 'author' && !item.creators.length) || (sort.key === 'published' && !firstPublished(item));
+    (sort.key === 'author' && !item.creators.length) || (sort.key === 'published' && !firstPublished(item)) ||
+    (sort.key === 'size' && !item.files.length);
   return [...items].sort((a, b) => Number(missing(a)) - Number(missing(b)) || compare[sort.key](a, b) || byTitle(a, b));
 }

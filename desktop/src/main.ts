@@ -83,7 +83,7 @@ app.whenReady().then(async () => {
       syncHost: {
         status: () => syncHost.status(),
         setEnabled: ({ enabled }) => syncHost.setEnabled(enabled),
-        newCode: () => syncHost.newCode(),
+        newCode: (request) => syncHost.newCode(request),
         unpair: ({ origin }) => syncHost.unpair(origin),
       },
       storage: createFileStorage(libraryDir),

@@ -39,6 +39,9 @@ export interface FileProgress {
   /** Files done so far in this direction, and how many there are. */
   done: number;
   total: number;
+  /** Downloads: how many of them are books' files (the rest are covers), and how many books' files are left on the hub, not chosen for here. */
+  books?: number;
+  notKept?: number;
 }
 
 export interface FileTransferResult {
@@ -89,7 +92,8 @@ export async function transferFiles(
 
   const run = async (direction: 'upload' | 'download', hashes: FileHash[]) => {
     let done = 0;
-    options.onProgress?.({ direction, done, total: hashes.length });
+    const counts = direction === 'download' ? { books: hashes.filter((hash) => books.has(hash)).length, notKept: result.notKept } : {};
+    options.onProgress?.({ direction, done, total: hashes.length, ...counts });
     for (const hash of hashes) {
       try {
         await (direction === 'upload' ? hub.upload(hash) : hub.download(hash));
@@ -97,7 +101,7 @@ export async function transferFiles(
       } catch (e) {
         result.failed.push({ hash, direction, message: e instanceof Error ? e.message : String(e) });
       }
-      options.onProgress?.({ direction, done: ++done, total: hashes.length });
+      options.onProgress?.({ direction, done: ++done, total: hashes.length, ...counts });
     }
   };
 
@@ -138,10 +142,12 @@ export function fetchingMissingFiles(backend: LibraryBackend, fetchMissing: (has
     getChanges: (sinceRevision) => backend.getChanges(sinceRevision),
     putFile: (data) => backend.putFile(data),
     hasFile: (hash) => backend.hasFile(hash),
+    deleteFile: (hash) => backend.deleteFile(hash),
     readLocalState: <T>(key: string) => backend.readLocalState<T>(key),
     writeLocalState: (key, value) => backend.writeLocalState(key, value),
     readLocalFile: (path) => backend.readLocalFile(path),
     writeLocalFile: (path, data) => backend.writeLocalFile(path, data),
+    deleteLocalFile: (path) => backend.deleteLocalFile(path),
     async getFile(hash) {
       const blob = await backend.getFile(hash);
       if (blob) return blob;

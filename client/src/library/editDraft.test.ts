@@ -36,6 +36,15 @@ describe('diffDraft', () => {
     ]);
   });
 
+  it('shows dates before AD 1 with their era, and takes them as typed', () => {
+    const sappho = createItem({ title: 'Lyrics', metadata: { originallyPublished: '-0570', published: '0008' } });
+    const draft = draftFromItem(sappho, undefined);
+    expect(draft.fields).toMatchObject({ originallyPublished: '570 BC', published: 'AD 8' });
+    expect(diffDraft(sappho, undefined, draft)).toEqual([]);
+    draft.fields = { ...draft.fields, originallyPublished: 'c. 600 BCE' };
+    expect(diffDraft(sappho, undefined, draft)).toEqual([{ type: 'setMetadata', id: sappho.id, key: 'originallyPublished', value: '-0600' }]);
+  });
+
   it('drops blank creators and identifiers, and applies cleanly', () => {
     const draft = draftFromItem(item, undefined);
     draft.creators = [...draft.creators, { name: '  ', role: 'aut' }, { name: 'Brian Herbert', role: 'edt' }];

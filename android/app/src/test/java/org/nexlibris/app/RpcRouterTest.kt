@@ -30,6 +30,12 @@ class RpcRouterTest {
         assertEquals(2L, router.handle(request("GET", "api/storage/size", """{"path":"library.json"}""")).getLong("value"))
         assertTrue(router.handle(request("GET", "api/storage/readText", """{"path":"nope"}""")).isNull("value"))
         assertEquals(true, router.handle(request("GET", "api/storage/exists", """{"path":"library.json"}""")).get("value"))
+
+        assertTrue(router.handle(request("POST", "api/storage/remove", """{"path":"library.json"}""")).getBoolean("ok"))
+        assertEquals(false, router.handle(request("GET", "api/storage/exists", """{"path":"library.json"}""")).get("value"))
+        // Removing what isn't there is fine.
+        assertTrue(router.handle(request("POST", "api/storage/remove", """{"path":"library.json"}""")).getBoolean("ok"))
+        assertFalse(router.handle(request("POST", "api/storage/remove", """{"path":"../x"}""")).getBoolean("ok"))
     }
 
     @Test

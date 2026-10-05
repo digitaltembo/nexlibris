@@ -4,16 +4,16 @@ What's next, and the decisions that shape it. How things are built is in the [RE
 
 ## TLDR
 
-Status as of 2026-10-03. Milestones are listed in the order they're planned; numbers are stable names (code refers to M4 and M6), not an order.
+Status as of 2026-10-04. Milestones are listed in the order they're planned; numbers are stable names (code refers to M4 and M6), not an order.
 
 | Milestone | Status |
 |---|---|
 | **Done** | M0 Foundations, M2 In-app reading, M3 Devices (CrossPoint X4/X3, OPDS catalogs), M5 ISBN scanning. |
 | **M1 Calibre-lite** | Nearly done. **Left:** prove it on the 1,123-book Calibre library, Kindle parsing, storage in a Web Worker. |
-| **M6 Sync** | Works over LAN, Bluetooth and a USB folder. **Left:** matching books on a first sync, a real phone. |
+| **M6 Sync** | Works over LAN, Bluetooth and a USB folder; a phone sees only the books chosen for it, and deleting there leaves the hub's copy. **Left:** matching books on a first sync, a real phone. |
 | **M7 Apps** | Android and desktop both work. **Left:** packaging and signing, native restore, a real X4. |
 | **M4 Server** | Not started. |
-| **M8 Background work** | Full-text search done; jobs manager and OCR not started. |
+| **M8 Background work** | Full-text search done, its work in a worker with the text stored compressed. **Left:** jobs manager, OCR, Kindle books' text. |
 | **M9 Loans** | Researched, not started. |
 | **M10 Reader devices** | Not started. |
 | **M11 Sharing**, **M12 Audio and video** | Long shots: not before M4. |
@@ -31,7 +31,7 @@ An application for managing libraries of content (ebooks first, then audio and v
 - **Stable IDs, operations, content addressing.** UUIDs for everything; every change is a typed operation appended to a change log; files are stored by hash. Sync, devices and multi-user all build on these.
 - **Per-user data keyed by user** from day one, though there's one local user.
 - **Sync is predictable over clever.** Additive changes go both ways; where both sides changed the same thing, the pairing's source of truth wins, shown in a preview first. A state hash after each merge catches anything that slipped.
-- **Everywhere the library goes is a connection.** Readers, catalogs and other instances of nexlibris share one model and one dialog; for an instance, its books are the ones whose files it keeps.
+- **Everywhere the library goes is a connection.** Readers, catalogs and other instances of nexlibris share one model and one dialog; for an instance, its books are the ones it gets. A hub shows an instance only those, and books deleted there stay on the hub.
 - **A bare top bar and one set of commands.** The bar holds the name and search; commands are one list shown as a drawer or the native menu bar.
 - **Browsing as calibre3opds does,** with the user's own categories, which also become OPDS custom feeds.
 - **No DRM circumvention.** nexlibris may carry encrypted loans to a device but never holds keys or decrypts.
@@ -89,7 +89,6 @@ Both apps already run on real hardware (Android on a Pixel 7a, the desktop app o
 ### M8 — Background work
 Full-text search is done; this milestone is about running long work off the main thread and out of the way.
 - **Jobs manager:** one queue for long work (indexing, conversion, OCR, device sync): resumable, with visible progress, never blocking the UI.
-- **Indexing in a worker,** with the stored text compressed.
 - **Kindle-only books in full-text search,** once M1's parser work is done.
 - **OCR for scanned PDFs** with tesseract-wasm, run by the jobs manager, so their text is indexed.
 

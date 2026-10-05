@@ -1,9 +1,29 @@
 import type { Catalog, DeviceTarget, RemoteFile } from '../../devices/types';
 
-interface Entry {
+/** A file or folder in a listing. */
+export interface Entry {
   name: string;
   size: number;
   isDirectory: boolean;
+}
+
+/** One of the reader's settings, as `/api/settings` lists it. */
+export interface ReaderSetting {
+  key: string;
+  name: string;
+  category: string;
+  type: 'toggle' | 'enum' | 'value' | 'string';
+  /** For an enum, an index into `options`. */
+  value: number | string;
+  options?: string[];
+}
+
+/** An installed SD-card font family, as `/api/fonts` lists it. */
+export interface FontFamily {
+  name: string;
+  /** Point sizes; `[0]` for a TTF/OTF/TTC family, which the reader shows at 12–18 pt. */
+  sizes: number[];
+  files: { name: string; size: number }[];
 }
 
 interface Status {
@@ -49,12 +69,33 @@ export class CrossPointTarget implements DeviceTarget {
     }
   }
 
+  /** Creates one folder in an existing one, if it isn't there (hidden dot folders don't show in listings to check). */
+  async makeFolder(parent: string, name: string) {
+    try {
+      await this.request('/mkdir', { method: 'POST', body: new URLSearchParams({ name, path: parent }) });
+    } catch (e) {
+      if (!(e instanceof Error && /already exists/i.test(e.message))) throw e;
+    }
+  }
+
   async upload(path: string, data: Blob) {
     const slash = path.lastIndexOf('/');
     const form = new FormData();
     // A File, so the name is set however FormData treats a Blob's filename argument.
     form.append('file', new File([data], path.slice(slash + 1), { type: data.type }));
     await this.request(`/upload?path=${encodeURIComponent(path.slice(0, slash) || '/')}`, { method: 'POST', body: form });
+  }
+
+  /** Moves a file: into its new folder (which must exist), then renamed if its name changes. */
+  async move(from: string, to: string) {
+    const folder = to.slice(0, to.lastIndexOf('/')) || '/';
+    const name = to.slice(to.lastIndexOf('/') + 1);
+    let at = from;
+    if ((from.slice(0, from.lastIndexOf('/')) || '/') !== folder) {
+      await this.request('/move', { method: 'POST', body: new URLSearchParams({ path: from, dest: folder }) });
+      at = join(folder, from.slice(from.lastIndexOf('/') + 1));
+    }
+    if (at !== to) await this.request('/rename', { method: 'POST', body: new URLSearchParams({ path: at, name }) });
   }
 
   async download(path: string): Promise<Blob> {
@@ -80,8 +121,45 @@ export class CrossPointTarget implements DeviceTarget {
     });
   }
 
-  private async entries(folder: string): Promise<Entry[]> {
+  /** A folder's files and folders; none if it doesn't exist. Dot folders are listed only from inside. */
+  async entries(folder: string): Promise<Entry[]> {
     return (await (await this.request(`/api/files?path=${encodeURIComponent(folder)}`)).json()) as Entry[];
+  }
+
+  /** The reader's editable settings. */
+  async settings(): Promise<ReaderSetting[]> {
+    return (await (await this.request('/api/settings')).json()) as ReaderSetting[];
+  }
+
+  /** Changes settings: an enum's value is an index into its options. */
+  async changeSettings(values: Record<string, number | string>) {
+    await this.request('/api/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(values),
+    });
+  }
+
+  async fonts(): Promise<FontFamily[]> {
+    return ((await (await this.request('/api/fonts')).json()) as { families?: FontFamily[] }).families ?? [];
+  }
+
+  /** Adds a `.cpfont` file to a family (made if new). */
+  async uploadFont(family: string, name: string, data: Blob) {
+    const form = new FormData();
+    // The family first: the reader reads it as the file starts arriving.
+    form.append('family', family);
+    form.append('file', new File([data], name));
+    await this.request('/api/fonts/upload', { method: 'POST', body: form });
+  }
+
+  /** Removes a family's folder, from both font roots. */
+  async deleteFont(family: string) {
+    await this.request('/api/fonts/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ family }),
+    });
   }
 
   private async request(path: string, init?: RequestInit): Promise<Response> {

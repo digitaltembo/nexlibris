@@ -1,8 +1,7 @@
 import JSZip from 'jszip';
 import type { FormatId } from '../formats/formats';
-import { loadPdfjs } from '../formats/pdf';
-import { decodeText, loadRtfjs } from '../formats/text';
-import { parseXml } from '../formats/xml';
+import { decodeText } from '../formats/text';
+import { attribute, byLocalName, childElements, isElement, localName, nodeText, parseMarkup, rootElement, textContent, type Element } from './markup';
 
 /**
  * A book's text for full-text search, in sections a reader can open at: an EPUB's spine items,
@@ -28,8 +27,8 @@ export interface TextSection {
   nodes?: [number, string][];
 }
 
-/** Bumped when extraction changes, so files are indexed again. */
-export const EXTRACTOR_VERSION = 2;
+/** Bumped when extraction changes, so files are indexed again. 3: EPUBs read without the browser's DOM. */
+export const EXTRACTOR_VERSION = 3;
 
 /**
  * The most of a book's text that's indexed, in characters: a few times the longest novels. A
@@ -42,42 +41,48 @@ export const MAX_SECTION_SOURCE = 8_000_000;
 /** The formats with text to extract, best first: which of an item's files is indexed. */
 export const TEXT_FORMATS: FormatId[] = ['epub', 'pdf', 'txt', 'rtf', 'x4.epub', 'x3.epub'];
 
+/**
+ * Formats whose text is read anywhere, a worker included. PDFs and RTF need the page: pdf.js runs its own
+ * worker from there, and rtf.js renders to the DOM (see `extractPage.ts`).
+ */
+export const WORKER_FORMATS: FormatId[] = ['epub', 'x4.epub', 'x3.epub', 'txt'];
+
 export async function extractText(data: Blob, format: FormatId): Promise<TextDoc> {
   switch (format) {
     case 'epub':
     case 'x4.epub':
     case 'x3.epub':
       return extractEpub(data);
-    case 'pdf':
-      return extractPdf(data);
     case 'txt':
       return textDoc(collapse(decodeText(await data.arrayBuffer())));
+    case 'pdf':
+      return (await import('./extractPage')).extractPdf(data);
     case 'rtf':
-      return extractRtf(data);
+      return (await import('./extractPage')).extractRtf(data);
     default:
       throw new Error(`There's no text to search in ${format} files.`);
   }
 }
 
 /** A text file's text as one section, cut at {@link MAX_BOOK_TEXT}. */
-const textDoc = (text: string): TextDoc => ({
+export const textDoc = (text: string): TextDoc => ({
   kind: 'text',
   sections: [{ ref: '', text: text.slice(0, MAX_BOOK_TEXT) }],
   ...(text.length > MAX_BOOK_TEXT && { truncated: true }),
 });
 
 /** Runs of spaces and tabs become one space, and blank lines one newline. */
-const collapse = (text: string) =>
+export const collapse = (text: string) =>
   text
     .replace(/[^\S\n]+/g, ' ')
     .replace(/ ?\n[\s]*/g, '\n')
     .trim();
 
-/** Lets the page breathe between chunks of work on the main thread. */
-const pause = () => new Promise((resolve) => setTimeout(resolve, 0));
+/** Lets the page breathe between chunks of work, where it's on the main thread. */
+export const pause = () => new Promise((resolve) => setTimeout(resolve, 0));
 
-const byLocalName = (root: Document | Element, name: string) =>
-  Array.from(root.getElementsByTagName('*')).filter((el) => el.localName === name);
+/** A document read from the zip, if it's there. */
+const parsed = (source: string | undefined) => (source === undefined ? undefined : parseMarkup(source));
 
 /** Paths in the zip are relative to the OPF's folder, and may be URL-encoded. */
 function resolve(base: string, href: string): string {
@@ -92,18 +97,19 @@ function resolve(base: string, href: string): string {
 async function extractEpub(data: Blob): Promise<TextDoc> {
   const zip = await JSZip.loadAsync(await data.arrayBuffer());
   const read = async (path: string) => zip.file(path)?.async('string');
-  const container = parseXml((await read('META-INF/container.xml')) ?? '');
-  const opfPath = container && byLocalName(container, 'rootfile')[0]?.getAttribute('full-path');
-  const opf = opfPath ? parseXml((await read(opfPath)) ?? '') : undefined;
-  if (!opfPath || !opf) throw new Error('This EPUB has no readable package document.');
+  const container = parsed(await read('META-INF/container.xml'));
+  const opfPath = container && byLocalName(container, 'rootfile').map((el) => attribute(el, 'full-path')).find(Boolean);
+  const opf = opfPath ? parsed(await read(opfPath)) : undefined;
+  const pkg = opf && rootElement(opf);
+  if (!opfPath || !opf || !pkg) throw new Error('This EPUB has no readable package document.');
 
-  const manifest = new Map(byLocalName(opf, 'item').map((el) => [el.getAttribute('id') ?? '', el]));
+  const manifest = new Map(byLocalName(opf, 'item').map((el) => [attribute(el, 'id') ?? '', el]));
   const spine = byLocalName(opf, 'spine')[0];
   if (!spine) throw new Error('This EPUB has no spine.');
-  const labels = await tocLabels(opf, opfPath, manifest, read);
+  const labels = await tocLabels(opfPath, manifest, read);
   // The spine's CFI step: its place among the package's children, then the itemref's among the spine's.
-  const spineStep = (Array.from(opf.documentElement.children).indexOf(spine) + 1) * 2;
-  const itemrefs = Array.from(spine.children).filter((el) => el.localName === 'itemref');
+  const spineStep = (childElements(pkg).indexOf(spine) + 1) * 2;
+  const itemrefs = childElements(spine).filter((el) => localName(el) === 'itemref');
 
   const sections: TextSection[] = [];
   let total = 0;
@@ -113,10 +119,10 @@ async function extractEpub(data: Blob): Promise<TextDoc> {
       truncated = true;
       break;
     }
-    const idref = itemref.getAttribute('idref') ?? '';
+    const idref = attribute(itemref, 'idref') ?? '';
     const item = manifest.get(idref);
-    const href = item?.getAttribute('href');
-    if (!href || !/x?html|xml/.test(item?.getAttribute('media-type') ?? '')) continue;
+    const href = item && attribute(item, 'href');
+    if (!href || !/x?html|xml/.test((item && attribute(item, 'media-type')) ?? '')) continue;
     const path = resolve(opfPath, href);
     const source = await read(path);
     if (!source) continue;
@@ -124,8 +130,9 @@ async function extractEpub(data: Blob): Promise<TextDoc> {
       truncated = true;
       continue;
     }
-    const doc = parseXml(source) ?? new DOMParser().parseFromString(source, 'text/html');
-    const { text, nodes, ids } = walk(doc.documentElement);
+    const root = rootElement(parseMarkup(source));
+    if (!root) continue;
+    const { text, nodes, ids } = walk(root);
     if (!text.trim()) continue;
     // Each entry of the table of contents pointing into this file names the text from its anchor on.
     const named = (labels.get(path) ?? [])
@@ -142,7 +149,7 @@ async function extractEpub(data: Blob): Promise<TextDoc> {
 }
 
 /** The table of contents' entries (EPUB 3's nav, else EPUB 2's NCX) by the file they point into, with the anchor. */
-async function tocLabels(opf: Document, opfPath: string, manifest: Map<string, Element>, read: (path: string) => Promise<string | undefined>) {
+async function tocLabels(opfPath: string, manifest: Map<string, Element>, read: (path: string) => Promise<string | undefined>) {
   const labels = new Map<string, { fragment?: string; label: string }[]>();
   const add = (base: string, href: string | null | undefined, label: string | null | undefined) => {
     const name = label?.replace(/\s+/g, ' ').trim();
@@ -152,19 +159,25 @@ async function tocLabels(opf: Document, opfPath: string, manifest: Map<string, E
     labels.set(path, [...(labels.get(path) ?? []), { ...(fragment && { fragment }), label: name }]);
   };
   const items = [...manifest.values()];
-  const nav = items.find((el) => el.getAttribute('properties')?.split(/\s+/).includes('nav'));
-  const ncx = items.find((el) => el.getAttribute('media-type') === 'application/x-dtbncx+xml');
-  if (nav?.getAttribute('href')) {
-    const path = resolve(opfPath, nav.getAttribute('href')!);
-    const doc = parseXml((await read(path)) ?? '');
-    const toc = doc && (byLocalName(doc, 'nav').find((el) => /toc/.test(el.getAttribute('epub:type') ?? el.getAttributeNS('http://www.idpf.org/2007/ops', 'type') ?? '')) ?? byLocalName(doc, 'nav')[0]);
-    for (const a of toc ? byLocalName(toc, 'a') : []) add(path, a.getAttribute('href'), a.textContent);
-  } else if (ncx?.getAttribute('href')) {
-    const path = resolve(opfPath, ncx.getAttribute('href')!);
-    const doc = parseXml((await read(path)) ?? '');
+  const nav = items.find((el) => attribute(el, 'properties')?.split(/\s+/).includes('nav'));
+  const ncx = items.find((el) => attribute(el, 'media-type') === 'application/x-dtbncx+xml');
+  const navHref = nav && attribute(nav, 'href');
+  const ncxHref = ncx && attribute(ncx, 'href');
+  /** EPUB's `epub:type`, whatever prefix the book gives the namespace. */
+  const epubType = (el: Element) => Object.keys(el.attribs).find((name) => /(^|:)type$/.test(name) && name !== 'type');
+  if (navHref) {
+    const path = resolve(opfPath, navHref);
+    const doc = parsed(await read(path));
+    const navs = doc ? byLocalName(doc, 'nav') : [];
+    const toc = navs.find((el) => /toc/.test(attribute(el, epubType(el) ?? '') ?? '')) ?? navs[0];
+    for (const a of toc ? byLocalName(toc, 'a') : []) add(path, attribute(a, 'href'), textContent(a));
+  } else if (ncxHref) {
+    const path = resolve(opfPath, ncxHref);
+    const doc = parsed(await read(path));
     for (const point of doc ? byLocalName(doc, 'navPoint') : []) {
-      const label = byLocalName(point, 'text')[0]?.textContent;
-      add(path, byLocalName(point, 'content')[0]?.getAttribute('src'), label);
+      const text = byLocalName(point, 'text')[0];
+      const content = byLocalName(point, 'content')[0];
+      add(path, content && attribute(content, 'src'), text && textContent(text));
     }
   }
   return labels;
@@ -204,19 +217,19 @@ function walk(root: Element): { text: string; nodes: [number, string][]; ids: Ma
   };
   const visit = (el: Element, path: string) => {
     let elements = 0;
-    for (const child of Array.from(el.childNodes)) {
-      if (child.nodeType === 1) {
+    for (const child of el.children) {
+      if (isElement(child)) {
         elements++;
-        const name = (child as Element).localName.toLowerCase();
+        const name = localName(child).toLowerCase();
         if (SKIPPED.has(name)) continue;
         const block = BLOCKS.has(name);
         if (block) newline();
-        const id = (child as Element).getAttribute('id');
+        const id = attribute(child, 'id');
         if (id && !ids.has(id)) ids.set(id, length);
-        visit(child as Element, `${path}/${elements * 2}`);
+        visit(child, `${path}/${elements * 2}`);
         if (block) newline();
-      } else if (child.nodeType === 3) {
-        let value = (child.nodeValue ?? '').replace(/\s+/g, ' ');
+      } else if (child.type === 'text') {
+        let value = nodeText(child.data).replace(/\s+/g, ' ');
         if (!length || last === '\n' || last === ' ') value = value.replace(/^ /, '');
         if (!value) continue;
         nodes.push([length, `${path}/${elements * 2 + 1}`]);
@@ -226,36 +239,4 @@ function walk(root: Element): { text: string; nodes: [number, string][]; ids: Ma
   };
   visit(root, '');
   return { text: parts.join('').trimEnd(), nodes, ids };
-}
-
-async function extractPdf(data: Blob): Promise<TextDoc> {
-  const pdfjs = await loadPdfjs();
-  const task = pdfjs.getDocument({ data: new Uint8Array(await data.arrayBuffer()) });
-  try {
-    const doc = await task.promise;
-    const sections: TextSection[] = [];
-    let total = 0;
-    for (let page = 1; page <= doc.numPages; page++) {
-      if (total >= MAX_BOOK_TEXT) return { kind: 'pdf', sections, truncated: true };
-      const content = await (await doc.getPage(page)).getTextContent();
-      let raw = '';
-      for (const item of content.items) {
-        if (!('str' in item)) continue;
-        raw += item.str + (item.hasEOL ? '\n' : '');
-      }
-      const text = collapse(raw.replace(/-\n(?=\p{Ll})/gu, ''));
-      if (text) sections.push({ ref: String(page), label: `Page ${page}`, text });
-      total += text.length;
-      if (page % 10 === 0) await pause();
-    }
-    return { kind: 'pdf', sections };
-  } finally {
-    void task.destroy();
-  }
-}
-
-async function extractRtf(data: Blob): Promise<TextDoc> {
-  const RTFJS = await loadRtfjs();
-  const elements = await new RTFJS.Document(await data.arrayBuffer(), {}).render();
-  return textDoc(collapse(elements.map((el) => el.textContent ?? '').join('\n')));
 }

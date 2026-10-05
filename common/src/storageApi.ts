@@ -48,6 +48,8 @@ export const storageEndpoints = (base: string) => ({
   /** Base64 of up to `length` bytes from `offset`. */
   readChunk: get<ChunkReadRequest, string, SimpleMeta>(`${base}/readChunk`),
   writeChunk: post<ChunkWriteRequest, null, SimpleMeta>(`${base}/writeChunk`),
+  /** Deletes the file; nothing happens if there's none. */
+  remove: post<PathRequest, null, SimpleMeta>(`${base}/remove`),
 });
 
 export const storageApiMeta = { storage: storageEndpoints('api/storage') };

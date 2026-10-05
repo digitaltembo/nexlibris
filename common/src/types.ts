@@ -5,7 +5,7 @@ export type UserId = string;
 /** Hex-encoded SHA-256 of a file's contents. */
 export type FileHash = string;
 
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 7;
 
 /** The implicit user until multi-user support exists. */
 export const LOCAL_USER: UserId = 'local';
@@ -125,6 +125,17 @@ export interface PlacedFile {
    * of the metadata written into it. The file is sent again when this changes.
    */
   key?: string;
+  /**
+   * Put there by hand and linked to the item, rather than sent by a sync: it stays at its own path
+   * while it's current, where a sent file moves when the device's path templates change.
+   */
+  linked?: boolean;
+  /**
+   * A copy nexlibris didn't make (linked, or found on the device by a sync): it stands for the library file
+   * in `hash` as is, so it's current while that file and `key` are unchanged, without the converted file a
+   * sync would make.
+   */
+  found?: boolean;
 }
 
 /**
@@ -140,6 +151,11 @@ export interface Device {
   items: ItemId[];
   /** A search (the library search box's syntax) whose matches also go on the device, as they change. */
   query?: string;
+  /**
+   * Items kept off the device even though they're chosen or match `query`: for another instance,
+   * books deleted there, which stay in this library.
+   */
+  excluded?: ItemId[];
   /** Settings for the device type, e.g. its address. Their meaning is up to the plugin. */
   settings: Record<string, MetadataValue>;
   /** What syncs have put on the device, by path on the device. */

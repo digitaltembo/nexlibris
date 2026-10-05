@@ -56,6 +56,14 @@ describe('desktop file storage', () => {
     // No temporary files left behind.
     expect(readdirSync(join(root, 'files', hash.slice(0, 2)))).toEqual([hash]);
     expect(await storage.readBlob('files/00/missing')).toBeUndefined();
+
+    // Deleting: the file goes, deleting it again does nothing, and folders are refused.
+    await backend.deleteFile(hash);
+    expect(await backend.hasFile(hash)).toBe(false);
+    expect(readdirSync(join(root, 'files', hash.slice(0, 2)))).toEqual([]);
+    await backend.deleteFile(hash);
+    await expect(storage.remove('files')).rejects.toThrow('Not a file');
+    await expect(storage.remove('../x')).rejects.toThrow('Bad path');
   });
 
   it('refuses paths outside the library, including through symlinks', async () => {

@@ -14,6 +14,7 @@ import {
 import { useEffect } from 'react';
 import { androidTransport, inAndroidApp } from '../backends/androidBridge';
 import { instanceName } from './hub';
+import { instanceScope } from './instances';
 
 /**
  * The Android app as a sync hub over Bluetooth (see `common/src/bluetoothApi.ts`): the app carries
@@ -62,7 +63,7 @@ export const bluetoothSyncHub = () => current;
 export function useBluetoothHosting(backend: LibraryBackend, refresh: () => Promise<void>) {
   useEffect(() => {
     if (!inAndroidApp()) return;
-    const hub = createSyncHub(backend, { name: instanceName, onApplied: () => void refresh() });
+    const hub = createSyncHub(backend, { name: instanceName, onApplied: () => void refresh(), scope: instanceScope });
     current = hub;
     let stopped = false;
     void serveBluetooth(bluetoothHost(), hub, () => stopped);

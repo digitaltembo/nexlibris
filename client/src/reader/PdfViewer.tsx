@@ -18,10 +18,33 @@ const Pages = styled.div`
   padding: 16px;
 `;
 
-const Page = styled.canvas`
+/**
+ * A page in the theme's colours: the canvas, white paper and black ink as pdf.js draws it (inverted in the
+ * dark scheme), blended onto --surface so the paper takes its colour, then --text blended over it so the ink
+ * does. Colours in between keep roughly their hue. All CSS, so a change of scheme needs no re-render.
+ */
+const Sheet = styled.div`
+  position: relative;
   width: min(100%, 1000px);
-  background: #fff;
+  background: var(--surface);
   box-shadow: 0 1px 4px rgb(0 0 0 / 0.2);
+  isolation: isolate;
+
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--text);
+    mix-blend-mode: var(--page-ink-blend);
+    pointer-events: none;
+  }
+`;
+
+const Page = styled.canvas`
+  display: block;
+  width: 100%;
+  filter: var(--page-filter);
+  mix-blend-mode: var(--page-blend);
 `;
 import type { ViewerProps } from './Reader';
 import { scrollParent } from './scroll';
@@ -146,5 +169,9 @@ function PdfPage({ doc, pageNumber }: { doc: PdfDocument; pageNumber: number }) 
     };
   }, [doc, pageNumber]);
 
-  return <Page ref={canvasRef} style={{ aspectRatio: `1 / ${aspect}` }} aria-label={`Page ${pageNumber}`} />;
+  return (
+    <Sheet>
+      <Page ref={canvasRef} style={{ aspectRatio: `1 / ${aspect}` }} aria-label={`Page ${pageNumber}`} />
+    </Sheet>
+  );
 }

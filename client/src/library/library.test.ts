@@ -5,6 +5,7 @@ import { importFiles, type ImportSource } from './importFiles';
 import { metadataToText, textToMetadata } from './metadataText';
 import { availableFields, visibleColumns } from './columns';
 import { filterItems, sortItems } from './search';
+import { bookSize, sizeInMB } from './bookFields';
 
 async function epubFile(name: string, title: string, extra = ''): Promise<File> {
   const zip = new JSZip();
@@ -257,6 +258,21 @@ describe('importFiles', () => {
 });
 
 describe('filterItems and sortItems', () => {
+  it('sizes a book by its largest file, as Calibre does, and sorts and searches by it', () => {
+    const file = (size: number, format: string) => ({ hash: `${format}${size}`, size, format });
+    const big = createItem({ title: 'Big', files: [file(2_500_000, 'epub'), file(9_000_000, 'pdf')] });
+    const small = createItem({ title: 'Small', files: [file(40_000, 'epub')] });
+    const none = createItem({ title: 'None' });
+    expect(bookSize(big)).toBe(9_000_000);
+    expect([big, small, none].map((i) => sizeInMB(bookSize(i)))).toEqual(['8.6', '<0.1', '0.0']);
+    const titles = (items: { title: string }[]) => items.map((i) => i.title);
+    expect(titles(sortItems([small, none, big], { key: 'size', desc: true }))).toEqual(['Big', 'Small', 'None']);
+    expect(titles(sortItems([big, none, small], { key: 'size', desc: false }))).toEqual(['Small', 'Big', 'None']);
+    expect(titles(filterItems([big, small, none], 'size:>2M'))).toEqual(['Big']);
+    expect(titles(filterItems([big, small, none], 'size:<50k'))).toEqual(['Small']);
+    expect(titles(filterItems([big, small, none], 'size:>=40000'))).toEqual(['Big', 'Small']);
+  });
+
   const dune = createItem({ title: 'Dune', creators: [{ name: 'Frank Herbert', role: 'aut' }], tags: ['desert'] });
   const emma = createItem({ title: 'Emma', creators: [{ name: 'Jane Austen', role: 'aut' }] });
 
@@ -276,6 +292,17 @@ describe('filterItems and sortItems', () => {
     expect(filterItems(all, 'misé')).toEqual([hugo]);
     expect(filterItems(all, 'l.m. montgomery')).toEqual([montgomery]);
     expect(filterItems(all, '  ')).toEqual(all);
+  });
+
+  it('sorts and searches first published with BC before AD', () => {
+    const at = (title: string, originallyPublished: string) => createItem({ title, metadata: { originallyPublished } });
+    const books = [at('Dune', '1965-08-01'), at('Metamorphoses', '0008'), at('Lyrics', '-0570'), at('Republic', '-0375'), at('Genji', '1021')];
+    const titles = (items: { title: string }[]) => items.map((i) => i.title);
+    expect(titles(sortItems(books, { key: 'published', desc: false }))).toEqual(['Lyrics', 'Republic', 'Metamorphoses', 'Genji', 'Dune']);
+    expect(titles(filterItems(books, 'originallyPublished:<-0400'))).toEqual(['Lyrics']);
+    expect(titles(filterItems(books, 'originallyPublished:<1000'))).toEqual(['Metamorphoses', 'Lyrics', 'Republic']);
+    expect(titles(filterItems(books, 'originallyPublished:>=1965-08'))).toEqual(['Dune']);
+    expect(titles(filterItems(books, 'originallyPublished:"<500 BC"'))).toEqual(['Lyrics']);
   });
 
   it('sorts in either direction, with missing values last', () => {

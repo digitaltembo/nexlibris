@@ -91,6 +91,10 @@ export interface Passage {
   highlights: [number, number][];
   /** How many different terms it has: passages with more come first. */
   terms: number;
+  /** Where it is, to name it: its chapter, or a PDF's page (see {@link placeOf}). */
+  place?: string;
+  /** Where the reader opens for it (see {@link locate}). */
+  locator: string;
 }
 
 export interface BookMatch {
@@ -133,12 +137,15 @@ export function findPassages(doc: TextDoc, terms: TextTerm[]): BookMatch | undef
       const to = cut(section.text, group.at(-1)!.end + CONTEXT, 1);
       const lead = from > 0 ? '…' : '';
       const snippet = lead + section.text.slice(from, to).replace(/\n/g, ' ') + (to < section.text.length ? '…' : '');
+      const at = { section: index, offset: group[0]!.start };
+      const place = placeOf(doc, at);
       passages.push({
-        section: index,
-        offset: group[0]!.start,
+        ...at,
         snippet,
         highlights: group.map((h): [number, number] => [h.start - from + lead.length, h.end - from + lead.length]),
         terms: new Set(group.map((h) => h.term)).size,
+        ...(place && { place }),
+        locator: locate(doc, at),
       });
       group = [];
     };

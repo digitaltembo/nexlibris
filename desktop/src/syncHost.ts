@@ -1,9 +1,12 @@
 import {
+  fromPeer,
   isFileHash,
   storedFilePath,
+  type NewCodeRequest,
   type PairedPeer,
   type PairingCode,
   type PairRequest,
+  type PairResult,
   type PeerInfo,
   type RpcRequest,
   type RpcResponse,
@@ -75,7 +78,7 @@ export function createSyncHost(options: SyncHostOptions) {
   let server: Server | undefined;
   let port: number | undefined;
   let error: string | undefined;
-  let code: { value: string; expiresAt: number; attempts: number } | undefined;
+  let code: { value: string; expiresAt: number; attempts: number; keepFiles?: string } | undefined;
 
   async function load(): Promise<StoredState> {
     if (state) return state;
@@ -145,7 +148,7 @@ export function createSyncHost(options: SyncHostOptions) {
     return (await load()).peers.find((peer) => timingSafeEqual(Buffer.from(peer.keyHash, 'hex'), hash));
   }
 
-  async function pair(request: PairRequest): Promise<{ key: string; hub: PeerInfo }> {
+  async function pair(request: PairRequest): Promise<PairResult> {
     const current = code;
     if (!current || current.expiresAt < now().getTime()) throw new Error('That pairing code has expired. Show a new one.');
     if (normalizeCode(request.code ?? '') !== current.value) {
@@ -162,7 +165,7 @@ export function createSyncHost(options: SyncHostOptions) {
     s.peers = s.peers.filter((peer) => peer.origin !== request.peer.origin);
     s.peers.push({ origin: request.peer.origin, name: request.peer.name.slice(0, 100), pairedAt: now().toISOString(), keyHash: sha256(key) });
     await save();
-    return { key, hub: hello.value as PeerInfo };
+    return { key, hub: hello.value as PeerInfo, ...(current.keepFiles && { keepFiles: current.keepFiles }) };
   }
 
   async function handle(req: IncomingMessage, res: ServerResponse) {
@@ -208,7 +211,7 @@ export function createSyncHost(options: SyncHostOptions) {
         await save();
         return reply(200, { ok: true, value: null });
       }
-      reply(200, await options.relay({ method: 'POST', url: `api/sync/${endpoint}`, body }));
+      reply(200, await options.relay({ method: 'POST', url: `api/sync/${endpoint}`, body: fromPeer(endpoint, body, peer.origin) }));
     } catch (e) {
       reply(200, { ok: false, message: e instanceof Error ? e.message : String(e) });
     }
@@ -253,10 +256,12 @@ export function createSyncHost(options: SyncHostOptions) {
       else await close();
       return status();
     },
-    async newCode(): Promise<PairingCode> {
+    /** A new one-time code; the device that uses it keeps the files of the books `keepFiles` finds. */
+    async newCode(request?: NewCodeRequest | null): Promise<PairingCode> {
       if (!server) throw new Error('Turn on sync first.');
       const value = Array.from({ length: 8 }, () => CODE_ALPHABET[randomInt(CODE_ALPHABET.length)]).join('');
-      code = { value, expiresAt: now().getTime() + CODE_LIFETIME_MS, attempts: 0 };
+      const keepFiles = request?.keepFiles?.trim().slice(0, 2000);
+      code = { value, expiresAt: now().getTime() + CODE_LIFETIME_MS, attempts: 0, ...(keepFiles && { keepFiles }) };
       return { code: `${value.slice(0, 4)}-${value.slice(4)}`, expiresAt: new Date(code.expiresAt).toISOString() };
     },
     async unpair(origin: string) {

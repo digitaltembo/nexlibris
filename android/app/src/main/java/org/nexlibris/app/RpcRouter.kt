@@ -48,10 +48,11 @@ fun storageRoutes(base: String, storage: () -> PathStorage): Map<String, Route> 
     "POST $base/writeChunk" to { b ->
         storage().writeChunk(b.getString("path"), b.getString("data"), b.getBoolean("first"), b.getBoolean("last"))
     },
+    "POST $base/remove" to { b -> storage().remove(b.getString("path")) },
 )
 
 /**
- * The sync folder API (common/src/usbFolderApi.ts): the folder as storage, plus listing, removing,
+ * The sync folder API (common/src/usbFolderApi.ts): the folder as storage, plus listing
  * and copying stored files between it and the [library]. [folder] gives the folder when called
  * (throwing until one is chosen); [info] says where it is, and [choose] asks for it.
  */
@@ -66,7 +67,6 @@ fun usbFolderRoutes(
         "GET $base/info" to { _ -> info() },
         "POST $base/choose" to { _ -> choose() },
         "GET $base/list" to { b -> org.json.JSONArray(folder().list(b.getString("path"))) },
-        "POST $base/remove" to { b -> folder().remove(b.getString("path")) },
         "POST $base/toFolder" to { b -> copyStoredFile(library, folder(), b.getString("hash")); null },
         "POST $base/fromFolder" to { b -> copyStoredFile(folder(), library, b.getString("hash")); null },
     )

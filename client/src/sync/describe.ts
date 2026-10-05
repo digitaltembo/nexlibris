@@ -43,6 +43,7 @@ export function describeTarget(target: Target, libraries: { ours: Library; their
       case 'setting':
         return `${name} — setting ${quoted(target[3])}`;
       case 'item':
+      case 'excluded':
         return `${name} — ${itemName(libraries, target[3])}`;
       case 'placed':
         return `${name} — ${target[3]}`;
@@ -61,6 +62,7 @@ export function describeTarget(target: Target, libraries: { ours: Library; their
 export function describeValue(target: Target, value: unknown): string {
   if (target.length === 2) return value ? 'kept' : 'removed';
   if (target[0] === 'device' && target[2] === 'item') return value ? 'on the device' : 'not on the device';
+  if (target[0] === 'device' && target[2] === 'excluded') return value ? 'kept off the device' : 'not kept off';
   if (target[0] === 'category') {
     if (!value) return 'removed';
     const { name, entries } = value as Category;

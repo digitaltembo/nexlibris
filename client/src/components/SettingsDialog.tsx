@@ -14,6 +14,7 @@ export const SORT_LABELS: Record<SortKey, string> = {
   series: 'Series',
   published: 'First published',
   rating: 'Rating',
+  size: 'Size',
   added: 'Date added',
 };
 

@@ -23,7 +23,6 @@ export const usbFolderApiMeta = {
     choose: post<null, { path: string }, SimpleMeta>('api/usbFolder/choose'),
     /** The names in a folder; none if it doesn't exist. */
     list: get<PathRequest, string[], SimpleMeta>('api/usbFolder/list'),
-    remove: post<PathRequest, null, SimpleMeta>('api/usbFolder/remove'),
     /** Copies a stored file from the library into the folder; refused unless it hashes to `hash`. */
     toFolder: post<HashRequest, null, SimpleMeta>('api/usbFolder/toFolder'),
     /** Copies a stored file from the folder into the library; refused unless it hashes to `hash`. */

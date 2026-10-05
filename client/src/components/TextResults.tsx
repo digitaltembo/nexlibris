@@ -1,7 +1,7 @@
 import type { FileRef, Item, ItemId } from '@nexlibris/common';
 import { useState } from 'react';
 import styled from 'styled-components';
-import { locate, placeOf, type Passage } from '../fulltext/match';
+import type { Passage } from '../fulltext/match';
 import { useTextSearch, type TextCoverage, type TextHit } from '../fulltext/TextIndexContext';
 import { NARROW } from '../styles/GlobalStyle';
 import { Muted } from '../styles/ui';
@@ -125,7 +125,8 @@ export const Snippet = ({ passage }: { passage: Passage }) => {
 };
 
 /** Where a passage is, for its label: the chapter, or the page. */
-export const passagePlace = (hit: TextHit, passage: Passage) => placeOf(hit.doc, passage);
+/** Where a passage is in its book: its chapter, or a PDF's page. */
+export const passagePlace = (_hit: TextHit, passage: Passage) => passage.place;
 
 /** How much of the library was searched, in words, when not all of it could be. */
 export function coverageNote(coverage: TextCoverage | undefined): string | undefined {
@@ -194,7 +195,7 @@ export function TextResults({ query, items, onRead, onOpenItem }: Props) {
                   <li key={i}>
                     <PassageButton
                       title="Read from here"
-                      onClick={() => onRead(hit.item, hit.file, locate(hit.doc, passage))}
+                      onClick={() => onRead(hit.item, hit.file, passage.locator)}
                     >
                       {passagePlace(hit, passage) && <Where>{passagePlace(hit, passage)}</Where>}
                       <Snippet passage={passage} />

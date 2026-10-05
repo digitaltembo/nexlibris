@@ -63,6 +63,13 @@ export function createFileStorage(root: string): MessageImpl<StorageApi>['storag
       if (last) await commit(upload, file);
       return null;
     },
+    async remove({ path }) {
+      const file = resolve(path);
+      const info = await stat(file).catch(() => undefined);
+      if (info?.isDirectory()) throw new Error(`Not a file: ${path}`);
+      await rm(file, { force: true });
+      return null;
+    },
   };
 }
 

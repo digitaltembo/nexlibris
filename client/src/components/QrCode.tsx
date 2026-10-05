@@ -7,9 +7,9 @@ const Svg = styled.svg`
   width: 220px;
   max-width: 100%;
   height: auto;
-  /* Always dark on light, whatever the theme: scanners expect it. */
-  background: #fff;
-  color: #000;
+  /* Always dark on light, whatever the scheme (scanners expect it), in the theme's colours. */
+  background: var(--qr-paper);
+  color: var(--qr-ink);
   border-radius: var(--radius);
 `;
 

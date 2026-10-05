@@ -1,10 +1,11 @@
 import type { LibraryBackend } from './backend';
 import { hashBlob } from './backend';
 import { createMessageHandler, type MessageImpl, type RpcResponse } from './rpc';
+import type { ScopeRule } from './scope';
 import { createSyncService } from './sync';
-import { syncApiMeta, type PairRequest, type PeerInfo, type SyncApi } from './syncApi';
+import { fromPeer, syncApiMeta, type PairRequest, type PairResult, type SyncApi } from './syncApi';
 import { isFileHash } from './syncFiles';
-import type { PairedPeer, PairingCode } from './syncHostApi';
+import type { NewCodeRequest, PairedPeer, PairingCode } from './syncHostApi';
 import type { SyncMessageRequest } from './syncMessage';
 
 /**
@@ -54,11 +55,15 @@ const json = (status: number, body: RpcResponse): HubResponse => ({ status, body
 
 export function createSyncHub(
   backend: LibraryBackend,
-  options: { name: () => string; onApplied?: () => void; now?: () => Date },
+  options: { name: () => string; onApplied?: () => void; now?: () => Date; scope?: ScopeRule },
 ) {
   const now = options.now ?? (() => new Date());
-  let code: { value: string; expiresAt: number; attempts: number } | undefined;
-  const service = createSyncService(backend, { name: options.name, ...(options.onApplied && { onApplied: options.onApplied }) });
+  let code: { value: string; expiresAt: number; attempts: number; keepFiles?: string } | undefined;
+  const service = createSyncService(backend, {
+    name: options.name,
+    ...(options.onApplied && { onApplied: options.onApplied }),
+    ...(options.scope && { scope: options.scope }),
+  });
   const unused = async (): Promise<never> => {
     throw new Error('Handled by the hub');
   };
@@ -73,7 +78,7 @@ export function createSyncHub(
     return (await load()).peers.find((peer) => peer.keyHash === hash);
   }
 
-  async function pair(request: PairRequest): Promise<{ key: string; hub: PeerInfo }> {
+  async function pair(request: PairRequest): Promise<PairResult> {
     const current = code;
     if (!current || current.expiresAt < now().getTime()) throw new Error('That pairing code has expired. Show a new one.');
     if (normalizeCode(request?.code ?? '') !== current.value) {
@@ -87,7 +92,7 @@ export function createSyncHub(
     const peers = state.peers.filter((peer) => peer.origin !== request.peer.origin);
     peers.push({ origin: request.peer.origin, name: request.peer.name.slice(0, 100), pairedAt: now().toISOString(), keyHash: await sha256(key) });
     await save({ peers });
-    return { key, hub: await service.hello(null) };
+    return { key, hub: await service.hello(null), ...(current.keepFiles && { keepFiles: current.keepFiles }) };
   }
 
   async function handle(request: HubRequest): Promise<HubResponse> {
@@ -129,7 +134,7 @@ export function createSyncHub(
         await save({ peers: state.peers.map((p) => (p.origin === peer.origin ? { ...p, lastSyncedAt: now().toISOString() } : p)) });
         return json(200, { ok: true, value: null });
       }
-      return json(200, await relay({ id: 0, method: 'POST', url: `api/sync/${endpoint}`, body }));
+      return json(200, await relay({ id: 0, method: 'POST', url: `api/sync/${endpoint}`, body: fromPeer(endpoint, body, peer.origin) }));
     } catch (e) {
       return json(200, { ok: false, message: e instanceof Error ? e.message : String(e) });
     }
@@ -137,10 +142,11 @@ export function createSyncHub(
 
   return {
     handle,
-    /** A new one-time code, replacing any earlier one. */
-    newCode(): PairingCode {
+    /** A new one-time code, replacing any earlier one; the device that uses it keeps the files `keepFiles` finds. */
+    newCode(request?: NewCodeRequest | null): PairingCode {
       const value = randomText(8, CODE_ALPHABET);
-      code = { value, expiresAt: now().getTime() + CODE_LIFETIME_MS, attempts: 0 };
+      const keepFiles = request?.keepFiles?.trim();
+      code = { value, expiresAt: now().getTime() + CODE_LIFETIME_MS, attempts: 0, ...(keepFiles && { keepFiles }) };
       return { code: `${value.slice(0, 4)}-${value.slice(4)}`, expiresAt: new Date(code.expiresAt).toISOString() };
     },
     /** Whether the current code is still waiting to be used. */

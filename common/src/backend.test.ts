@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { hashBlob, StoredLibraryBackend } from './backend';
 import { migrateLibrary, migrateOperation, NewerSchemaError } from './migrate';
-import { applyOperations, createCategory, createItem, createLibrary } from './operations';
+import { applyOperations, createCategory, createDevice, createItem, createLibrary } from './operations';
 import { MemoryStorage } from './storage';
 import { SCHEMA_VERSION } from './types';
 
@@ -146,7 +146,7 @@ describe('migrateLibrary', () => {
   it('takes a schema 2 library to schema 3 unchanged, and then it takes categories', () => {
     const v2 = { ...createLibrary('Mine'), schemaVersion: 2 };
     const library = migrateLibrary(JSON.parse(JSON.stringify(v2)));
-    expect(library).toEqual({ ...v2, schemaVersion: 4 });
+    expect(library).toEqual({ ...v2, schemaVersion: SCHEMA_VERSION });
     const category = createCategory({ name: 'Moods', entries: [{ label: 'Cosy', query: 'tag:cosy' }] });
     expect(applyOperations(library, [{ type: 'setCategory', category }]).library.categories).toEqual({ [category.id]: category });
   });
@@ -155,7 +155,7 @@ describe('migrateLibrary', () => {
     const item = { ...createItem({ title: 'Dune' }), metadata: { published: '1965-07-31T23:00:00+00:00', seriesIndex: '1', pages: '412', mood: 'sandy', blank: '' } };
     const v3 = { ...createLibrary('Mine'), schemaVersion: 3, items: { [item.id]: item } };
     const library = migrateLibrary(JSON.parse(JSON.stringify(v3)));
-    expect(library.schemaVersion).toBe(4);
+    expect(library.schemaVersion).toBe(SCHEMA_VERSION);
     expect(library.items[item.id]!.metadata).toEqual({ published: '1965-08-01', seriesIndex: 1, pages: 412, mood: 'sandy' });
     expect(migrateOperation({ type: 'setMetadata', id: item.id, key: 'published', value: 'June 1990' }, 3)).toEqual({
       type: 'setMetadata',
@@ -163,6 +163,32 @@ describe('migrateLibrary', () => {
       key: 'published',
       value: '1990-06',
     });
+  });
+
+  it('takes a schema 4 library to schema 5 unchanged (placed files may now be marked linked)', () => {
+    const v4 = { ...createLibrary('Mine'), schemaVersion: 4 };
+    expect(migrateLibrary(JSON.parse(JSON.stringify(v4)))).toEqual({ ...v4, schemaVersion: SCHEMA_VERSION });
+  });
+
+  it('takes a schema 5 library to schema 6 unchanged, and then devices can keep items off', () => {
+    const item = createItem({ title: 'Dune' });
+    const device = createDevice({ name: 'Phone', type: 'nexlibris.instance', query: 'has:file' });
+    const v5 = { ...createLibrary('Mine'), schemaVersion: 5, items: { [item.id]: item }, devices: { [device.id]: device } };
+    const library = migrateLibrary(JSON.parse(JSON.stringify(v5)));
+    expect(library).toEqual({ ...v5, schemaVersion: SCHEMA_VERSION });
+    const excluded = applyOperations(library, [{ type: 'excludeDeviceItems', id: device.id, itemIds: [item.id, 'elsewhere', item.id] }]).library;
+    expect(excluded.devices![device.id]!.excluded).toEqual([item.id, 'elsewhere']);
+    const back = applyOperations(excluded, [{ type: 'unexcludeDeviceItems', id: device.id, itemIds: [item.id, 'elsewhere'] }]).library;
+    expect(back.devices![device.id]).toEqual(device);
+  });
+
+  it('takes a schema 6 library to schema 7 unchanged, and then dates can be before AD 1', () => {
+    const item = createItem({ title: 'Lyrics', metadata: { originallyPublished: '1904' } });
+    const v6 = { ...createLibrary('Mine'), schemaVersion: 6, items: { [item.id]: item } };
+    const library = migrateLibrary(JSON.parse(JSON.stringify(v6)));
+    expect(library).toEqual({ ...v6, schemaVersion: SCHEMA_VERSION });
+    const older = applyOperations(library, [{ type: 'setMetadata', id: item.id, key: 'originallyPublished', value: '570 BC' }]).library;
+    expect(older.items[item.id]!.metadata.originallyPublished).toBe('-0570');
   });
 
   it('runs each step from the stored version up', () => {

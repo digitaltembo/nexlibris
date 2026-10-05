@@ -32,3 +32,4 @@ export * from './syncHub';
 export * from './folderHub';
 export * from './bluetoothApi';
 export * from './usbFolderApi';
+export * from './scope';

@@ -24,6 +24,11 @@ export interface SyncHostStatus {
   error?: string;
 }
 
+export interface NewCodeRequest {
+  /** The books whose files the device that pairs keeps, as a search; every book's if not given. */
+  keepFiles?: string;
+}
+
 export interface PairingCode {
   /** Typed in on the other device, or read from the QR code: e.g. `K3Q9-TX2M`. */
   code: string;
@@ -34,8 +39,11 @@ export const syncHostApiMeta = {
   syncHost: {
     status: post<null, SyncHostStatus, SimpleMeta>('api/syncHost/status'),
     setEnabled: post<{ enabled: boolean }, SyncHostStatus, SimpleMeta>('api/syncHost/setEnabled'),
-    /** A new one-time code, replacing any earlier one. */
-    newCode: post<null, PairingCode, SimpleMeta>('api/syncHost/newCode'),
+    /**
+     * A new one-time code, replacing any earlier one; the device that uses it keeps the files of the
+     * books `keepFiles` finds (`PairResult.keepFiles`).
+     */
+    newCode: post<NewCodeRequest | null, PairingCode, SimpleMeta>('api/syncHost/newCode'),
     unpair: post<{ origin: string }, SyncHostStatus, SimpleMeta>('api/syncHost/unpair'),
   },
 };

@@ -1,10 +1,9 @@
 import { userData, type Item } from '@nexlibris/common';
 import type { ReactNode } from 'react';
 import styled, { css } from 'styled-components';
-import { authorSortKey, fieldLabel, titleSortKey } from '../library/bookFields';
+import { authorSortKey, bookSize, fieldLabel, fieldText, sizeInMB, titleSortKey } from '../library/bookFields';
 import { BUILTIN_COLUMNS, fieldKey, type BuiltinColumn, type ColumnId } from '../library/columns';
 import { useLibrary } from '../library/LibraryContext';
-import { metadataToText } from '../library/metadataText';
 import { useLongPress } from '../library/useLongPress';
 import { DEFAULT_DESC, type Sort, type SortKey } from '../library/search';
 import { Cover, PlaceholderTitle } from './Cover';
@@ -34,6 +33,11 @@ const columnStyles: Partial<Record<ColumnKind, ReturnType<typeof css>>> = {
   rating: css`
     white-space: nowrap;
   `,
+  size: css`
+    white-space: nowrap;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  `,
   added: css`
     white-space: nowrap;
   `,
@@ -56,7 +60,7 @@ const columnStyles: Partial<Record<ColumnKind, ReturnType<typeof css>>> = {
 };
 
 /** Dropped on narrow screens to leave room for the title. */
-const NARROW_HIDDEN = new Set<ColumnKind>(['titleSort', 'authorSort', 'series', 'tags', 'formats', 'added', 'updated', 'field']);
+const NARROW_HIDDEN = new Set<ColumnKind>(['titleSort', 'authorSort', 'series', 'tags', 'formats', 'size', 'added', 'updated', 'field']);
 
 /** A sort form worked out rather than stored: shown quieter. */
 const Computed = styled.span`
@@ -167,6 +171,7 @@ export function LibraryList({ items, selection, onActivate, onLongPress, columns
       formats(item).map((f) => (
         <Badge key={f}>{f}</Badge>
       )),
+    size: (item) => (item.files.length ? sizeInMB(bookSize(item)) : null),
     added: (item) => date(item.addedAt),
     updated: (item) => date(item.updatedAt),
   };
@@ -175,7 +180,7 @@ export function LibraryList({ items, selection, onActivate, onLongPress, columns
     const key = fieldKey(id);
     if (key === undefined) return builtinCell[id as BuiltinColumn](item);
     const value = item.metadata[key];
-    return value === undefined || value === null ? null : metadataToText(value);
+    return value === undefined || value === null ? null : fieldText(key, value);
   };
 
   const label = (id: ColumnId) => {

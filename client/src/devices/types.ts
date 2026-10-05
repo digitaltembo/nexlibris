@@ -1,6 +1,7 @@
-import type { Device, FileRef, Item } from '@nexlibris/common';
+import type { Device, FileRef, Item, Library } from '@nexlibris/common';
 import type { Converter } from '../formats/convert/converters';
 import type { FormatId } from '../formats/formats';
+import type { ComponentType } from 'react';
 import type { LibraryViewType } from '../views/types';
 
 /** A file on a device, as its listing shows it. */
@@ -41,6 +42,8 @@ export interface DeviceTarget {
   remove(path: string): Promise<void>;
   /** Reads a file, e.g. to bring a book on the device into the library. */
   download?(path: string): Promise<Blob>;
+  /** Moves or renames a file, into a folder that exists; without it, a book whose path changes is sent again. */
+  move?(from: string, to: string): Promise<void>;
   /** OPDS catalogs the device lists for browsing, for devices that have such a list. */
   listCatalogs?(): Promise<Catalog[]>;
   addCatalog?(catalog: Catalog): Promise<void>;
@@ -62,6 +65,8 @@ export interface SettingField {
   choices?: { value: string; label: string }[];
   /** A whole number in this range. */
   range?: { min: number; max: number };
+  /** Checks a value as it's typed (with the connection's other settings), giving problems and an example of its effect. */
+  check?(value: string, settings: Record<string, string>, library: Library): { problems?: string[]; example?: string };
 }
 
 /** Turns a library file into the one sent, e.g. writing the item's current metadata into it. */
@@ -94,13 +99,32 @@ interface ConnectionTypeBase {
 /** A reader or other device that books are copied to, provided by a plugin. */
 export interface DeviceType extends ConnectionTypeBase {
   kind?: 'device';
-  /** The folder on the device that books go in. */
+  /**
+   * Where books go on the device: a path template (`devices/pathTemplate.ts`), a plain folder such as
+   * `/Books` or one with the book's details such as `/library/<author>/<title>`.
+   */
   folder(device: Device): string;
+  /** Books' file names, as a template without the extension; `<title>[ - <author>]` if not given. */
+  fileName?(device: Device): string;
   /** The device's exported catalog, as it's hosted, for the sync to add to the device's list of catalogs. */
   catalog?(device: Device): Catalog | undefined;
   target(device: Device): DeviceTarget;
   /** Everything on the device, with what it knows of each book; without it, the sync folders' files are listed. */
-  inventory?(device: Device, target: DeviceTarget): Promise<Inventory>;
+  /** Everything on the device; `listing`, the sync folders' files (`listDevice`), saves listing them again. */
+  inventory?(device: Device, target: DeviceTarget, library: Library, listing?: RemoteFile[]): Promise<Inventory>;
+  /** Other things kept on the device, each managed on its own tab beside its books (a reader's fonts, say). */
+  tools?: DeviceTool[];
+}
+
+/**
+ * Something on a device other than books, with its own tab where the device's contents are shown.
+ * The component connects to the device itself, as it needs.
+ */
+export interface DeviceTool {
+  id: string;
+  /** The tab's name. */
+  label: string;
+  component: ComponentType<{ device: Device }>;
 }
 
 /**

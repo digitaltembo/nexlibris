@@ -1,5 +1,5 @@
-import { LOCAL_USER, type Creator, type FileRef, type Item, type Operation, type UserId } from '@nexlibris/common';
-import { BOOK_FIELDS, isFixedField } from './bookFields';
+import { LOCAL_USER, normalizeValue, type Creator, type FileRef, type Item, type Operation, type UserId } from '@nexlibris/common';
+import { BOOK_FIELDS, fieldText, isFixedField } from './bookFields';
 import { metadataToText, textToMetadata } from './metadataText';
 
 /** An item's editable fields as plain form state, until the user saves. */
@@ -27,7 +27,7 @@ export function draftFromItem(item: Item, review: string | undefined): ItemDraft
     tags: item.tags,
     review: review ?? '',
     description: typeof description === 'string' ? description : '',
-    fields: Object.fromEntries(BOOK_FIELDS.map((f) => [f.key, metadataToText(item.metadata[f.key])])),
+    fields: Object.fromEntries(BOOK_FIELDS.map((f) => [f.key, fieldText(f.key, item.metadata[f.key])])),
     metadata: Object.entries(item.metadata)
       .filter(([key]) => !isFixedField(key) && (key !== 'description' || typeof description !== 'string'))
       .map(([key, value]) => [key, metadataToText(value)]),
@@ -73,7 +73,8 @@ export function diffDraft(
   for (const [key, text] of Object.entries(draft.fields)) if (text.trim()) metadata.set(key, text.trim());
   if (draft.description.trim()) metadata.set('description', draft.description.trim());
   for (const [key, text] of metadata) {
-    const value = textToMetadata(text, item.metadata[key]);
+    // As it would be stored, so a date left as shown ("570 BC" for -0570) isn't a change.
+    const value = normalizeValue(key, textToMetadata(text, item.metadata[key])) ?? text;
     if (!sameJson(value, item.metadata[key])) ops.push({ type: 'setMetadata', id, key, value });
   }
   for (const key of Object.keys(item.metadata)) {

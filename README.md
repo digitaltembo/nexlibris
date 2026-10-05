@@ -1,6 +1,12 @@
 # nexlibris
 
-A library manager for ebooks (and later other media) that runs in the browser, on the desktop (Electron) and on Android. Early work in progress; see [PLAN.md](PLAN.md) for what's next.
+<p align="center">
+  <img src="./icon.png" width="15%" alt="Description">
+</p>
+
+I think [Calibre](https://calibre-ebook.com/) is one of my favorite pieces of software, but what if I could make my own library management software? With a few features (an app, and more robust device management) that are not implemented in Calibre, that could play well with my new Xteink X4 Pro ereader running a fork of [CrossPoint Reader](https://github.com/crosspoint-reader/crosspoint-reader), [nexlibrOS](https://github.com/digitaltembo/nexlibrOS)
+
+A library manager for ebooks (and hopefully other media) that runs in the browser, on the desktop (Electron) and on Android. Early work in progress; see [PLAN.md](PLAN.md) for what's next.
 
 ## Architecture
 
@@ -43,15 +49,17 @@ server/    placeholder for a Node backend (M4)
 - **Search** (`library/search.ts`): a Gmail-style syntax (`tag:fantasy rating:4+ -has:file`). Filters, device selections and browse categories are all stored as search text. Full-text search inside books (`fulltext/`) indexes in the background into local state.
 - **Browsing** (`library/browse.ts`): calibre3opds's navigation (authors, series, tags, the user's categories). Books show as a grid, a list, or a view a plugin adds, such as the built-in 3D bookshelf (`plugins/bookshelf/`).
 - **Reading** (`reader/`): EPUB (through epubier, a wrapper around epub.js), PDF (pdf.js), comics and text.
-- **Connections** (`devices/`, `plugins/`): plugins declare connection types (and views). A reader that books are copied to, such as a CrossPoint X4 over its web API, gets a planner that compares the wanted books with what's on the device. An OPDS catalog, in calibre3opds's layout, is written to a folder or a zip.
+- **Connections** (`devices/`, `plugins/`): plugins declare connection types (and views). A device type can add tools for what else is on the device; CrossPoint's manage its sleep images, StarDict dictionaries and fonts. A reader that books are copied to, such as a CrossPoint X4 over its web API, gets a planner that compares the wanted books with what's on the device. Where books go is a path template (`/library/<author>/<title>/`), and books move when it changes. Copies of chosen books already on the device (from Calibre, say) are kept, or moved into place, rather than sent again. An OPDS catalog, in calibre3opds's layout, is written to a folder or a zip.
 
 ### Sync between instances
 
-Another instance of nexlibris is a connection, like a reader. It's stored in the library and synced, so every instance knows the others. Its chosen books and rules are the books whose files that instance keeps. How this instance reaches it (the pairing's address and key, the source of truth, where they last agreed) stays local.
+Another instance of nexlibris is a connection, like a reader. It's stored in the library and synced, so every instance knows the others. Its chosen books and rules are the books that instance gets. How this instance reaches it (the pairing's address and key, the source of truth, where they last agreed) stays local.
+
+A hub shows each instance only the books its connection picks, plus the ones it already has (`common/src/scope.ts`). Everything else that names a book is cut down to match: ratings, devices' records, the changes it sends. Books deleted on that instance stay on the hub and are kept off the instance (`Device.excluded`). Books its rules stop picking are let go of, with their files, once the hub has them.
 
 Two instances of a library sync by exchanging state, not by replaying logs:
 
-1. The instance driving the sync fetches the hub's library and its changes since their last sync.
+1. The instance driving the sync fetches the hub's library (as it sees it) and its changes since their last sync.
 2. It plans a merge (`common/src/merge.ts`): changes only one side made go both ways, and where both changed the same thing, the pairing's source of truth wins. The plan is shown in a preview before anything is applied.
 3. Both sides apply ordinary operations.
 4. They compare state hashes, and repair from the source of truth if they differ (`common/src/repair.ts`).
@@ -63,7 +71,7 @@ Every step can be run again, so an interrupted sync just runs again. The hub can
 |---|---|
 | The desktop app | HTTP on the LAN, paired by QR code or a one-time code |
 | An Android phone | Bluetooth |
-| A shared folder | A replica library in the folder; used for a phone over USB |
+| A shared folder | A replica library in the folder; used for a phone over USB. Every book's details pass through it, and only the chosen books' files |
 
 The sync API is `common/src/syncApi.ts`.
 

@@ -56,6 +56,9 @@ export type Operation =
   | { type: 'removeDevice'; id: DeviceId }
   | { type: 'addDeviceItems'; id: DeviceId; itemIds: ItemId[] }
   | { type: 'removeDeviceItems'; id: DeviceId; itemIds: ItemId[] }
+  /** Keeps items off a device whether or not they're chosen or match its search (`Device.excluded`), or stops keeping them off. */
+  | { type: 'excludeDeviceItems'; id: DeviceId; itemIds: ItemId[] }
+  | { type: 'unexcludeDeviceItems'; id: DeviceId; itemIds: ItemId[] }
   /** What a sync did: files it put on the device, by path, and paths it removed or found gone. */
   | { type: 'recordDeviceSync'; id: DeviceId; placed: Record<string, PlacedFile>; removed: string[] }
   /** Adds a browse category, or replaces it whole. */
@@ -290,6 +293,20 @@ export function applyOperation(library: Library, op: Operation, at: string): Lib
       const device = requireDevice(op.id);
       const removed = new Set(op.itemIds);
       return withDevice({ ...device, items: device.items.filter((id) => !removed.has(id)) });
+    }
+    case 'excludeDeviceItems': {
+      // Items needn't exist here: a device can be kept from items this instance never had.
+      const device = requireDevice(op.id);
+      const excluded = device.excluded ?? [];
+      const added = op.itemIds.filter((id, i) => !excluded.includes(id) && op.itemIds.indexOf(id) === i);
+      return withDevice({ ...device, excluded: [...excluded, ...added] });
+    }
+    case 'unexcludeDeviceItems': {
+      const device = requireDevice(op.id);
+      const removed = new Set(op.itemIds);
+      const excluded = (device.excluded ?? []).filter((id) => !removed.has(id));
+      const { excluded: _, ...rest } = device;
+      return withDevice(excluded.length ? { ...rest, excluded } : rest);
     }
     case 'recordDeviceSync': {
       const device = requireDevice(op.id);

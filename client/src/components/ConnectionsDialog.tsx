@@ -1,4 +1,4 @@
-import { createDevice, readPairings, removePairing, userData, type Device, type DevicePatch, type FirstSyncMode, type Item, type Pairing } from '@nexlibris/common';
+import { createDevice, readPairings, removePairing, userData, type Device, type DevicePatch, type FirstSyncMode, type Item, type Library, type NewPairing, type Pairing } from '@nexlibris/common';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import styled from 'styled-components';
 import {
@@ -11,10 +11,10 @@ import {
 import { forgetFolder, mayWrite, savedFolder, saveFolder } from '../library/savedFolders';
 import { exportCatalog, type CatalogSink, type ExportProgress, type ExportResult } from '../devices/opds/export';
 import { canWriteFolders, directorySink, zipSink } from '../devices/opds/sinks';
-import { listDevice, planSync, type SyncPlan } from '../devices/plan';
+import { listDevice, planSync, type DeviceListing, type SyncPlan } from '../devices/plan';
 import { deviceItems } from '../devices/selection';
 import { runSync, type SyncProgress, type SyncResult } from '../devices/run';
-import { isCatalog, isDevice, isInstance, type CatalogType, type ConnectionType, type DeviceType, type Inventory, type RemoteBook } from '../devices/types';
+import { isCatalog, isDevice, isInstance, type CatalogType, type ConnectionType, type DeviceType, type Inventory, type RemoteBook, type SettingField } from '../devices/types';
 import { formatLabel } from './ItemFiles';
 import { useLibrary } from '../library/LibraryContext';
 import { describeRule, filterFields, parseFilters } from '../library/filters';
@@ -23,7 +23,7 @@ import { CONNECTION_TYPES, connectionType } from '../plugins';
 import { canSync, transportOf } from '../sync/connect';
 import { folderKey } from '../sync/folder';
 import { instanceName } from '../sync/hub';
-import { addInstances, carryOverPairings, isInstanceConnection } from '../sync/instances';
+import { carryOverPairings, isInstanceConnection, pairedConnections } from '../sync/instances';
 import { Hosting, PairChoices, PairScreen, SyncInstance, transportLabel, type PairHow } from './InstanceSync';
 import { Button, Muted, SmallSelect, Spacer, Stack, Tag, TagLabel, TagList } from '../styles/ui';
 import { DeleteButton } from './DeleteButton';
@@ -64,6 +64,14 @@ const List = styled.ul`
 const ErrorText = styled.p`
   margin: 12px 0 0;
   color: var(--danger);
+`;
+
+const KeepFound = styled.label`
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  margin-top: 8px;
+  color: var(--muted);
 `;
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
@@ -116,13 +124,11 @@ export function ConnectionsDialog({ onClose }: { onClose(): void }) {
     if (transportOf(pairing.address) === 'folder') await forgetFolder(folderKey(pairing.hub.origin)).catch(() => undefined);
   };
 
-  const paired = async (pairing: Pairing, first?: FirstSyncMode) => {
-    // Both instances get connections now, so this one shows; they reach the other side on the sync.
+  const paired = async (pairing: NewPairing, first?: FirstSyncMode) => {
+    // Both instances get connections now, so this one shows; they reach the other side on the sync. This one's
+    // keeps the files the hub chose when it showed the code, so even the first sync fetches only those.
     const current = await backend.getLibrary();
-    const ops = addInstances(current, [
-      { origin: current.origin, name: instanceName() },
-      { origin: pairing.hub.origin, name: pairing.hub.name },
-    ]);
+    const ops = pairedConnections(current, pairing, instanceName());
     const updated = ops.length ? await backend.apply(ops) : current;
     await refresh();
     loadPairings();
@@ -202,8 +208,8 @@ export function ConnectionsDialog({ onClose }: { onClose(): void }) {
                     <strong>{device.name}</strong>
                     <Muted>
                       {self
-                        ? `This device · keeps the files of ${books}`
-                        : `nexlibris · ${pairing ? `${transportLabel(pairing)}, last synced ${when(pairing.lastSyncedAt)}` : 'not paired from here'} · keeps the files of ${books}`}
+                        ? `This device · gets ${books}`
+                        : `nexlibris · ${pairing ? `${transportLabel(pairing)}, last synced ${when(pairing.lastSyncedAt)}` : 'not paired from here'} · gets ${books}`}
                     </Muted>
                   </div>
                   <Spacer />
@@ -277,7 +283,7 @@ const INSTANCE_TYPES = CONNECTION_TYPES.filter(isInstance);
 const RULES_TEXT = {
   device: { label: 'Also include books by rules', what: 'device' },
   catalog: { label: 'Also include books by rules', what: 'catalog' },
-  instance: { label: 'Books whose files it keeps', what: 'device' },
+  instance: { label: 'Books it gets', what: 'device' },
 };
 
 function EditConnection({
@@ -402,7 +408,7 @@ function EditConnection({
           </div>
           <small>
             {instance
-              ? `${self ? 'This device' : device!.name} keeps the files of books matching these rules, and of books you add to it. Every book’s details and cover sync whatever the rules; other books’ files are fetched when they’re opened.${query.trim() ? ` ${plural(matches, 'book')} match now.` : ''}`
+              ? `${self ? 'This device' : device!.name} gets the books matching these rules, and books you add to it: their details, covers and files. It doesn’t see the others, and books deleted there stay on the device it syncs with. (Through a sync folder, every book’s details go there, and only these books’ files.)${query.trim() ? ` ${plural(matches, 'book')} match now.` : ''}`
               : query.trim()
                 ? `${plural(matches, 'book')} match now. Books that start or stop matching are added or removed at the next sync.`
                 : `Books matching the rules (say, a tag, or everything rated 4 stars and up) go in the ${what} as well as the books you add to it.`}
@@ -431,6 +437,7 @@ function EditConnection({
               />
             )}
             {field.help && <small>{field.help}</small>}
+            <SettingCheck field={field} settings={settings} />
           </Field>
         ))}
         <ModalFooter>
@@ -451,7 +458,7 @@ function EditConnection({
       </form>
       {editingRules && (
         <FiltersDialog
-          title={instance ? `Books whose files ${device?.name ?? 'it'} keeps` : `Books for this ${what}`}
+          title={instance ? `Books ${device?.name ?? 'it'} gets` : `Books for this ${what}`}
           intro={
             instance
               ? 'Books matching these rules have their files kept there, along with any you add by hand.'
@@ -470,7 +477,7 @@ function EditConnection({
 
 type SyncState =
   | { kind: 'connecting' }
-  | { kind: 'planned'; description: string; plan: SyncPlan }
+  | { kind: 'planned'; description: string; plan: SyncPlan; library: Library; listing: DeviceListing; keepFound: boolean }
   | { kind: 'syncing'; progress: SyncProgress }
   | { kind: 'done'; result: SyncResult }
   | { kind: 'failed'; message: string };
@@ -485,9 +492,13 @@ function SyncDevice({ device, type, onDone, onClose }: { device: Device; type: D
     try {
       const target = type.target(device);
       const { description } = await target.connect();
-      const current = (await backend.getLibrary()).devices?.[device.id] ?? device;
-      const plan = planSync(await backend.getLibrary(), current, type, await listDevice(current, type, target));
-      setState({ kind: 'planned', description, plan });
+      const library = await backend.getLibrary();
+      const current = library.devices?.[device.id] ?? device;
+      const listed = await listDevice(current, type, target, library);
+      // The whole device, to find copies of chosen books outside the folders a sync lists.
+      const found = type.inventory ? (await type.inventory(current, target, library, listed.files)).books : undefined;
+      const listing = { ...listed, ...(found && { found }) };
+      setState({ kind: 'planned', description, plan: planSync(library, current, type, listing), library, listing, keepFound: true });
     } catch (e) {
       setState({ kind: 'failed', message: errorMessage(e) });
     }
@@ -497,7 +508,7 @@ function SyncDevice({ device, type, onDone, onClose }: { device: Device; type: D
   useEffect(() => void check(), []);
 
   const sync = async (plan: SyncPlan) => {
-    setState({ kind: 'syncing', progress: { done: 0, total: plan.uploads.length + plan.removals.length } });
+    setState({ kind: 'syncing', progress: { done: 0, total: plan.moves.length + plan.uploads.length + plan.removals.length } });
     try {
       const result = await runSync(device.id, plan, type.target(device), backend, type.prepare, (progress) =>
         setState({ kind: 'syncing', progress }),
@@ -511,11 +522,24 @@ function SyncDevice({ device, type, onDone, onClose }: { device: Device; type: D
 
   const busy = state.kind === 'connecting' || state.kind === 'syncing';
   const work =
-    state.kind === 'planned' ? state.plan.uploads.length + state.plan.removals.length + (state.plan.catalog ? 1 : 0) : 0;
+    state.kind === 'planned'
+      ? state.plan.uploads.length + state.plan.moves.length + state.plan.kept.length + state.plan.removals.length + (state.plan.catalog ? 1 : 0)
+      : 0;
   return (
     <Modal title={`Sync ${device.name}`} onClose={busy ? () => undefined : onClose}>
       {state.kind === 'connecting' && <Muted as="p">Connecting to {device.name}…</Muted>}
-      {state.kind === 'planned' && <PlanSummary description={state.description} plan={state.plan} title={title} />}
+      {state.kind === 'planned' && (
+        <PlanSummary
+          description={state.description}
+          plan={state.plan}
+          title={title}
+          keepFound={state.keepFound}
+          onKeepFound={(keepFound) => {
+            const current = state.library.devices?.[device.id] ?? device;
+            setState({ ...state, keepFound, plan: planSync(state.library, current, type, state.listing, { keepFound }) });
+          }}
+        />
+      )}
       {state.kind === 'syncing' && (
         <p role="status">
           {state.progress.current ?? 'Syncing'} ({Math.min(state.progress.done + 1, state.progress.total)} of{' '}
@@ -525,8 +549,8 @@ function SyncDevice({ device, type, onDone, onClose }: { device: Device; type: D
       {state.kind === 'done' && (
         <>
           <p role="status">
-            {state.result.sent || state.result.removed
-              ? `Sent ${plural(state.result.sent, 'file')}, removed ${state.result.removed}.`
+            {state.result.sent || state.result.removed || state.result.moved || state.result.kept
+              ? `Sent ${plural(state.result.sent, 'file')}${state.result.moved ? `, moved ${state.result.moved}` : ''}${state.result.kept ? `, kept ${state.result.kept} already there` : ''}, removed ${state.result.removed}.`
               : !state.result.catalogAdded && 'Nothing needed doing.'}
             {state.result.catalogAdded && ' Added the catalog to the reader’s OPDS libraries.'}
           </p>
@@ -567,13 +591,46 @@ function SyncDevice({ device, type, onDone, onClose }: { device: Device; type: D
   );
 }
 
-function PlanSummary({ description, plan, title }: { description: string; plan: SyncPlan; title(id: string): string }) {
+/** A setting's check, as it's typed: problems, and an example of what it does. */
+function SettingCheck({ field, settings }: { field: SettingField; settings: Record<string, string> }) {
+  const { library } = useLibrary();
+  if (!field.check) return null;
+  const { problems, example } = field.check(settings[field.key]?.trim() || field.default, settings, library);
+  return (
+    <>
+      {problems?.map((p) => (
+        <ErrorText key={p} as="small">
+          {p}
+        </ErrorText>
+      ))}
+      {example && <small>For example: {example}</small>}
+    </>
+  );
+}
+
+export function PlanSummary({
+  description,
+  plan,
+  title,
+  keepFound,
+  onKeepFound,
+}: {
+  description: string;
+  plan: SyncPlan;
+  title(id: string): string;
+  keepFound?: boolean;
+  onKeepFound?(keep: boolean): void;
+}) {
+  const foundMoves = plan.moves.filter((m) => m.found);
+  const found = foundMoves.length + plan.kept.length;
   const replacing = plan.uploads.filter((u) => u.replaces).length;
   const sending = plan.uploads.length - replacing;
   const superseded = new Set(plan.uploads.map((u) => u.supersedes));
   const removing = plan.removals.filter((path) => !superseded.has(path));
   const changes = [
     sending > 0 && `send ${plural(sending, 'book')}`,
+    plan.kept.length > 0 && `keep ${plan.kept.length === 1 ? '1 copy' : `${plan.kept.length} copies`} already there`,
+    plan.moves.length > 0 && `move ${plan.moves.length} to ${plan.moves.length === 1 ? 'its new place' : 'their new places'}`,
     replacing > 0 && `update ${replacing}`,
     removing.length > 0 && `remove ${removing.length} no longer chosen`,
   ].filter(Boolean);
@@ -585,8 +642,13 @@ function PlanSummary({ description, plan, title }: { description: string; plan: 
         {plan.catalog && ` Will add the catalog at ${plan.catalog.url} to the reader’s OPDS libraries.`}
         {plan.unchanged > 0 && changes.length > 0 && ` ${plan.unchanged} already there.`}
       </p>
-      {plan.uploads.length + removing.length > 0 && (
+      {plan.uploads.length + plan.moves.length + removing.length > 0 && (
         <List>
+          {plan.moves.map((m) => (
+            <li key={m.to}>
+              {m.to} <Muted>({m.found ? 'already on the device, ' : ''}moved from {m.from})</Muted>
+            </li>
+          ))}
           {plan.uploads.map((u) => (
             <li key={u.path}>
               {fileName(u.path)}{' '}
@@ -596,12 +658,24 @@ function PlanSummary({ description, plan, title }: { description: string; plan: 
               </Muted>
             </li>
           ))}
+          {plan.kept.map((k) => (
+            <li key={k.path}>
+              {fileName(k.path)} <Muted>(already there, kept)</Muted>
+            </li>
+          ))}
           {removing.map((path) => (
             <li key={path}>
               {fileName(path)} <Muted>(removed)</Muted>
             </li>
           ))}
         </List>
+      )}
+      {onKeepFound && (found > 0 || keepFound === false) && (
+        <KeepFound>
+          <input type="checkbox" checked={keepFound !== false} onChange={(e) => onKeepFound(e.target.checked)} />
+          Keep copies of these books already on the device (put there by hand or by other software) rather than sending
+          nexlibris’s. They’re sent again once the book’s file in the library changes.
+        </KeepFound>
       )}
       {plan.conflicts.length > 0 && (
         <>
@@ -776,6 +850,8 @@ function ConnectionContents({ device, onDone, onClose }: { device: Device; onDon
   const type = connectionType(device.type)!;
   const current = library.devices?.[device.id] ?? device;
   const [state, setState] = useState<ContentsState>({ kind: 'loading' });
+  /** `books`, or one of the device type's tools. */
+  const [tab, setTab] = useState('books');
   const [working, setWorking] = useState<string>();
   const [error, setError] = useState<string>();
 
@@ -789,10 +865,11 @@ function ConnectionContents({ device, onDone, onClose }: { device: Device; onDon
       }
       const target = type.target(device);
       const { description } = await target.connect();
-      const latest = (await backend.getLibrary()).devices?.[device.id] ?? device;
+      const library = await backend.getLibrary();
+      const latest = library.devices?.[device.id] ?? device;
       const inventory = type.inventory
-        ? await type.inventory(latest, target)
-        : { books: (await listDevice(latest, type, target)).files };
+        ? await type.inventory(latest, target, library)
+        : { books: (await listDevice(latest, type, target, library)).files };
       setState({ kind: 'ready', inventory, description });
     } catch (e) {
       setState({ kind: 'failed', message: errorMessage(e) });
@@ -832,11 +909,24 @@ function ConnectionContents({ device, onDone, onClose }: { device: Device; onDon
       await importFromConnection(backend, latest, type, type.target(device), book);
     });
 
+  const tools = isDevice(type) ? (type.tools ?? []) : [];
+  const Tool = tools.find((t) => t.id === tab)?.component;
+
   return (
     <Modal title={`On ${device.name}`} onClose={working ? () => undefined : onClose}>
-      {state.kind === 'loading' && <Muted as="p">{isCatalog(type) ? 'Reading…' : `Connecting to ${device.name}…`}</Muted>}
-      {state.kind === 'failed' && <ErrorText role="alert">{state.message}</ErrorText>}
-      {state.kind === 'ready' && (
+      {tools.length > 0 && (
+        <Tabs role="tablist">
+          {[{ id: 'books', label: 'Books' }, ...tools].map((t) => (
+            <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} disabled={!!working} onClick={() => setTab(t.id)}>
+              {t.label}
+            </button>
+          ))}
+        </Tabs>
+      )}
+      {Tool && <Tool device={current} />}
+      {!Tool && state.kind === 'loading' && <Muted as="p">{isCatalog(type) ? 'Reading…' : `Connecting to ${device.name}…`}</Muted>}
+      {!Tool && state.kind === 'failed' && <ErrorText role="alert">{state.message}</ErrorText>}
+      {!Tool && state.kind === 'ready' && (
         <ContentsView
           type={type}
           contents={connectionContents(library, current, type, state.inventory.books)}
@@ -853,7 +943,7 @@ function ConnectionContents({ device, onDone, onClose }: { device: Device; onDon
           Back
         </Button>
         <Spacer />
-        {state.kind !== 'loading' && (
+        {!Tool && state.kind !== 'loading' && (
           <Button $variant="secondary" disabled={!!working} onClick={() => void load()}>
             {state.kind === 'failed' ? 'Try again' : 'Refresh'}
           </Button>
@@ -862,6 +952,35 @@ function ConnectionContents({ device, onDone, onClose }: { device: Device; onDon
     </Modal>
   );
 }
+
+/** The contents' tabs: the books, then the device's tools. */
+const Tabs = styled.div`
+  display: flex;
+  gap: 4px;
+  margin: 0 0 12px;
+  border-bottom: 1px solid var(--border);
+
+  button {
+    padding: 6px 10px;
+    border: none;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    background: none;
+    color: var(--muted);
+    font: inherit;
+    cursor: pointer;
+  }
+
+  button:hover {
+    color: var(--text);
+  }
+
+  button[aria-selected='true'] {
+    border-bottom-color: var(--highlight);
+    color: var(--text);
+    font-weight: 600;
+  }
+`;
 
 const Group = styled.section`
   margin-top: 16px;

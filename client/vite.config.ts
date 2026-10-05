@@ -3,6 +3,8 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   plugins: [react()],
+  // Module workers, so a worker's dynamic imports stay separate files (the text worker never loads pdf.js).
+  worker: { format: 'es' },
   optimizeDeps: {
     // Linked from ../../epubierjs, which Vite would otherwise serve unbundled from outside the workspace.
     include: ['epubier'],

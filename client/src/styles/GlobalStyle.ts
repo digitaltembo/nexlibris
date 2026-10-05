@@ -29,6 +29,16 @@ export const GlobalStyle = createGlobalStyle`
     --star: #cf6f1f;
     --radius: 8px;
     --detail-width: 420px;
+    /* QR codes stay dark on light in both schemes, as scanners expect, in the theme's colours. */
+    --qr-ink: #0a2540;
+    --qr-paper: #fffdf5;
+    /*
+     * PDF pages rendered by pdf.js (reader/PdfViewer.tsx): paper becomes --surface and ink --text, by blending
+     * the canvas onto the surface and then the text colour over it; in the dark scheme the page is inverted first.
+     */
+    --page-filter: none;
+    --page-blend: multiply;
+    --page-ink-blend: lighten;
     color-scheme: light;
     font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
     font-size: 15px;
@@ -52,6 +62,11 @@ export const GlobalStyle = createGlobalStyle`
       --accent-text: #0d3b66;
       --danger: #ff6847;
       --star: #f4d35e;
+      --qr-ink: #0d3b66;
+      --qr-paper: #faf0ca;
+      --page-filter: invert(1) hue-rotate(180deg);
+      --page-blend: lighten;
+      --page-ink-blend: darken;
       color-scheme: dark;
     }
   }
