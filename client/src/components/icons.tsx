@@ -50,6 +50,17 @@ export const ListIcon = () => (
   </Icon>
 );
 
+export const GraphIcon = () => (
+  <Icon>
+    <circle cx="6" cy="7" r="2" />
+    <circle cx="17" cy="5" r="2" />
+    <circle cx="12" cy="13" r="2.5" />
+    <circle cx="5" cy="19" r="1.5" />
+    <circle cx="19" cy="17" r="2" />
+    <path d="M7.6 8.3l2.7 3M15.6 6.5l-2.4 4.6M10.7 15.2L6.2 18M14.3 14l2.9 2" />
+  </Icon>
+);
+
 export const ShelfIcon = () => (
   <Icon>
     <path d="M3 20h18M5 20V6h3v14M10 20V4h3v16M15.5 20l-1.8-12.6 2.9-.4L18.4 19.6" />

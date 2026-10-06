@@ -5,6 +5,7 @@ import {
   connectionContents,
   importFromConnection,
   linkOperations,
+  removeOperations,
   type ContentEntry,
   type Contents,
 } from '../devices/contents';
@@ -902,6 +903,16 @@ function ConnectionContents({ device, onDone, onClose }: { device: Device; onDon
         await backend.apply(linkOperations(latest, latest.devices?.[device.id] ?? device, type, book, entry.item));
       },
     );
+  /** Deletes the book's file on the device, then takes the book off the connection (`removeOperations`). */
+  const remove = (entry: ContentEntry) =>
+    act([entry.book], async (book) => {
+      if (!isDevice(type)) return;
+      await type.target(device).remove(book.path);
+      const latest = await backend.getLibrary();
+      const ops = removeOperations(latest, latest.devices?.[device.id] ?? device, entry);
+      if (ops.length) await backend.apply(ops);
+      setState((s) => (s.kind === 'ready' ? { ...s, inventory: { ...s.inventory, books: s.inventory.books.filter((b) => b.path !== book.path) } } : s));
+    });
   const bringIn = (books: RemoteBook[]) =>
     act(books, async (book) => {
       if (!isDevice(type)) return;
@@ -935,6 +946,7 @@ function ConnectionContents({ device, onDone, onClose }: { device: Device; onDon
           {...(working && { working })}
           onLink={(entries) => void link(entries)}
           onImport={(books) => void bringIn(books)}
+          {...(isDevice(type) && { onRemove: (entry: ContentEntry) => void remove(entry) })}
         />
       )}
       {error && <ErrorText role="alert">{error}</ErrorText>}
@@ -1038,6 +1050,7 @@ export function ContentsView({
   working,
   onLink,
   onImport,
+  onRemove,
 }: {
   type: ConnectionType;
   contents: Contents;
@@ -1047,6 +1060,8 @@ export function ContentsView({
   working?: string;
   onLink(entries: Extract<ContentEntry, { kind: 'match' }>[]): void;
   onImport(books: RemoteBook[]): void;
+  /** Deletes a book's file from the device (devices only; a catalog is only ever rewritten whole). */
+  onRemove?(entry: ContentEntry): void;
 }) {
   const unknown = contents.entries.filter((e): e is Extract<ContentEntry, { kind: 'unknown' }> => e.kind === 'unknown');
   const matches = contents.entries.filter((e): e is Extract<ContentEntry, { kind: 'match' }> => e.kind === 'match');
@@ -1056,6 +1071,16 @@ export function ContentsView({
   const canImport = !catalog;
   const busy = working !== undefined;
   const title = (book: RemoteBook, item?: Item) => item?.title ?? book.title ?? fileName(book.path);
+  /** Removing an entry's file, confirmed in place; a book the library doesn't have is deleted for good. */
+  const removal = (entry: ContentEntry) =>
+    onRemove && (
+      <DeleteButton
+        small
+        disabled={busy}
+        verb={entry.kind === 'unknown' ? 'Delete' : 'Remove'}
+        onDelete={() => onRemove(entry)}
+      />
+    );
   const row = (key: string, book: RemoteBook, item: Item | undefined, detail: string, action?: ReactNode) => (
     <BookRow key={key}>
       <div>
@@ -1104,9 +1129,12 @@ export function ContentsView({
                 e.book,
                 undefined,
                 e.book.path,
-                <Button $variant="secondary" $size="small" disabled={busy} onClick={() => onImport([e.book])}>
-                  Import
-                </Button>,
+                <>
+                  <Button $variant="secondary" $size="small" disabled={busy} onClick={() => onImport([e.book])}>
+                    Import
+                  </Button>
+                  {removal(e)}
+                </>,
               ),
             )}
           </Stack>
@@ -1134,17 +1162,20 @@ export function ContentsView({
                 e.book,
                 e.item,
                 e.book.path,
-                e.linkable ? (
-                  <Button $variant="secondary" $size="small" disabled={busy} onClick={() => onLink([e])}>
-                    Link
-                  </Button>
-                ) : (
-                  canImport && (
-                    <Button $variant="secondary" $size="small" disabled={busy} onClick={() => onImport([e.book])}>
-                      Import
+                <>
+                  {e.linkable ? (
+                    <Button $variant="secondary" $size="small" disabled={busy} onClick={() => onLink([e])}>
+                      Link
                     </Button>
-                  )
-                ),
+                  ) : (
+                    canImport && (
+                      <Button $variant="secondary" $size="small" disabled={busy} onClick={() => onImport([e.book])}>
+                        Import
+                      </Button>
+                    )
+                  )}
+                  {removal(e)}
+                </>,
               ),
             )}
           </Stack>
@@ -1154,8 +1185,11 @@ export function ContentsView({
       {placed.length > 0 && (
         <Group>
           <h3>{catalog ? 'In the catalog' : 'Sent by nexlibris'}</h3>
+          {onRemove && (
+            <Muted as="p">Removing one deletes it from the device and takes it off this connection, so syncs don’t send it again.</Muted>
+          )}
           <Stack as="ul">
-            {placed.map((e) => row(e.book.path, e.book, e.item, e.item ? STATUS[e.status] : 'removed from the library'))}
+            {placed.map((e) => row(e.book.path, e.book, e.item, e.item ? STATUS[e.status] : 'removed from the library', removal(e)))}
           </Stack>
         </Group>
       )}

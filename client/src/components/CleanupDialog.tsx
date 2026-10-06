@@ -1,9 +1,10 @@
-import type { Item, ItemId } from '@nexlibris/common';
+import type { FileHash, Item, ItemId } from '@nexlibris/common';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import styled from 'styled-components';
 import { findDuplicates, mergeItems, type DuplicateGroup } from '../library/dedupe';
 import { useLibrary } from '../library/LibraryContext';
 import { rereadMetadata, type RereadProgress, type RereadResult } from '../library/reread';
+import { findStaleFiles, updateFiles, type FindResult, type Progress as FileProgress, type UpdateResult } from '../library/updateFiles';
 import { Badge, Button, Muted, Spacer } from '../styles/ui';
 import { Cover, PlaceholderTitle } from './Cover';
 import { formatLabel } from './ItemFiles';
@@ -194,19 +195,34 @@ function DuplicateEntries({
   );
 }
 
-type View = 'menu' | 'duplicates' | 'reread';
+type View = 'menu' | 'duplicates' | 'reread' | 'files';
+
+/** Moves a file's full-text index to a new version of it (the text index's `carry`). */
+type CarryText = (from: FileHash, to: FileHash) => Promise<void>;
 
 /**
  * Tidying the library: a list of cleanups, each opened by its button. Finding items with the same
  * title and authors, to merge into one (files, tags, fields and ratings gathered together), and
  * re-reading metadata from the books' files to fill in what items lack. Further cleanups go in the
- * list beside them. `pauseIndexing` (the text index's) keeps indexing out of the way of a re-read.
+ * list beside them, as is writing the library's metadata into the books' files. `pauseIndexing`
+ * (the text index's) keeps indexing out of the way of a re-read or an update, and `carryText` keeps
+ * an updated file's text indexed.
  */
-export function CleanupDialog({ onClose, pauseIndexing }: { onClose(): void; pauseIndexing?: () => () => void }) {
+export function CleanupDialog({
+  onClose,
+  pauseIndexing,
+  carryText,
+}: {
+  onClose(): void;
+  pauseIndexing?: () => () => void;
+  carryText?: CarryText;
+}) {
   const [view, setView] = useState<View>('menu');
   const back = () => setView('menu');
+  const indexing = { ...(pauseIndexing && { pauseIndexing }), ...(carryText && { carryText }) };
   if (view === 'duplicates') return <Duplicates onBack={back} onClose={onClose} />;
   if (view === 'reread') return <Reread onBack={back} onClose={onClose} {...(pauseIndexing && { pauseIndexing })} />;
+  if (view === 'files') return <UpdateFiles onBack={back} onClose={onClose} {...indexing} />;
   return (
     <Modal title="Clean up library" onClose={onClose}>
       <Cleanups>
@@ -229,6 +245,18 @@ export function CleanupDialog({ onClose, pauseIndexing }: { onClose(): void; pau
           </div>
           <Button $variant="secondary" onClick={() => setView('reread')}>
             Re-read…
+          </Button>
+        </li>
+        <li>
+          <div>
+            <strong>Update book files</strong>
+            <Muted>
+              Write the library’s details (title, authors, tags, series, description and the like) into EPUBs that say
+              otherwise, so the files match wherever they go. Details the library lacks are left as the file has them.
+            </Muted>
+          </div>
+          <Button $variant="secondary" onClick={() => setView('files')}>
+            Check files…
           </Button>
         </li>
       </Cleanups>
@@ -399,6 +427,192 @@ export function RereadSummary({ result }: { result: RereadResult }) {
         <Muted as="p">
           {plural(result.failed.length, 'book')} couldn’t be read: {result.failed.slice(0, 3).map((f) => `${f.title} (${f.message})`).join('; ')}
           {result.failed.length > 3 && '…'}
+        </Muted>
+      )}
+    </>
+  );
+}
+
+type FilesState =
+  | { kind: 'finding'; progress: FileProgress }
+  | { kind: 'found'; found: FindResult }
+  | { kind: 'updating'; found: FindResult; progress: FileProgress }
+  | { kind: 'done'; found: FindResult; result: UpdateResult }
+  | { kind: 'failed'; message: string };
+
+const FileList = styled.ul`
+  max-height: min(50vh, 420px);
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+
+  li {
+    display: flex;
+    flex-direction: column;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.9em;
+    line-height: 1.3;
+  }
+`;
+
+/**
+ * Updating the books' files from the library: reads them all from when it's opened, lists those
+ * that differ and what differs, and writes them when asked, with progress and a way to stop.
+ */
+export function UpdateFiles({
+  onBack,
+  onClose,
+  pauseIndexing,
+  carryText,
+}: {
+  onBack(): void;
+  onClose(): void;
+  pauseIndexing?: () => () => void;
+  carryText?: CarryText;
+}) {
+  const { backend, apply } = useLibrary();
+  const [state, setState] = useState<FilesState>({ kind: 'finding', progress: { done: 0, total: 0 } });
+  const stop = useRef<AbortController>(undefined);
+  // Read when each step starts: `apply` changes as the library does.
+  const latest = useRef({ apply, pauseIndexing, carryText });
+  latest.current = { apply, pauseIndexing, carryText };
+
+  /** Runs a step with indexing paused, stoppable, and stopped if the dialog closes. */
+  const run = (step: (signal: AbortSignal) => Promise<void>) => {
+    const controller = new AbortController();
+    stop.current = controller;
+    const resume = latest.current.pauseIndexing?.();
+    void step(controller.signal)
+      .catch((e: unknown) => setState({ kind: 'failed', message: e instanceof Error ? e.message : String(e) }))
+      .finally(() => resume?.());
+    return () => controller.abort();
+  };
+
+  useEffect(
+    () =>
+      run(async (signal) => {
+        const onProgress = (progress: FileProgress) => !signal.aborted && setState({ kind: 'finding', progress });
+        const found = await findStaleFiles(backend, await backend.getLibrary(), { signal, onProgress });
+        if (!signal.aborted) setState({ kind: 'found', found });
+      }),
+    [backend],
+  );
+  // Closing the dialog stops an update; what's been written is kept.
+  useEffect(() => () => stop.current?.abort(), []);
+
+  const update = (found: FindResult) =>
+    run(async (signal) => {
+      setState({ kind: 'updating', found, progress: { done: 0, total: 0 } });
+      const result = await updateFiles(backend, found.stale, (ops) => latest.current.apply(ops), {
+        signal,
+        onProgress: (progress) => setState({ kind: 'updating', found, progress }),
+        ...(latest.current.carryText && { carryText: latest.current.carryText }),
+      });
+      setState({ kind: 'done', found, result });
+    });
+
+  const running = state.kind === 'finding' || state.kind === 'updating';
+  return (
+    <Modal title="Update book files" onClose={onClose}>
+      {running && (
+        <>
+          <Intro>
+            {!state.progress.total
+              ? 'Starting…'
+              : state.kind === 'finding'
+                ? `${state.progress.done.toLocaleString()} of ${plural(state.progress.total, 'book')} checked…`
+                : `${state.progress.done.toLocaleString()} of ${plural(state.progress.total, 'book')} updated…`}
+          </Intro>
+          <Progress value={state.progress.done} max={Math.max(state.progress.total, 1)} />
+          {state.progress.current && <Current title={state.progress.current}>{state.progress.current}</Current>}
+        </>
+      )}
+      {state.kind === 'found' && <StaleFiles found={state.found} />}
+      {state.kind === 'done' && <FilesUpdated result={state.result} />}
+      {state.kind === 'failed' && <Muted as="p" role="alert">It stopped: {state.message}</Muted>}
+      <ModalFooter>
+        {running ? (
+          <Button $variant="secondary" onClick={() => stop.current?.abort()}>
+            Stop
+          </Button>
+        ) : (
+          <Button $variant="secondary" onClick={onBack}>
+            Back
+          </Button>
+        )}
+        <Spacer />
+        {state.kind === 'found' && state.found.stale.length > 0 ? (
+          <Button onClick={() => update(state.found)}>Update {plural(state.found.stale.length, 'file')}</Button>
+        ) : (
+          <Button disabled={running} onClick={onClose}>
+            Done
+          </Button>
+        )}
+      </ModalFooter>
+    </Modal>
+  );
+}
+
+/** What checking found: the files that differ from the library, and what differs in each. */
+export function StaleFiles({ found }: { found: FindResult }) {
+  const { stale } = found;
+  return (
+    <>
+      <Intro>
+        {found.stopped ? 'Stopped. ' : ''}
+        {stale.length
+          ? `${plural(stale.length, 'file')} on ${plural(new Set(stale.map((s) => s.item.id)).size, 'book')} ${stale.length === 1 ? 'differs' : 'differ'} from the library. Updating writes the library’s details into them; their text, cover and identifiers stay as they are.`
+          : `Every file matches the library${found.current ? ` (${plural(found.current, 'EPUB')} checked)` : ''}.`}
+      </Intro>
+      {stale.length > 0 && (
+        <FileList aria-label="Files to update">
+          {stale.map(({ item, file, changes }) => (
+            <li key={`${item.id}:${file.hash}`}>
+              <span>
+                {item.title} <Muted>· {formatLabel(file.format)}</Muted>
+              </span>
+              <Muted>{changes.join(', ')}</Muted>
+            </li>
+          ))}
+        </FileList>
+      )}
+      {found.drm.length > 0 && (
+        <Muted as="p">
+          {plural(found.drm.length, 'file')} {found.drm.length === 1 ? 'is' : 'are'} DRM-protected, so left alone:{' '}
+          {found.drm.slice(0, 3).map((f) => f.title).join('; ')}
+          {found.drm.length > 3 && '…'}
+        </Muted>
+      )}
+      <NotRead notHere={found.notHere} failed={found.failed} verb="checked" />
+    </>
+  );
+}
+
+export function FilesUpdated({ result }: { result: UpdateResult }) {
+  return (
+    <>
+      <Intro>
+        {result.stopped ? 'Stopped. ' : ''}
+        {result.updated ? `Updated ${plural(result.updated, 'file')}.` : 'No files were updated.'}
+        {result.freed > 0 && ` The old ${result.freed === 1 ? 'version was' : 'versions were'} deleted.`}
+      </Intro>
+      <NotRead notHere={0} failed={result.failed} verb="updated" />
+    </>
+  );
+}
+
+function NotRead({ notHere, failed, verb }: { notHere: number; failed: FindResult['failed']; verb: string }) {
+  return (
+    <>
+      {notHere > 0 && (
+        <Muted as="p">{plural(notHere, 'book')} weren’t {verb}, as their files are on another device. Update them there.</Muted>
+      )}
+      {failed.length > 0 && (
+        <Muted as="p">
+          {plural(failed.length, 'file')} couldn’t be {verb}: {failed.slice(0, 3).map((f) => `${f.title} (${f.message})`).join('; ')}
+          {failed.length > 3 && '…'}
         </Muted>
       )}
     </>

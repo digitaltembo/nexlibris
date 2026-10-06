@@ -101,6 +101,23 @@ export function linkOperations(library: Library, device: Device, type: Connectio
 }
 
 /**
+ * Taking a book off a device by hand, once its file there is deleted: the connection stops choosing
+ * the book (kept off it, if its search picks it), so the next sync doesn't send it again, and
+ * forgets the file if a sync put it there. A book the library doesn't have needs nothing.
+ */
+export function removeOperations(library: Library, device: Device, entry: ContentEntry): Operation[] {
+  const ops: Operation[] = [];
+  const item = entry.kind === 'unknown' ? undefined : entry.item;
+  if (item && device.items.includes(item.id)) ops.push({ type: 'removeDeviceItems', id: device.id, itemIds: [item.id] });
+  const unpicked = item && { ...device, items: device.items.filter((id) => id !== item.id) };
+  if (item && unpicked && deviceItems(library, unpicked).some((i) => i.id === item.id)) {
+    ops.push({ type: 'excludeDeviceItems', id: device.id, itemIds: [item.id] });
+  }
+  if (device.placed[entry.book.path]) ops.push({ type: 'recordDeviceSync', id: device.id, placed: {}, removed: [entry.book.path] });
+  return ops;
+}
+
+/**
  * Brings a book on a device into the library (as a new item, or as another file of the book it
  * matches), then links the file to it if the connection takes a file the item now has. Returns
  * the item, and whether it was linked.

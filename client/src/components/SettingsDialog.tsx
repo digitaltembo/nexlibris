@@ -4,6 +4,7 @@ import { BUILTIN_COLUMNS, DEFAULT_COLUMNS, fieldColumn, type ColumnId } from '..
 import { DEFAULT_DESC, type Sort, type SortKey } from '../library/search';
 import { Button, Muted, Spacer } from '../styles/ui';
 import { Modal, ModalFooter } from './Modal';
+import { APPEARANCES, type Appearance } from '../styles/appearance';
 import { VIEWS, type View } from '../views/views';
 
 export type { View } from '../views/views';
@@ -89,6 +90,9 @@ const SortRow = styled.div`
 interface Props {
   view: View;
   onView(view: View): void;
+  /** Light or dark, or as the system is. */
+  appearance: Appearance;
+  onAppearance(appearance: Appearance): void;
   sort: Sort;
   onSort(sort: Sort): void;
   /** The list view's columns. */
@@ -99,8 +103,8 @@ interface Props {
   onClose(): void;
 }
 
-/** How the library is shown: grid or list, the sort, and the list's columns. Changes apply as they're made. */
-export function SettingsDialog({ view, onView, sort, onSort, columns, fields, onColumns, onClose }: Props) {
+/** How the library is shown: grid or list, light or dark, the sort, and the list's columns. Changes apply as they're made. */
+export function SettingsDialog({ view, onView, appearance, onAppearance, sort, onSort, columns, fields, onColumns, onClose }: Props) {
   const toggle = (id: ColumnId, on: boolean) => onColumns(on ? [...columns, id] : columns.filter((s) => s !== id));
   const checkbox = (id: ColumnId, text: string) => (
     <label key={id}>
@@ -117,6 +121,16 @@ export function SettingsDialog({ view, onView, sort, onSort, columns, fields, on
           {VIEWS.map((v) => (
             <button key={v.id} type="button" aria-pressed={view === v.id} onClick={() => onView(v.id)}>
               {v.label}
+            </button>
+          ))}
+        </Segmented>
+      </Group>
+      <Group>
+        <legend>Appearance</legend>
+        <Segmented role="group" aria-label="Appearance">
+          {APPEARANCES.map((a) => (
+            <button key={a.id} type="button" aria-pressed={appearance === a.id} onClick={() => onAppearance(a.id)}>
+              {a.label}
             </button>
           ))}
         </Segmented>

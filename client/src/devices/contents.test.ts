@@ -1,6 +1,6 @@
 import { createDevice, createItem, MemoryStorage, StoredLibraryBackend, type FileRef } from '@nexlibris/common';
 import { describe, expect, it, vi } from 'vitest';
-import { connectionContents, importFromConnection, linkOperations, matchItem } from './contents';
+import { connectionContents, importFromConnection, linkOperations, matchItem, removeOperations } from './contents';
 import { listDevice, planSync } from './plan';
 import { runSync } from './run';
 import type { DeviceTarget, DeviceType, RemoteFile } from './types';
@@ -137,6 +137,35 @@ describe('connection contents', () => {
     await sync();
     expect(target.files.has(path)).toBe(false);
     expect(target.files.get('/Books/Emma - Jane Austen.epub')).toBe('emma, second edition');
+  });
+
+  it('takes a removed book off the connection, so the next sync doesn’t send it back', async () => {
+    const { backend, target, deviceId, dune, emma, sync, contents } = await setup();
+    // Dune chosen by hand, Emma by the connection's search.
+    await backend.apply([{ type: 'updateDevice', id: deviceId, patch: { query: 'title:Emma' } }]);
+    await sync();
+    const remove = async (path: string) => {
+      const entry = (await contents()).entries.find((e) => e.book.path === path)!;
+      await target.remove(path);
+      const library = await backend.getLibrary();
+      await backend.apply(removeOperations(library, library.devices![deviceId]!, entry));
+    };
+    await remove('/Books/Dune - Frank Herbert.epub');
+    await remove('/Books/Emma - Jane Austen.epub');
+
+    const device = (await backend.getLibrary()).devices![deviceId]!;
+    expect(device.items).not.toContain(dune.id);
+    expect(device.excluded).toEqual([emma.id]);
+    expect(device.placed).toEqual({});
+    const plan = await sync();
+    expect(plan.uploads).toEqual([]);
+    expect(target.books()).toEqual([]);
+  });
+
+  it('needs nothing in the library to delete a book it doesn’t have', async () => {
+    const { backend, deviceId } = await setup();
+    const library = await backend.getLibrary();
+    expect(removeOperations(library, library.devices![deviceId]!, { kind: 'unknown', book: { path: '/Books/Persuasion.epub', size: 3 } })).toEqual([]);
   });
 
   it('won’t link a book the connection can’t send, which a sync would then remove', async () => {

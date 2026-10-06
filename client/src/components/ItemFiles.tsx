@@ -3,12 +3,14 @@ import { useEffect, useState } from 'react';
 import styled from 'styled-components';
 import { FORMATS, formatFromName, isFormatId } from '../formats/formats';
 import { availableConversions, convertItemFile } from '../library/convert';
+import { removeFiles } from '../library/freeFiles';
 import { useLibrary } from '../library/LibraryContext';
 import { saveFile } from '../library/saveFile';
 import { isReadable } from '../reader/Reader';
 import { Button, FileButton, Muted, SmallSelect, Stack } from '../styles/ui';
 import { onFileFetched } from '../sync/files';
 import { canSync } from '../sync/connect';
+import { DeleteButton } from './DeleteButton';
 
 const FileRow = styled.li`
   display: flex;
@@ -162,10 +164,23 @@ function useNotDownloaded(files: FileRef[]): Set<string> {
   return missing;
 }
 
-/** An item's files, with reading, downloading, converting and attaching (none of which need edit mode). */
+/**
+ * An item's files, with reading, downloading, converting, attaching and removing (none of which need
+ * edit mode). Removing a file deletes it from the library's storage unless another item has it.
+ */
 export function ItemFiles({ item, onRead }: { item: Item; onRead(file: FileRef): void }) {
   const { backend, apply } = useLibrary();
   const notDownloaded = useNotDownloaded(item.files);
+  const [error, setError] = useState<string>();
+
+  const remove = async (file: FileRef) => {
+    setError(undefined);
+    try {
+      await removeFiles(backend, apply, [{ item, hashes: [file.hash] }]);
+    } catch (e) {
+      setError(`Couldn’t remove ${fileName(item, file)}: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  };
 
   const attach = async (files: FileList | null) => {
     for (const file of Array.from(files ?? [])) {
@@ -196,11 +211,13 @@ export function ItemFiles({ item, onRead }: { item: Item; onRead(file: FileRef):
                   </Button>
                 )}
                 <ConvertMenu item={item} file={file} />
+                <DeleteButton small verb="Remove" onDelete={() => void remove(file)} />
               </Actions>
             </FileRow>
           ))}
         </Stack>
       )}
+      {error && <ErrorText role="alert">{error}</ErrorText>}
       <FileButton $variant="secondary" $size="small">
         Attach file…
         <input type="file" hidden multiple onChange={(e) => void attach(e.target.files)} />
@@ -209,7 +226,7 @@ export function ItemFiles({ item, onRead }: { item: Item; onRead(file: FileRef):
   );
 }
 
-/** The editor's version: files can be detached (on save). */
+/** The editor's version: files can be detached, and are deleted from storage on save unless another item has them. */
 export function EditableFiles({ item, files, onChange }: { item: Item; files: FileRef[]; onChange(files: FileRef[]): void }) {
   if (!files.length) return <Muted as="p">No files.</Muted>;
   return (

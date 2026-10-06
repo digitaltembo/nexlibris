@@ -3,9 +3,10 @@ import { writeEpubMetadata, type EpubMetadata } from '../formats/epubMetadata';
 import type { Preparation } from './types';
 
 /** Bumped when the output changes for the same input, so devices get the new version. */
-const VERSION = 1;
+const VERSION = 2;
 
-const EPUB_FORMATS = ['epub', 'x4.epub', 'x3.epub'];
+/** The formats whose metadata nexlibris can write: EPUBs, and the CrossPoint readers' optimized EPUBs. */
+export const EPUB_FORMATS = ['epub', 'x4.epub', 'x3.epub'];
 
 /** Writes the item's current metadata into EPUBs as they're sent, so edits in the library show on the device. */
 export const embedMetadata: Preparation = {

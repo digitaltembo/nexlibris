@@ -163,4 +163,20 @@ describe('TextIndex', () => {
     expect(await backend.readLocalFile(`fulltext/${items[0]!.files[0]!.hash}.json.gz`)).toBeUndefined();
     expect((await index.candidates(items.slice(1), parseTextQuery('harpoon'))).map((r) => r.item.title)).toEqual(['Jaws']);
   });
+
+  it('carries a file’s index to a new version of it, so it isn’t indexed again', async () => {
+    const backend = new StoredLibraryBackend(new MemoryStorage());
+    const before = await backend.putFile(new Blob(['A whale and a harpoon.']));
+    const after = await backend.putFile(new Blob(['A whale and a harpoon. ']));
+    const item = createItem({ title: 'Moby-Dick', files: [{ ...before, format: 'txt' }] });
+    const index = new TextIndex(backend, inThread(new TextWork()));
+    for (const { file } of await index.pending([item])) await index.add(file);
+
+    await index.carry(before.hash, after.hash);
+    const updated = { ...item, files: [{ ...after, format: 'txt' }] };
+    expect(await index.pending([updated])).toEqual([]);
+    await index.prune([updated]);
+    expect((await index.candidates([updated], parseTextQuery('harpoon'))).map((r) => r.item.title)).toEqual(['Moby-Dick']);
+    expect(await backend.readLocalFile(`fulltext/${before.hash}.json.gz`)).toBeUndefined();
+  });
 });

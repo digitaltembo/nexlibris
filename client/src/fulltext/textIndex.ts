@@ -97,6 +97,25 @@ export class TextIndex {
     return entry;
   }
 
+  /**
+   * Gives `to` the index of `from`, a file with the same text (its metadata rewritten, say), so it
+   * isn't indexed again. `from`'s is left for `prune` once the library no longer has it.
+   */
+  async carry(from: FileHash, to: FileHash): Promise<void> {
+    const manifest = await this.load();
+    const entry = manifest.files[from];
+    if (!entry || entry.version !== EXTRACTOR_VERSION || manifest.files[to]) return;
+    if (!entry.error) {
+      const text = await this.backend.readLocalFile(textPath(from));
+      const words = await this.backend.readLocalFile(wordsPath(from));
+      if (!text || !words) return;
+      await this.backend.writeLocalFile(textPath(to), text);
+      await this.backend.writeLocalFile(wordsPath(to), words);
+    }
+    manifest.files[to] = { ...entry };
+    await this.backend.writeLocalState(MANIFEST, manifest);
+  }
+
   /** Forgets files no longer in the library, deleting their stored text. */
   async prune(items: Item[]): Promise<void> {
     const manifest = await this.load();

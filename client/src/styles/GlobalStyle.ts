@@ -1,8 +1,9 @@
-import { createGlobalStyle } from 'styled-components';
+import { createGlobalStyle, css } from 'styled-components';
 
 /**
  * Theme tokens and element defaults. Colors are CSS variables rather than a
- * ThemeProvider theme so dark mode follows the OS setting without any JS.
+ * ThemeProvider theme so dark mode follows the OS setting without any JS, unless light or
+ * dark is picked in Settings (`styles/appearance.ts`, marking `<html data-theme>`).
  *
  * The palette: regal navy #0d3b66, lemon chiffon #faf0ca, royal gold #f4d35e,
  * sandy brown #ee964b and tomato #f95738. Light mode is chiffon paper with navy
@@ -11,6 +12,32 @@ import { createGlobalStyle } from 'styled-components';
  * Sandy brown marks what's pressed, hovered or picked out (--highlight, --hover,
  * --soft), rather than a second shade of the background.
  */
+
+/** The dark scheme's tokens, for the system's dark mode and for Dark picked in Settings. */
+const DARK = css`
+  --bg: #071f37;
+  --surface: #0a2b4c;
+  --highlight: #ee964b;
+  --highlight-text: #0d3b66;
+  /* Sandy brown mixed into navy turns grey, so soft areas are a lighter navy, edged in sandy brown. */
+  --hover: #0f3a63;
+  --soft: #154878;
+  --soft-border: #ee964b;
+  --text: #faf0ca;
+  --muted: #a9b3a9;
+  --border: #1c4c7a;
+  --accent: #f4d35e;
+  --accent-text: #0d3b66;
+  --danger: #ff6847;
+  --star: #f4d35e;
+  --qr-ink: #0d3b66;
+  --qr-paper: #faf0ca;
+  --page-filter: invert(1) hue-rotate(180deg);
+  --page-blend: lighten;
+  --page-ink-blend: darken;
+  color-scheme: dark;
+`;
+
 export const GlobalStyle = createGlobalStyle`
   :root {
     --bg: #fdf8e5;
@@ -45,30 +72,15 @@ export const GlobalStyle = createGlobalStyle`
     line-height: 1.4;
   }
 
+  /* Dark when the system is, unless Light is picked in Settings (styles/appearance.ts), or when Dark is. */
   @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #071f37;
-      --surface: #0a2b4c;
-      --highlight: #ee964b;
-      --highlight-text: #0d3b66;
-      /* Sandy brown mixed into navy turns grey, so soft areas are a lighter navy, edged in sandy brown. */
-      --hover: #0f3a63;
-      --soft: #154878;
-      --soft-border: #ee964b;
-      --text: #faf0ca;
-      --muted: #a9b3a9;
-      --border: #1c4c7a;
-      --accent: #f4d35e;
-      --accent-text: #0d3b66;
-      --danger: #ff6847;
-      --star: #f4d35e;
-      --qr-ink: #0d3b66;
-      --qr-paper: #faf0ca;
-      --page-filter: invert(1) hue-rotate(180deg);
-      --page-blend: lighten;
-      --page-ink-blend: darken;
-      color-scheme: dark;
+    :root:not([data-theme='light']) {
+      ${DARK}
     }
+  }
+
+  :root[data-theme='dark'] {
+    ${DARK}
   }
 
   * {

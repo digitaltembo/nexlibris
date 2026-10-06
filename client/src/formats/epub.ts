@@ -7,14 +7,9 @@ export class EpubError extends Error {
   name = 'EpubError';
 }
 
-/** Extracts library metadata and the cover image from an EPUB's OPF. */
-export async function parseEpub(data: Blob, filename = 'Untitled.epub'): Promise<ParsedItem> {
-  let zip: JSZip;
-  try {
-    zip = await JSZip.loadAsync(await data.arrayBuffer());
-  } catch {
-    throw new EpubError(`${filename} is not a valid EPUB (not a zip archive)`);
-  }
+/** Extracts library metadata and the cover image (unless `cover` is false) from an EPUB's OPF. */
+export async function parseEpub(data: Blob, filename = 'Untitled.epub', options: { cover?: boolean } = {}): Promise<ParsedItem> {
+  const zip = await openEpub(data, filename);
 
   const container = await readXml(zip, 'META-INF/container.xml');
   const opfPath = container && byLocalName(container, 'rootfile')[0]?.getAttribute('full-path');
@@ -24,8 +19,34 @@ export async function parseEpub(data: Blob, filename = 'Untitled.epub'): Promise
   const read = readOpf(opf, filename);
   if (!read) throw new EpubError(`${filename} has no <metadata> element`);
   const { parsed, coverId } = read;
-  const cover = await readCover(zip, opf, opfPath, coverId);
+  const cover = options.cover === false ? undefined : await readCover(zip, opf, opfPath, coverId);
   return { ...parsed, ...(cover && { cover }) };
+}
+
+async function openEpub(data: Blob, filename: string): Promise<JSZip> {
+  try {
+    return await JSZip.loadAsync(await data.arrayBuffer());
+  } catch {
+    throw new EpubError(`${filename} is not a valid EPUB (not a zip archive)`);
+  }
+}
+
+/** Font obfuscation (IDPF's and Adobe's), which publishers use without DRM: the key is the book's identifier. */
+const OBFUSCATION = ['http://www.idpf.org/2008/embedding', 'http://ns.adobe.com/pdf/enc#RC'];
+
+/**
+ * The DRM an EPUB carries (Adobe's, Apple's, Readium LCP, or any encryption beyond font obfuscation),
+ * or undefined for one that has none. Such a book's metadata can still be read, but its file mustn't
+ * be rewritten.
+ */
+export async function epubDrm(data: Blob, filename = 'Untitled.epub'): Promise<string | undefined> {
+  const zip = await openEpub(data, filename);
+  if (zip.file('META-INF/rights.xml')) return 'Adobe DRM';
+  if (zip.file('META-INF/sinf.xml')) return 'Apple DRM';
+  if (zip.file('META-INF/license.lcpl')) return 'Readium LCP';
+  const encryption = await readXml(zip, 'META-INF/encryption.xml');
+  const algorithms = encryption ? byLocalName(encryption, 'EncryptionMethod').map((el) => el.getAttribute('Algorithm') ?? '') : [];
+  return algorithms.some((a) => !OBFUSCATION.includes(a)) ? 'encrypted' : undefined;
 }
 
 async function readXml(zip: JSZip, path: string): Promise<Document | undefined> {

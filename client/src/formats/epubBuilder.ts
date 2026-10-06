@@ -36,6 +36,9 @@ export interface EpubBook {
   published?: string;
   series?: string;
   seriesIndex?: number;
+  /** Sort names, written only into existing EPUBs (`writeEpubMetadata`); `authorSort` joined with ` & `, as Calibre does. */
+  titleSort?: string;
+  authorSort?: string;
   chapters: EpubChapter[];
   resources?: EpubResource[];
   /** Defaults to one entry per chapter. */

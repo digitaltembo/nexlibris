@@ -22,6 +22,8 @@ export function bookFromItem({ item, cover }: ConvertContext): Omit<EpubBook, 'c
     published: text('published'),
     series: text('series'),
     seriesIndex: typeof seriesIndex === 'number' ? seriesIndex : undefined,
+    titleSort: text('titleSort'),
+    authorSort: text('authorSort'),
     cover,
   };
 }

@@ -2,7 +2,7 @@ import JSZip from 'jszip';
 import { describe, expect, it } from 'vitest';
 import { buildEpub } from './epubBuilder';
 import { parseEpub } from './epub';
-import { writeEpubMetadata } from './epubMetadata';
+import { epubMetadataChanges, writeEpubMetadata } from './epubMetadata';
 
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
 
@@ -74,5 +74,85 @@ describe('writeEpubMetadata', () => {
       creators: [{ name: 'Editor', role: 'edt' }],
       metadata: { series: 'After Series', seriesIndex: 3 },
     });
+  });
+
+  it('leaves what the library lacks as the file has it, and writes sort names', async () => {
+    const zip = await JSZip.loadAsync(await (await epub2()).arrayBuffer());
+    const opf = (await zip.file('content.opf')!.async('string')).replace(
+      '<dc:language>en</dc:language>',
+      `<dc:language>en</dc:language><dc:description>From the file</dc:description><dc:publisher>Ace</dc:publisher>
+       <dc:date opf:event="original-publication">1965</dc:date><dc:date>1990-09-01</dc:date>
+       <meta name="calibre:title_sort" content="Old Title, The"/>`,
+    );
+    zip.file('content.opf', opf);
+    const original = await zip.generateAsync({ type: 'blob' });
+
+    const book = {
+      title: 'New Title',
+      creators: [{ name: 'Ann Writer', role: 'aut' }, { name: 'Bo Writer', role: 'aut' }, { name: 'Ed Itor', role: 'edt' }],
+      published: '2001-05',
+      titleSort: 'New Title',
+      authorSort: 'Writer, Ann & Writer, Bo',
+    };
+    const parsed = await parseEpub(await writeEpubMetadata(original, book));
+    expect(parsed).toMatchObject({
+      title: 'New Title',
+      // No tags in the library: the file's are kept, as are its description and publisher.
+      tags: ['Old tag'],
+      metadata: {
+        description: 'From the file',
+        publisher: 'Ace',
+        series: 'Old Series',
+        published: '2001-05',
+        originallyPublished: '1965',
+        titleSort: 'New Title',
+        authorSort: 'Writer, Ann & Writer, Bo',
+      },
+    });
+    expect(epubMetadataChanges(parsed, book)).toEqual([]);
+
+    // A new title without a sort title of its own drops the file's old one.
+    const retitled = await parseEpub(await writeEpubMetadata(original, { title: 'Other', creators: [] }));
+    expect(retitled.metadata.titleSort).toBeUndefined();
+    expect(retitled.creators).toEqual([{ name: 'Old Writer', role: 'aut' }]);
+  });
+
+  it('writes a non-breaking space as XML can read it, and the language as EPUB wants it', async () => {
+    const book = { title: 'Dune', creators: [], description: 'One\u00a0two', language: 'fra' };
+    const parsed = await parseEpub(await writeEpubMetadata(await epub2(), book));
+    expect(parsed.metadata).toMatchObject({ description: 'One\u00a0two', language: 'fr' });
+    expect(epubMetadataChanges(parsed, book)).toEqual([]);
+    // The file's `en` is already the library's `eng`, and stays.
+    const english = await parseEpub(await writeEpubMetadata(await epub2(), { ...book, language: 'eng' }));
+    expect(english.metadata.language).toBe('en');
+  });
+});
+
+describe('epubMetadataChanges', () => {
+  const file = { title: 'Dune', creators: [{ name: 'Frank Herbert', role: 'aut' }], identifiers: {}, tags: ['SF', 'Classic'], metadata: { series: 'Dune', seriesIndex: 1 } };
+
+  it('names the fields the library has that the file says otherwise', () => {
+    expect(epubMetadataChanges(file, { title: 'Dune', creators: file.creators, tags: ['Classic', 'SF'], series: 'Dune', seriesIndex: 1 })).toEqual([]);
+    expect(
+      epubMetadataChanges(file, {
+        title: 'Dune ',
+        creators: [{ name: 'Frank Herbert', role: 'aut' }, { name: 'Someone', role: 'trl' }],
+        tags: ['SF', 'Classic', '1960s'],
+        series: 'Dune Chronicles',
+        seriesIndex: 1,
+        publisher: 'Ace',
+        published: '-0570',
+      }),
+    ).toEqual(['creators', 'tags', 'publisher', 'series']);
+  });
+
+  it('takes a language in another form, or with a region, as the same', () => {
+    const english = { ...file, metadata: { ...file.metadata, language: 'en-US' } };
+    expect(epubMetadataChanges(english, { title: 'Dune', creators: [], language: 'eng' })).toEqual([]);
+    expect(epubMetadataChanges(english, { title: 'Dune', creators: [], language: 'fra' })).toEqual(['language']);
+  });
+
+  it('ignores what the library lacks', () => {
+    expect(epubMetadataChanges(file, { title: 'Dune', creators: [], tags: [] })).toEqual([]);
   });
 });

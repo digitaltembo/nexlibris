@@ -1,5 +1,5 @@
 import { createItem, userData, type FileRef, type Item, type ItemId } from '@nexlibris/common';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import styled from 'styled-components';
 import { BulkConvertDialog } from './components/BulkConvertDialog';
 import { Breadcrumbs, CrumbAction, CrumbCount } from './components/Breadcrumbs';
@@ -39,6 +39,7 @@ import { useBackToClose } from './library/useBackToClose';
 import { useLibrary } from './library/LibraryContext';
 import { DEFAULT_DESC, filterItems, sortItems, type Sort, type SortKey } from './library/search';
 import { usePersistentState } from './library/usePersistentState';
+import { APPEARANCE_KEY, APPEARANCES, applyAppearance, type Appearance } from './styles/appearance';
 import { Reader } from './reader/Reader';
 import { useBluetoothHosting } from './sync/bluetoothHost';
 import { useSyncHosting } from './sync/hosting';
@@ -198,10 +199,12 @@ export function App() {
   const [query, setQuery] = useState('');
   /** A search of the text inside books (`fulltext/`), shown instead of the books; never at the same time as `query`. */
   const [textQuery, setTextQuery] = useState('');
-  const { progress: indexing, pause: pauseIndexing } = useTextIndex();
+  const { progress: indexing, pause: pauseIndexing, index: textIndex } = useTextIndex();
   /** The filters' rules, as search text (`library/filters.ts`); applied along with `query`. */
   const [filterQuery, setFilterQuery] = useState('');
   const [editingFilters, setEditingFilters] = useState(false);
+  const [appearance, setAppearance] = usePersistentState<Appearance>(APPEARANCE_KEY, 'system');
+  useLayoutEffect(() => applyAppearance(appearance), [appearance]);
   const [storedView, setView] = usePersistentState<View>('nexlibris:view', 'grid');
   const view = knownView(storedView);
   const PluginView = viewType(view)?.component;
@@ -571,6 +574,16 @@ export function App() {
           ],
         },
         { id: 'columns', label: 'Columns…', run: () => setSettingsOpen(true) },
+        {
+          label: 'Appearance',
+          submenu: APPEARANCES.map((a) => ({
+            id: `appearance:${a.id}`,
+            label: a.label,
+            kind: 'radio' as const,
+            checked: appearance === a.id,
+            run: () => setAppearance(a.id),
+          })),
+        },
         { type: 'separator' },
         { role: 'reload' },
         { role: 'toggleDevTools' },
@@ -898,6 +911,8 @@ export function App() {
         <SettingsDialog
           view={view}
           onView={setView}
+          appearance={appearance}
+          onAppearance={setAppearance}
           sort={sort}
           onSort={setSort}
           columns={listColumns}
@@ -908,7 +923,13 @@ export function App() {
       )}
       {bulkConverting && <BulkConvertDialog items={selectedItems} onClose={() => setBulkConverting(false)} />}
       {editingCategories && <CategoriesDialog onClose={() => setEditingCategories(false)} />}
-      {cleaningUp && <CleanupDialog onClose={() => setCleaningUp(false)} pauseIndexing={pauseIndexing} />}
+      {cleaningUp && (
+        <CleanupDialog
+          onClose={() => setCleaningUp(false)}
+          pauseIndexing={pauseIndexing}
+          carryText={(from, to) => textIndex.carry(from, to)}
+        />
+      )}
       {menuOpen && <AppMenu entries={menuEntries} onClose={() => setMenuOpen(false)} />}
       {dragging && <DropOverlay>Drop files to import</DropOverlay>}
       {reading && readingItem && (

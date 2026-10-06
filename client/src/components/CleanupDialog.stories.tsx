@@ -3,7 +3,8 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { fn } from 'storybook/test';
 import { LibraryProvider } from '../library/LibraryContext';
 import { openSampleLibrary, sampleItems } from '../stories/sampleLibrary';
-import { CleanupDialog, Duplicates, RereadSummary } from './CleanupDialog';
+import { buildEpub } from '../formats/epubBuilder';
+import { CleanupDialog, Duplicates, FilesUpdated, RereadSummary, StaleFiles, UpdateFiles } from './CleanupDialog';
 import { Modal } from './Modal';
 
 /** The sample library with copies of two books, as importing a Calibre library alongside it would leave. */
@@ -19,6 +20,23 @@ async function openWithDuplicates() {
       copy(piranesi!.title, piranesi!.creators, 'epub', '2026-10-02T10:00:00Z'),
     ].map((item) => ({ type: 'addItem', item })),
   );
+  return backend;
+}
+
+/** The sample library with EPUBs stored for two books: one's file lacks the library's tags and series, the other's matches. */
+async function openWithFiles() {
+  const backend = await openSampleLibrary();
+  const [dune, , piranesi] = sampleItems;
+  const store = async (title: string, creators: Creator[], tags: string[]) =>
+    backend.putFile(await buildEpub({ title, creators, tags, chapters: [{ id: 'c1', title: 'One', body: '<p>Once.</p>' }] }));
+  const library = await backend.getLibrary();
+  const stale = await store(dune!.title, dune!.creators, []);
+  const current = library.items[piranesi!.id]!;
+  const matching = await store(current.title, current.creators, current.tags);
+  await backend.apply([
+    { type: 'attachFile', id: dune!.id, file: { ...stale, format: 'epub', name: 'Dune.epub' } },
+    { type: 'attachFile', id: piranesi!.id, file: { ...matching, format: 'epub', name: 'Piranesi.epub' } },
+  ]);
   return backend;
 }
 
@@ -61,6 +79,50 @@ export const RereadDone: Story = {
           failed: [{ title: 'Oxford Dictionary of English', message: 'This book is DRM-protected, so its text can’t be read.' }],
         }}
       />
+    </Modal>
+  ),
+};
+
+/** Checking the stored EPUBs against the library: Dune's file lacks its tags and series, so it's listed to update. */
+export const UpdateBookFiles: Story = {
+  decorators: [
+    (Story) => (
+      <LibraryProvider open={openWithFiles}>
+        <Story />
+      </LibraryProvider>
+    ),
+  ],
+  render: (args) => <UpdateFiles onBack={fn()} onClose={args.onClose} />,
+};
+
+const dune = sampleItems[0]!;
+
+/** What checking found in a bigger library: files to update and what differs in each, and books it couldn't check. */
+export const FilesToUpdate: Story = {
+  render: (args) => (
+    <Modal title="Update book files" onClose={args.onClose}>
+      <StaleFiles
+        found={{
+          stale: [
+            { item: dune, file: { hash: 'a', size: 1, format: 'epub' }, changes: ['tags', 'series', 'series index'] },
+            { item: dune, file: { hash: 'b', size: 1, format: 'x4.epub' }, changes: ['tags'] },
+            { item: sampleItems[1]!, file: { hash: 'c', size: 1, format: 'epub' }, changes: ['title sort', 'author sort', 'description'] },
+          ],
+          current: 640,
+          notHere: 12,
+          drm: [{ title: 'A Bought Book', kind: 'Adobe DRM' }],
+          failed: [{ title: 'Broken', message: 'Broken.epub is not a valid EPUB (not a zip archive)' }],
+        }}
+      />
+    </Modal>
+  ),
+};
+
+/** After updating. */
+export const FilesUpdatedDone: Story = {
+  render: (args) => (
+    <Modal title="Update book files" onClose={args.onClose}>
+      <FilesUpdated result={{ updated: 214, freed: 214, failed: [] }} />
     </Modal>
   ),
 };

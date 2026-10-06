@@ -2,11 +2,12 @@ import { LOCAL_USER, userData, type Item, type Operation } from '@nexlibris/comm
 import { useState } from 'react';
 import styled from 'styled-components';
 import { addToDevice, deviceItems } from '../devices/selection';
-import { deleteItems } from '../library/freeFiles';
+import { deleteItems, removeFormat } from '../library/freeFiles';
 import { useLibrary } from '../library/LibraryContext';
 import { addCreatorOps, parseTags, removeCreatorOps, removeTagsOps } from '../library/bulkEdit';
 import { textToMetadata } from '../library/metadataText';
 import { DeleteButton } from './DeleteButton';
+import { formatLabel } from './ItemFiles';
 import { StarRating } from './StarRating';
 import {
   Button,
@@ -70,13 +71,19 @@ export function BulkEditor({ items, onClose, onDeleted }: Props) {
   const [newCreator, setNewCreator] = useState('');
   const [field, setField] = useState({ key: '', value: '' });
   /** What the last removal by name did, shown in its section. */
-  const [note, setNote] = useState<{ section: 'tags' | 'creators'; text: string }>();
+  const [note, setNote] = useState<{ section: 'tags' | 'creators' | 'files'; text: string }>();
+  const [format, setFormat] = useState('');
 
   const count = items.length;
   const devices = Object.values(library.devices ?? {});
   const tags = tally(items, (i) => i.tags);
   const creators = tally(items, (i) => i.creators.map((c) => c.name));
   const fields = tally(items, (i) => Object.keys(i.metadata));
+  const formats = tally(items, (i) => i.files.map((f) => f.format));
+  const chosenFormat = formats.some(([f]) => f === format) ? format : (formats[0]?.[0] ?? '');
+  const inFormat = items.flatMap((i) => i.files.filter((f) => f.format === chosenFormat));
+  /** Books whose only files are in the chosen format, left with none if they go. */
+  const leftBare = items.filter((i) => i.files.length && i.files.every((f) => f.format === chosenFormat)).length;
   const commonRating = items.every((i) => ratings[i.id] === ratings[items[0]!.id]) ? ratings[items[0]!.id] : undefined;
   const of = (n: number) => (n === count ? 'all' : `${n} of ${count}`);
 
@@ -114,6 +121,19 @@ export function BulkEditor({ items, onClose, onDeleted }: Props) {
     if (!name.trim()) return;
     report('creators', removeCreatorOps(items, name), `Removed ${name.trim()} from`, `None of the selected items have ${name.trim()} as a creator.`);
     setNewCreator('');
+  };
+
+  const removeFiles = async () => {
+    const label = formatLabel(chosenFormat);
+    try {
+      const { removed, files } = await removeFormat(backend, apply, items, chosenFormat);
+      setNote({
+        section: 'files',
+        text: `Removed ${removed} ${label} file${removed === 1 ? '' : 's'}${files < removed ? `; ${removed - files} weren’t deleted, as another book uses them or they aren’t stored on this device` : ''}.`,
+      });
+    } catch (e) {
+      setNote({ section: 'files', text: `Couldn’t remove the ${label} files: ${e instanceof Error ? e.message : String(e)}` });
+    }
   };
 
   const setFieldOnAll = () => {
@@ -179,6 +199,37 @@ export function BulkEditor({ items, onClose, onDeleted }: Props) {
               );
             })}
           </Stack>
+        </PanelSection>
+      )}
+
+      {formats.length > 0 && (
+        <PanelSection>
+          <SectionHeading>Files</SectionHeading>
+          <Row>
+            <select aria-label="Format to remove" value={chosenFormat} onChange={(e) => setFormat(e.target.value)}>
+              {formats.map(([f, n]) => (
+                <option key={f} value={f}>
+                  {formatLabel(f)} ({of(n)})
+                </option>
+              ))}
+            </select>
+            <Spacer />
+            <DeleteButton
+              small
+              verb="Remove"
+              what={`${inFormat.length} ${formatLabel(chosenFormat)} file${inFormat.length === 1 ? '' : 's'}`}
+              onDelete={() => void removeFiles()}
+            />
+          </Row>
+          <Muted as="p">
+            Takes the files off the selected books and deletes them from the library.
+            {leftBare > 0 && ` ${leftBare === 1 ? 'One book has' : `${leftBare} books have`} no other file and would be left with none.`}
+          </Muted>
+          {note?.section === 'files' && (
+            <Muted as="p" role="status">
+              {note.text}
+            </Muted>
+          )}
         </PanelSection>
       )}
 

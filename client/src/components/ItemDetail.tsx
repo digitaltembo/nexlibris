@@ -4,7 +4,7 @@ import styled from 'styled-components';
 import { BOOK_FIELDS, bookSize, fieldLabel, fieldText, isFixedField, type BookField } from '../library/bookFields';
 import { diffDraft, draftFromItem, type ItemDraft } from '../library/editDraft';
 import { savedPosition } from '../library/useReadingPosition';
-import { deleteItems } from '../library/freeFiles';
+import { deleteItems, freeFiles } from '../library/freeFiles';
 import { useLibrary } from '../library/LibraryContext';
 import { metadataToText } from '../library/metadataText';
 import { roleLabel } from '../library/roles';
@@ -294,7 +294,7 @@ interface EditorProps {
 }
 
 function ItemEditor({ item, review, draft, onChange, onDone }: EditorProps) {
-  const { apply } = useLibrary();
+  const { apply, backend } = useLibrary();
   const [saving, setSaving] = useState(false);
   const set = <K extends keyof ItemDraft>(key: K, value: ItemDraft[K]) => onChange({ ...draft, [key]: value });
 
@@ -303,6 +303,8 @@ function ItemEditor({ item, review, draft, onChange, onDone }: EditorProps) {
     try {
       const ops = diffDraft(item, review, draft);
       if (ops.length) await apply(ops);
+      // Files detached here are deleted from storage too, unless another item has them.
+      if (ops.some((op) => op.type === 'detachFile')) await freeFiles(backend, [item]);
       onDone();
     } finally {
       setSaving(false);

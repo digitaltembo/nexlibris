@@ -6,7 +6,7 @@
 
 I think [Calibre](https://calibre-ebook.com/) is one of my favorite pieces of software, but what if I could make my own library management software? With a few features (an app, and more robust device management) that are not implemented in Calibre, that could play well with my new Xteink X4 Pro ereader running a fork of [CrossPoint Reader](https://github.com/crosspoint-reader/crosspoint-reader), [nexlibrOS](https://github.com/digitaltembo/nexlibrOS)
 
-A library manager for ebooks (and hopefully other media) that runs in the browser, on the desktop (Electron) and on Android. Early work in progress; see [PLAN.md](PLAN.md) for what's next.
+A library manager for ebooks (and hopefully eventually other media) that runs in the browser, on the desktop (Electron) and on Android. Early work in progress; see [PLAN.md](PLAN.md) for what's next.
 
 ## Architecture
 
@@ -47,7 +47,7 @@ server/    placeholder for a Node backend (M4)
 - **Formats** (`client/src/formats/`): metadata extraction for EPUB, MOBI/AZW3, PDF, TXT/RTF and CBZ/CBR. In-browser conversion, including the CrossPoint X4/X3 optimizer, a TS port of the Calibre plugin.
 - **Import** (`library/importFiles.ts`): files, folders and whole Calibre libraries. It groups formats of one book together and matches books already in the library.
 - **Search** (`library/search.ts`): a Gmail-style syntax (`tag:fantasy rating:4+ -has:file`). Filters, device selections and browse categories are all stored as search text. Full-text search inside books (`fulltext/`) indexes in the background into local state.
-- **Browsing** (`library/browse.ts`): calibre3opds's navigation (authors, series, tags, the user's categories). Books show as a grid, a list, or a view a plugin adds, such as the built-in 3D bookshelf (`plugins/bookshelf/`).
+- **Browsing** (`library/browse.ts`): calibre3opds's navigation (authors, series, tags, the user's categories). Books show as a grid, a list, or a view a plugin adds, such as the built-in 3D bookshelf (`plugins/bookshelf/`) and force graph (`plugins/graph/`, books drawn together by the authors, tags and series they share).
 - **Reading** (`reader/`): EPUB (through epubier, a wrapper around epub.js), PDF (pdf.js), comics and text.
 - **Connections** (`devices/`, `plugins/`): plugins declare connection types (and views). A device type can add tools for what else is on the device; CrossPoint's manage its sleep images, StarDict dictionaries and fonts. A reader that books are copied to, such as a CrossPoint X4 over its web API, gets a planner that compares the wanted books with what's on the device. Where books go is a path template (`/library/<author>/<title>/`), and books move when it changes. Copies of chosen books already on the device (from Calibre, say) are kept, or moved into place, rather than sent again. An OPDS catalog, in calibre3opds's layout, is written to a folder or a zip.
 

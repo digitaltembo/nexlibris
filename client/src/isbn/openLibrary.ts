@@ -1,6 +1,7 @@
 import { createItem, mergeTags, normalizeDate, type Creator, type Item, type LibraryBackend, type MetadataValue } from '@nexlibris/common';
 import { coverColor } from '../library/coverColor';
 import { isbn13to10 } from './isbn';
+import { bcp47Language } from '../formats/language';
 
 /**
  * Book lookup by ISBN from Open Library (https://openlibrary.org/developers/api), which
@@ -156,16 +157,9 @@ export async function itemFromBook(backend: LibraryBackend, book: BookInfo, fetc
 const text = (value: string | { value?: string } | undefined) =>
   (typeof value === 'string' ? value : value?.value)?.trim() || undefined;
 
-/** ISO 639-2 (Open Library's `/languages/eng`) to the two-letter codes EPUBs use, for the common ones. */
-const LANGUAGES: Record<string, string> = {
-  eng: 'en', fre: 'fr', fra: 'fr', ger: 'de', deu: 'de', spa: 'es', ita: 'it', por: 'pt', rus: 'ru', jpn: 'ja',
-  chi: 'zh', zho: 'zh', dut: 'nl', nld: 'nl', swe: 'sv', nor: 'no', dan: 'da', fin: 'fi', pol: 'pl', lat: 'la',
-  gre: 'el', ell: 'el', ara: 'ar', heb: 'he', kor: 'ko', tur: 'tr', cze: 'cs', ces: 'cs', hun: 'hu', ukr: 'uk',
-};
-
 function language(key: string | undefined): string | undefined {
   const code = key?.split('/').pop();
-  return code ? (LANGUAGES[code] ?? code) : undefined;
+  return code ? bcp47Language(code) : undefined;
 }
 
 /** "2020" and "1990-10-01" as they are; "October 1, 1990" as 1990-10-01; anything else as it is (see `normalizeDate`). */

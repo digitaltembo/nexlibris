@@ -37,6 +37,7 @@ function Contents({ device, books, note }: { device: typeof sampleDevice; books:
       {...(note && { note })}
       onLink={fn()}
       onImport={fn()}
+      {...(isDevice(type) && { onRemove: fn() })}
     />
   );
 }
