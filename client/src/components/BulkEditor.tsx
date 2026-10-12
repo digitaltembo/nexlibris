@@ -1,3 +1,4 @@
+import { isSourceConnection } from '../catalogs/sources';
 import { LOCAL_USER, userData, type Item, type Operation } from '@nexlibris/common';
 import { useState } from 'react';
 import styled from 'styled-components';
@@ -75,7 +76,8 @@ export function BulkEditor({ items, onClose, onDeleted }: Props) {
   const [format, setFormat] = useState('');
 
   const count = items.length;
-  const devices = Object.values(library.devices ?? {});
+  // Catalogs browsed on a server don't take books.
+  const devices = Object.values(library.devices ?? {}).filter((d) => !isSourceConnection(d));
   const tags = tally(items, (i) => i.tags);
   const creators = tally(items, (i) => i.creators.map((c) => c.name));
   const fields = tally(items, (i) => Object.keys(i.metadata));

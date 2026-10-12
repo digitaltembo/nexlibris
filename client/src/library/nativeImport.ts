@@ -1,4 +1,5 @@
-import { createMessageClient, importApiMeta, storedFilePath, type RpcSend, type Skipped } from '@nexlibris/common';
+import { createMessageClient, DATA_DIR, importApiMeta, storedFilePath, type RpcSend, type Skipped } from '@nexlibris/common';
+import { libraryPlace } from './libraryFolder';
 import { nativeTransport } from '../backends/native';
 import { IMPORT_ACCEPT } from '../formats/formats';
 import { quietlySkipped, SIDECAR_NAMES, type ImportSource } from './importFiles';
@@ -29,7 +30,7 @@ export interface NativePickOptions {
 /**
  * Has the native app show its file (or folder) picker and store the chosen files a batch at a
  * time (see `common/src/importApi.ts`); undefined if there's no native app or the copying was
- * stopped. The files are read from `/library/files/…` as the import reaches them, which the app
+ * stopped. The files are read from `/library/files/…` (or `/library/.nexlibris/files/…`) as the import reaches them, which the app
  * serves without the bridge.
  */
 export async function pickNativeFiles(
@@ -55,18 +56,31 @@ export async function pickNativeFiles(
     next = batch.next;
     skipped.push(...batch.skipped);
     for (const { name, path, hash, size } of batch.files) {
-      files.push({
-        name,
-        ...(path && { webkitRelativePath: path }),
-        stored: { hash, size },
-        arrayBuffer: async () => {
-          const response = await fetchFile(`/library/${storedFilePath(hash)}`);
-          if (!response.ok) throw new Error(`Couldn't read ${name} from the library: ${response.status}`);
-          return response.arrayBuffer();
-        },
-      });
+      files.push(storedSource({ name, hash, size, ...(path && { path }) }, fetchFile));
     }
   }
   onCopy?.({ files: next, totalFiles: chosen.files.length, bytes, totalBytes });
   return { files, skipped };
+}
+
+/**
+ * A file the app has stored in the library already (picked to import, or downloaded), as an import
+ * reads it: from `/library/files/…`, which the app serves without the bridge.
+ */
+export function storedSource(
+  { name, hash, size, path }: { name: string; hash: string; size: number; path?: string },
+  fetchFile: typeof fetch = (input, init) => fetch(input, init),
+): ImportSource {
+  return {
+    name,
+    ...(path && { webkitRelativePath: path }),
+    stored: { hash, size },
+    arrayBuffer: async () => {
+      // In a folder of the user's, the app stores imports in its .nexlibris folder.
+      const dir = libraryPlace().kind === 'folder' ? `${DATA_DIR}/` : '';
+      const response = await fetchFile(`/library/${dir}${storedFilePath(hash)}`);
+      if (!response.ok) throw new Error(`Couldn't read ${name} from the library: ${response.status}`);
+      return response.arrayBuffer();
+    },
+  };
 }

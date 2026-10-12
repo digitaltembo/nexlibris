@@ -83,13 +83,13 @@ export async function optimizeEpub(
     }
   }
 
-  if (options.splitText) {
-    try {
-      await splitEpubText(entries, (bytes, name) => image(bytes, name), log);
-    } catch (e) {
-      // Best effort, as in the Python: the image and container fixes still apply.
-      log(`text splitting skipped: ${e instanceof Error ? e.message : e}`);
-    }
+  // Always runs, for the font, data-image and page-list cleanup; the options pick the splitting passes.
+  try {
+    const split = { paragraphs: options.splitParagraphs, chapters: options.splitChapters };
+    await splitEpubText(entries, (bytes, name) => image(bytes, name), log, split);
+  } catch (e) {
+    // Best effort, as in the Python: the image and container fixes still apply.
+    log(`text splitting skipped: ${e instanceof Error ? e.message : e}`);
   }
 
   const out = new JSZip();

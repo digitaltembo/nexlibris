@@ -144,11 +144,24 @@ export interface InstanceType extends ConnectionTypeBase {
   kind: 'instance';
 }
 
-export type ConnectionType = DeviceType | CatalogType | InstanceType;
+/**
+ * A catalog on a server that's browsed rather than synced: its books are shown under "On it…" and
+ * in the Library (`Library / <name>`), and can be added to the library, but nothing is sent to it.
+ * Its `formats` are empty and it has no rules. `url` is where its catalog starts.
+ */
+export interface SourceType extends ConnectionTypeBase {
+  kind: 'source';
+  url(device: Device): string;
+  /** A search template (`{searchTerms}`) set for it, overriding what the catalog says, if any. */
+  searchTemplate?(device: Device): string | undefined;
+}
+
+export type ConnectionType = DeviceType | CatalogType | InstanceType | SourceType;
 
 export const isCatalog = (type: ConnectionType): type is CatalogType => type.kind === 'catalog';
 export const isInstance = (type: ConnectionType): type is InstanceType => type.kind === 'instance';
 export const isDevice = (type: ConnectionType): type is DeviceType => !type.kind || type.kind === 'device';
+export const isSource = (type: ConnectionType): type is SourceType => type.kind === 'source';
 
 /** Adds connection types (and later other things) to nexlibris. */
 export interface Plugin {

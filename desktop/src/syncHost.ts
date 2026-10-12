@@ -20,6 +20,7 @@ import type { AddressInfo } from 'node:net';
 import { networkInterfaces } from 'node:os';
 import { dirname } from 'node:path';
 import { resolveLibraryPath } from './fileStorage';
+import { placedFile } from './libraryFolder';
 import { storeStream } from './importService';
 
 /**
@@ -37,8 +38,10 @@ import { storeStream } from './importService';
 export interface SyncHostOptions {
   /** The JSON file pairings and the on/off setting are kept in. */
   file: string;
-  /** The library's folder, whose stored files paired devices fetch and add to. */
+  /** The library's folder, whose stored files paired devices fetch and add to (its `.nexlibris/` in a folder of the user's). */
   libraryDir: string;
+  /** In a folder of the user's, where its books are placed (`placedFile`). */
+  placedRoot?: string;
   name: () => string;
   /** Passes an authorized sync call (`hello`, `state`, `apply`) on to the library. */
   relay: (request: RpcRequest) => Promise<RpcResponse>;
@@ -219,7 +222,7 @@ export function createSyncHost(options: SyncHostOptions) {
 
   /** A stored file's path and size, if it's here. */
   async function storedFile(hash: string): Promise<{ path: string; size: number } | undefined> {
-    const path = resolveLibraryPath(libraryRoot, storedFilePath(hash));
+    const path = (options.placedRoot && (await placedFile(options.placedRoot, hash))) || resolveLibraryPath(libraryRoot, storedFilePath(hash));
     const info = await stat(path).catch(() => undefined);
     return info?.isFile() ? { path, size: info.size } : undefined;
   }

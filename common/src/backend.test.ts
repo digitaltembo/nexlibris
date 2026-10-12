@@ -3,7 +3,8 @@ import { hashBlob, StoredLibraryBackend } from './backend';
 import { migrateLibrary, migrateOperation, NewerSchemaError } from './migrate';
 import { applyOperations, createCategory, createDevice, createItem, createLibrary } from './operations';
 import { MemoryStorage } from './storage';
-import { SCHEMA_VERSION } from './types';
+import { positionKey } from './merge';
+import { LOCAL_USER, SCHEMA_VERSION } from './types';
 
 describe('StoredLibraryBackend', () => {
   it('persists the library and change log across instances', async () => {
@@ -189,6 +190,23 @@ describe('migrateLibrary', () => {
     expect(library).toEqual({ ...v6, schemaVersion: SCHEMA_VERSION });
     const older = applyOperations(library, [{ type: 'setMetadata', id: item.id, key: 'originallyPublished', value: '570 BC' }]).library;
     expect(older.items[item.id]!.metadata.originallyPublished).toBe('-0570');
+  });
+
+  it('takes a schema 7 library to schema 8 unchanged; a position set aside keeps its place, and syncs', () => {
+    const item = createItem({ title: 'Emma' });
+    const read = applyOperations({ ...createLibrary('Mine'), items: { [item.id]: item } }, [
+      { type: 'setPosition', userId: LOCAL_USER, itemId: item.id, position: { hash: 'h', locator: 'epubcfi(/6/4)', progress: 0.3 } },
+    ]).library;
+    const v7 = { ...read, schemaVersion: 7 };
+    const library = migrateLibrary(JSON.parse(JSON.stringify(v7)));
+    expect(library).toEqual({ ...v7, schemaVersion: SCHEMA_VERSION });
+    const position = { hash: 'h', locator: 'epubcfi(/6/4)', progress: 0.3 };
+    const aside = applyOperations(library, [
+      { type: 'setPosition', userId: LOCAL_USER, itemId: item.id, position: { ...position, setAside: true } },
+    ]).library;
+    expect(aside.userData[LOCAL_USER]!.positions![item.id]).toMatchObject({ ...position, setAside: true });
+    // A merge tells it from the position it was, and carries the mark.
+    expect(positionKey(aside.userData[LOCAL_USER]!.positions![item.id])).not.toEqual(positionKey(library.userData[LOCAL_USER]!.positions![item.id]));
   });
 
   it('runs each step from the stored version up', () => {

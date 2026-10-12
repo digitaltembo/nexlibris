@@ -245,7 +245,8 @@ const RECENT_LIMIT = 6;
 const BOOK_LIMIT = 6;
 const TEXT_LIMIT = 5;
 
-export type SearchMode = 'books' | 'text';
+/** Books in the library, the text inside them, or a catalog the library browses (`source:<connection id>`). */
+export type SearchMode = 'books' | 'text' | `source:${string}`;
 
 type Choice =
   | { kind: 'suggestion'; query: string; caret: number }
@@ -275,6 +276,8 @@ interface Props {
   scope?: { label: string; filter(items: Item[]): Item[] };
   /** The scope was removed: the search goes to all books. */
   onLeaveScope?(): void;
+  /** Catalogs that can be searched, each a mode: searched when the search is made, nothing as it's typed. */
+  sources?: { id: string; name: string }[];
 }
 
 /**
@@ -290,15 +293,20 @@ export function SearchDialog(props: Props) {
   const [caret, setCaret] = useState(query.length);
   const [active, setActive] = useState(-1);
   const [scoped, setScoped] = useState(scope !== undefined);
+  const sources = props.sources ?? [];
   const [mode, setMode] = useState(props.mode);
   const text = mode === 'text';
+  /** The catalog searched, in a catalog's mode: the library's filters and completions don't apply. */
+  const source = mode.startsWith('source:') ? sources.find((s) => `source:${s.id}` === mode) : undefined;
+  const inLibrary = !source;
   /** Where to put the caret after a completion, once React has written the new text. */
   const pendingCaret = useRef<number>(undefined);
   const recentSearches = {
     books: usePersistentState<string[]>('nexlibris:recentSearches', []),
     text: usePersistentState<string[]>('nexlibris:recentTextSearches', []),
+    source: usePersistentState<string[]>('nexlibris:recentCatalogSearches', []),
   };
-  const [recent, setRecent] = recentSearches[mode];
+  const [recent, setRecent] = recentSearches[source ? 'source' : text ? 'text' : 'books'];
 
   useEffect(() => {
     if (!ref.current?.open) ref.current?.showModal();
@@ -310,14 +318,14 @@ export function SearchDialog(props: Props) {
     pendingCaret.current = undefined;
   });
 
-  const suggestions = useMemo(() => (text ? [] : suggest(draft, caret, items, fields)), [text, draft, caret, items, fields]);
+  const suggestions = useMemo(() => (text || source ? [] : suggest(draft, caret, items, fields)), [text, source, draft, caret, items, fields]);
   const searched = useDeferredValue(draft);
   /** The books searched: those in the scope that pass the filters. */
   const pool = useMemo(() => {
     const within = scoped && scope ? scope.filter(items) : items;
     return filterItems(within, filterQuery, { ratings });
   }, [items, filterQuery, ratings, scoped, scope]);
-  const found = useMemo(() => (text ? [] : filterItems(pool, searched, { ratings })), [text, pool, searched, ratings]);
+  const found = useMemo(() => (text || source ? [] : filterItems(pool, searched, { ratings })), [text, source, pool, searched, ratings]);
   const books = searched.trim() ? found.slice(0, BOOK_LIMIT) : [];
   const textSearch = useTextSearch(text ? searched : '', pool, TEXT_LIMIT);
   const choices: Choice[] = [
@@ -327,7 +335,7 @@ export function SearchDialog(props: Props) {
   ];
   const filters = filterQuery ? parseFilters(filterQuery, fields) : undefined;
   /** The search as filters, if rules can say it, to offer keeping it as filters. */
-  const asFilters = !text && draft.trim() ? parseFilters(draft, fields) : undefined;
+  const asFilters = !text && !source && draft.trim() ? parseFilters(draft, fields) : undefined;
 
   const edit = (text: string, at = text.length) => {
     setDraft(text);
@@ -347,7 +355,8 @@ export function SearchDialog(props: Props) {
   const submit = (text = draft) => {
     const trimmed = text.trim();
     if (trimmed) setRecent([trimmed, ...recent.filter((r) => r !== trimmed)].slice(0, RECENT_LIMIT));
-    if (scope && !scoped) props.onLeaveScope?.();
+    if (source && !trimmed) return;
+    if (scope && !scoped && inLibrary) props.onLeaveScope?.();
     onSearch(trimmed, mode);
   };
   const choose = (choice: Choice) => {
@@ -404,7 +413,7 @@ export function SearchDialog(props: Props) {
           aria-controls={listId}
           aria-autocomplete="list"
           aria-activedescendant={active >= 0 ? optionId(active) : undefined}
-          placeholder={text ? 'Search the text of books…' : 'Search titles, authors, tags…'}
+          placeholder={source ? `Search ${source.name}…` : text ? 'Search the text of books…' : 'Search titles, authors, tags…'}
           enterKeyHint="search"
           autoComplete="off"
           spellCheck={false}
@@ -431,7 +440,8 @@ export function SearchDialog(props: Props) {
           [
             ['books', 'Books'],
             ['text', 'Inside books'],
-          ] as const
+            ...sources.map((s) => [`source:${s.id}`, s.name] as const),
+          ] as const satisfies readonly (readonly [SearchMode, string])[]
         ).map(([value, label]) => (
           <button
             key={value}
@@ -451,6 +461,12 @@ export function SearchDialog(props: Props) {
 
       {/* Clicking a button here leaves the focus in the field, so typing (and Enter) carries on there, also once the filters dialog closes. */}
       <Scroll onMouseDown={(e) => (e.target as Element).closest('button') && e.preventDefault()}>
+        {source && (
+          <Section aria-label={`Searching ${source.name}`}>
+            <Muted as="p">Searches {source.name}’s catalog when you press Enter, and shows what it finds in the Library.</Muted>
+          </Section>
+        )}
+        {inLibrary && (
         <Section aria-label="Filters">
           <h3>
             <FilterIcon /> Filters
@@ -502,8 +518,9 @@ export function SearchDialog(props: Props) {
             )}
           </Chips>
         </Section>
+        )}
 
-        {!text && !draft.trim() && (
+        {!text && !source && !draft.trim() && (
           <Section aria-label="Search by">
             <h3>Search by</h3>
             <Chips>

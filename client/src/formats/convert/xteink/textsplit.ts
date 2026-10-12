@@ -8,9 +8,10 @@
  * ~10 KB make indexing fragile. So this:
  *
  * - splits every <p> larger than PARA_LIMIT into ~PARA_TARGET-byte siblings, at
- *   sentence boundaries (inline tags kept whole),
- * - splits spine files whose <body> exceeds SPLIT_LIMIT into ~CHUNK_TARGET-byte
- *   files, adding them to the manifest and spine,
+ *   sentence boundaries (inline tags kept whole), unless turned off,
+ * - if asked, splits spine files whose <body> exceeds SPLIT_LIMIT into
+ *   ~CHUNK_TARGET-byte files, adding them to the manifest and spine (firmware
+ *   that streams and indexes sections incrementally doesn't need this),
  * - points `href="…#fragment"` links at the chunk that now holds the anchor,
  * - moves base64 `data:` images into real files,
  * - removes embedded fonts and page-list navs.
@@ -254,11 +255,13 @@ const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 /**
  * Runs the text passes over an EPUB's entries in place. `processImage` re-encodes images pulled out of `data:`
  * URIs (as JPEG); without it they're kept as they are. `log` hears about each step and anything skipped.
+ * `split` picks the splitting passes; the cleanup passes always run.
  */
 export async function splitEpubText(
   entries: EpubEntries,
   processImage?: (data: Uint8Array, name: string) => Promise<Uint8Array>,
   log: (message: string) => void = () => undefined,
+  split: { paragraphs: boolean; chapters: boolean } = { paragraphs: true, chapters: false },
 ): Promise<TextSplitSummary> {
   const result: TextSplitSummary = { paragraphs: 0, fileSplits: 0, fonts: 0, dataImages: 0 };
   const { opfPath } = entries;
@@ -295,16 +298,16 @@ export async function splitEpubText(
     }
 
     const original = visibleText(doc);
-    const body = bodyOf(doc);
+    const body = split.paragraphs ? bodyOf(doc) : undefined;
     if (body) {
-      let split = { html: body.body, changed: false };
+      let paragraphs = { html: body.body, changed: false };
       try {
-        split = splitBigParagraphs(body.body);
+        paragraphs = splitBigParagraphs(body.body);
       } catch (e) {
         log(`${basename(path)}: paragraph pass skipped (${errorMessage(e)})`);
       }
-      if (split.changed) {
-        const next = doc.slice(0, body.start) + split.html + doc.slice(body.end);
+      if (paragraphs.changed) {
+        const next = doc.slice(0, body.start) + paragraphs.html + doc.slice(body.end);
         if (visibleText(next) === original) {
           doc = next;
           entries.data.set(path, doc);
@@ -315,6 +318,7 @@ export async function splitEpubText(
       }
     }
 
+    if (!split.chapters) continue;
     let pieces: [string, string][] = [];
     try {
       pieces = splitXhtmlDoc(doc, basename(path));

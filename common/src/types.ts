@@ -5,7 +5,7 @@ export type UserId = string;
 /** Hex-encoded SHA-256 of a file's contents. */
 export type FileHash = string;
 
-export const SCHEMA_VERSION = 7;
+export const SCHEMA_VERSION = 8;
 
 /** The implicit user until multi-user support exists. */
 export const LOCAL_USER: UserId = 'local';
@@ -102,6 +102,11 @@ export interface ReadingPosition {
   locator: string;
   /** How far through, 0–1, when the viewer knows. */
   progress?: number;
+  /**
+   * Taken out of Currently Reading by the user, keeping the place. Reading it again saves a new
+   * position without it, which brings the book back.
+   */
+  setAside?: boolean;
   updatedAt: string;
 }
 

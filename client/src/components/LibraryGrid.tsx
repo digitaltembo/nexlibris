@@ -1,3 +1,4 @@
+import { useCollectionDecor } from './CollectionDecor';
 import { userData, type Item, type ItemId } from '@nexlibris/common';
 import type { MouseEvent } from 'react';
 import styled from 'styled-components';
@@ -83,6 +84,7 @@ export function LibraryGrid({ items, selection, onActivate, onLongPress }: Colle
   const { library } = useLibrary();
   const { ratings } = userData(library);
   const longPress = useLongPress(onLongPress);
+  const decor = useCollectionDecor();
 
   return (
     <Grid>
@@ -101,7 +103,7 @@ export function LibraryGrid({ items, selection, onActivate, onLongPress }: Colle
               <Creators>{item.creators.map((c) => c.name).join(', ')}</Creators>
               <Footer>
                 <StarRating value={ratings[item.id]} />
-                {item.files.length === 0 && <Badge>no file</Badge>}
+                {decor.badge?.(item) ? <Badge>{decor.badge(item)}</Badge> : item.files.length === 0 && <Badge>no file</Badge>}
               </Footer>
             </Card>
           </li>

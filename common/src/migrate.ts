@@ -47,6 +47,9 @@ export const MIGRATIONS: Record<number, Migration> = {
   // Dates before AD 1 (`-0570` is 570 BC). Nothing to change: none could be stored before, and the version keeps an older
   // nexlibris, which would read -0570 as AD 570, from syncing with one that has them.
   6: { library: (library) => library },
+  // Positions set aside from Currently Reading (`ReadingPosition.setAside`). Nothing to change: none were before, and the
+  // version keeps an older nexlibris, whose merge would drop the mark, from syncing with one that has them.
+  7: { library: (library) => library },
 };
 
 type StoredItem = { metadata: Record<string, MetadataValue> } & Record<string, unknown>;

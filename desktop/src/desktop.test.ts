@@ -17,7 +17,7 @@ import { mkdtempSync, readFileSync, realpathSync, symlinkSync, writeFileSync, mk
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { appFile, isAppUrl } from './appProtocol';
+import { appFile, isAppUrl, isReaderUrl } from './appProtocol';
 import { createFileStorage, resolveLibraryPath } from './fileStorage';
 import { createImportService } from './importService';
 import { createSaveService } from './saveService';
@@ -118,6 +118,8 @@ describe('app protocol', () => {
     expect(appFile('app://other/index.html', dirs)).toBeUndefined();
     expect(appFile('file:///etc/passwd', dirs)).toBeUndefined();
     expect([isAppUrl('app://nexlibris/'), isAppUrl('app://nexlibris.evil/'), isAppUrl('about:blank'), isAppUrl('x')]).toEqual([true, false, false, false]);
+    // A book's own window, which the app opens; any other window it's asked for, it doesn't.
+    expect([isReaderUrl('app://nexlibris/?read=i&file=h'), isReaderUrl('app://nexlibris/'), isReaderUrl('https://evil.example/?read=i')]).toEqual([true, false, false]);
   });
 });
 

@@ -24,11 +24,29 @@ export function useReadingPosition(itemId: ItemId, file: FileRef) {
     const saved = userData(library).positions?.[itemId];
     return saved?.hash === file.hash ? saved.locator : undefined;
   });
-
   const applyRef = useRef(apply);
   applyRef.current = apply;
+  const save = useCallback(
+    (locator: string, progress?: number) => {
+      const position = { hash: file.hash, locator, ...(progress !== undefined && { progress }) };
+      // Fails if the item was deleted meanwhile, which leaves nothing to remember.
+      applyRef.current([{ type: 'setPosition', userId: LOCAL_USER, itemId, position }]).catch(() => undefined);
+    },
+    [itemId, file.hash],
+  );
+  return { initial, report: usePositionReports(save, initial) };
+}
+
+/**
+ * `report` for a viewer's positions, passing them to `save` once they settle (`SAVE_DELAY_MS`),
+ * when the reader closes, and when the page is hidden. `saved` is where it opened, which needn't
+ * be saved again.
+ */
+export function usePositionReports(save: (locator: string, progress?: number) => void, saved?: string) {
+  const saveRef = useRef(save);
+  saveRef.current = save;
   const pending = useRef<{ locator: string; progress?: number }>(undefined);
-  const lastSaved = useRef(initial);
+  const lastSaved = useRef(saved);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const flush = useCallback(() => {
@@ -37,14 +55,8 @@ export function useReadingPosition(itemId: ItemId, file: FileRef) {
     pending.current = undefined;
     if (!next || next.locator === lastSaved.current) return;
     lastSaved.current = next.locator;
-    const position = {
-      hash: file.hash,
-      locator: next.locator,
-      ...(next.progress !== undefined && { progress: next.progress }),
-    };
-    // Fails if the item was deleted meanwhile, which leaves nothing to remember.
-    applyRef.current([{ type: 'setPosition', userId: LOCAL_USER, itemId, position }]).catch(() => undefined);
-  }, [itemId, file.hash]);
+    saveRef.current(next.locator, next.progress);
+  }, []);
 
   const report = useCallback(
     (locator: string, progress?: number) => {
@@ -58,11 +70,14 @@ export function useReadingPosition(itemId: ItemId, file: FileRef) {
   useEffect(() => {
     const onHide = () => document.visibilityState === 'hidden' && flush();
     document.addEventListener('visibilitychange', onHide);
+    // A window closing may not be hidden first.
+    window.addEventListener('pagehide', flush);
     return () => {
       document.removeEventListener('visibilitychange', onHide);
+      window.removeEventListener('pagehide', flush);
       flush();
     };
   }, [flush]);
 
-  return { initial, report };
+  return report;
 }

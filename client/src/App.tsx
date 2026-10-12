@@ -1,13 +1,20 @@
 import { createItem, userData, type FileRef, type Item, type ItemId } from '@nexlibris/common';
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import styled from 'styled-components';
 import { BulkConvertDialog } from './components/BulkConvertDialog';
 import { Breadcrumbs, CrumbAction, CrumbCount } from './components/Breadcrumbs';
 import { BrowseEntries } from './components/BrowseEntries';
+import { CatalogBrowser } from './components/CatalogBrowser';
+import { CurrentlyReading } from './components/CurrentlyReading';
+import { currentlyReading, setAsideOperations } from './library/currentlyReading';
+import { librarySources, useSearchableSources } from './catalogs/sources';
+import { onTitles, rememberTitle, SEARCH_STEP, titlesVersion } from './catalogs/titles';
 import { BulkEditor } from './components/BulkEditor';
 import { CategoriesDialog } from './components/CategoriesDialog';
 import { CleanupDialog } from './components/CleanupDialog';
 import { BackupDialog } from './components/BackupDialog';
+import { LibraryFolderDialog } from './components/LibraryFolderDialog';
+import { canChooseLibraryFolder } from './library/libraryFolder';
 import { AppMenu, MenuButton, type MenuEntry } from './components/AppMenu';
 import { ConnectionsDialog } from './components/ConnectionsDialog';
 import { FiltersDialog } from './components/FiltersDialog';
@@ -44,7 +51,8 @@ import { Reader } from './reader/Reader';
 import { useBluetoothHosting } from './sync/bluetoothHost';
 import { useSyncHosting } from './sync/hosting';
 import { NARROW } from './styles/GlobalStyle';
-import { besidePanel, Button, Muted, Tag, TagButton, TagLabel, TagList, TagRemove } from './styles/ui';
+import { besidePanel, Button, Muted, NoticeBox, Tag, TagButton, TagLabel, TagList, TagRemove } from './styles/ui';
+import { openReaderWindow, readsInWindows, serveReaderWindows } from './library/readerWindow';
 
 /**
  * The top bar and the breadcrumbs, held at the top while the books scroll under them. Its height is
@@ -129,16 +137,8 @@ const SubtleButton = styled.button.attrs({ type: 'button' })`
   }
 `;
 
-const Notice = styled.div<{ $withPanel: boolean }>`
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  gap: 4px 12px;
+const Notice = styled(NoticeBox)<{ $withPanel: boolean }>`
   margin: 12px 16px 0;
-  padding: 8px 12px;
-  background: var(--soft);
-  border-left: 4px solid var(--highlight);
-  border-radius: var(--radius);
   ${besidePanel}
 
   > span {
@@ -204,6 +204,8 @@ export function App() {
   const [filterQuery, setFilterQuery] = useState('');
   const [editingFilters, setEditingFilters] = useState(false);
   const [appearance, setAppearance] = usePersistentState<Appearance>(APPEARANCE_KEY, 'system');
+  /** The Currently Reading notice, shown each time the app opens while books are being read, until hidden. */
+  const [readingHidden, setReadingHidden] = useState(false);
   useLayoutEffect(() => applyAppearance(appearance), [appearance]);
   const [storedView, setView] = usePersistentState<View>('nexlibris:view', 'grid');
   const view = knownView(storedView);
@@ -220,10 +222,10 @@ export function App() {
   const menuBar = hasMenuBar();
   /** The search dialog, open in one mode or the other. */
   const [searching, setSearching] = useState<SearchMode | false>(false);
-  const openSearch = (mode: SearchMode = textQuery ? 'text' : 'books') => setSearching(mode);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
   const [backingUp, setBackingUp] = useState(false);
+  const [choosingFolder, setChoosingFolder] = useState(false);
   const [managingConnections, setManagingConnections] = useState(false);
   const [addingByIsbn, setAddingByIsbn] = useState(false);
   const [selectionState, setSelectionState] = useState<SelectionState>(NO_SELECTION);
@@ -253,11 +255,21 @@ export function App() {
     return filterItems(filterItems(Object.values(library.items), filterQuery, context), query, context);
   }, [library.items, filterQuery, query, ratings]);
   const categories = useMemo(() => Object.values(library.categories ?? {}), [library.categories]);
-  const browsed = useMemo(() => browse(matching, path, categories, { ratings }), [matching, path, categories, ratings]);
+  /** Catalogs the library browses, listed in the Library after its own categories. */
+  const sourceList = useMemo(() => librarySources(library.devices), [library.devices]);
+  const sources = useMemo(() => sourceList.map(({ device }) => ({ id: device.id, name: device.name })), [sourceList]);
+  const searchableSources = useSearchableSources(backend, library.devices, searching);
+  /** Books being read, latest first: the notice above the books, and the Library's Currently reading. */
+  const inProgress = useMemo(() => currentlyReading(library), [library]);
+  const extras = useMemo(() => ({ sources, reading: inProgress.map((r) => r.item.id) }), [sources, inProgress]);
+  const browsed = useMemo(() => browse(matching, path, categories, { ratings }, extras), [matching, path, categories, ratings, extras]);
+  // The breadcrumbs name catalog pages as they're read.
+  useSyncExternalStore(onTitles, titlesVersion);
   /** The books shown: a browse level's, in its own order where it has one (series, recent), else the chosen sort. */
-  const shownSort = leafSort ?? (browsed.kind === 'books' ? browsed.sort : undefined) ?? sort;
+  const ownOrder = browsed.kind === 'books' && !!browsed.ordered && !leafSort;
+  const shownSort = ownOrder ? undefined : (leafSort ?? (browsed.kind === 'books' ? browsed.sort : undefined) ?? sort);
   const items = useMemo(
-    () => (browsed.kind === 'books' ? sortItems(browsed.items, shownSort, ratings) : []),
+    () => (browsed.kind === 'books' ? (shownSort ? sortItems(browsed.items, shownSort, ratings) : browsed.items) : []),
     [browsed, shownSort, ratings],
   );
   /** The books a text search looks in: this place's, or (at a list of authors, tags, …) all that match. */
@@ -270,6 +282,15 @@ export function App() {
   const selectedItems = [...selection].map((id) => library.items[id]).filter((i): i is Item => i !== undefined);
   const readingItem = reading && library.items[reading.itemId];
   const closeReader = useCallback(() => setReading(undefined), []);
+  // Books read in windows of their own get their files from here, and save their positions here.
+  const libraryNow = useRef(library);
+  libraryNow.current = library;
+  useEffect(() => serveReaderWindows(backend, () => libraryNow.current, apply), [backend, apply]);
+  /** Opens a book: in a window of its own where there can be one, else over the library. */
+  const read = useCallback((itemId: ItemId, file: FileRef, at?: string) => {
+    if (readsInWindows() && openReaderWindow({ itemId, hash: file.hash, ...(at && { at }) })) return;
+    setReading({ itemId, file, ...(at && { at }) });
+  }, []);
   const showBulk = bulkEditing && selectedItems.length > 0;
   const showDetail = !showBulk && active !== undefined;
   /** Books selected other than by opening one: the bulk actions show. */
@@ -279,6 +300,10 @@ export function App() {
     setSelectionState(NO_SELECTION);
     setBulkEditing(false);
   };
+
+  /** Opens the search: in a catalog, searching it; else as the bar's search is. */
+  const openSearch = (mode?: SearchMode) =>
+    setSearching(mode ?? (path[0] === 'source' && path[1] ? `source:${path[1]}` : textQuery ? 'text' : 'books'));
 
   /** Goes to another place in the library; a selection of several is left behind, an open preview isn't. */
   const navigate = (to: BrowsePath) => {
@@ -294,7 +319,7 @@ export function App() {
   }, [missing, setPath]);
 
   /** The list's headers sort the chosen sort, or this level's own order where it has one. */
-  const onSort = (next: Sort) => (browsed.kind === 'books' && browsed.sort ? setLeafSort(next) : setSort(next));
+  const onSort = (next: Sort) => (browsed.kind === 'books' && (browsed.sort || browsed.ordered) ? setLeafSort(next) : setSort(next));
 
   /** Selects just this book and opens its preview. */
   const openItem = (id: ItemId) => {
@@ -312,6 +337,7 @@ export function App() {
   useBackToClose(editingCategories, () => setEditingCategories(false));
   useBackToClose(cleaningUp, () => setCleaningUp(false));
   useBackToClose(backingUp, () => setBackingUp(false));
+  useBackToClose(choosingFolder, () => setChoosingFolder(false));
   useBackToClose(managingConnections, () => setManagingConnections(false));
   useBackToClose(editingFilters, () => setEditingFilters(false));
   useBackToClose(searching !== false, () => setSearching(false));
@@ -396,7 +422,7 @@ export function App() {
   const selectAll = () => setSelectionState({ selection: new Set(items.map((i) => i.id)) });
   const selectAllRef = useRef(selectAll);
   selectAllRef.current = selectAll;
-  const overlayOpen = reading !== undefined || settingsOpen || menuOpen || backingUp || managingConnections || editingCategories || searching;
+  const overlayOpen = reading !== undefined || settingsOpen || menuOpen || backingUp || choosingFolder || managingConnections || editingCategories || searching;
 
   // Cmd/Ctrl+A selects all visible items, except where it should select text.
   useEffect(() => {
@@ -508,6 +534,7 @@ export function App() {
     'separator',
     { label: 'Connections…', onSelect: () => setManagingConnections(true) },
     { label: 'Backup…', onSelect: () => setBackingUp(true) },
+    ...(canChooseLibraryFolder() ? [{ label: 'Library folder…', onSelect: () => setChoosingFolder(true) }] : []),
     'separator',
     { label: 'Browse categories…', onSelect: () => setEditingCategories(true) },
     { label: 'Clean up library…', onSelect: () => setCleaningUp(true) },
@@ -524,6 +551,7 @@ export function App() {
         { id: 'addByIsbn', label: 'Add by ISBN…', run: () => setAddingByIsbn(true) },
         { type: 'separator' },
         { id: 'backup', label: 'Backup…', run: () => setBackingUp(true) },
+        { id: 'libraryFolder', label: 'Library Folder…', run: () => setChoosingFolder(true) },
         { type: 'separator' },
         { id: 'settings', label: 'Settings…', accelerator: 'CmdOrCtrl+,', appMenu: true, run: () => setSettingsOpen(true) },
       ],
@@ -603,12 +631,15 @@ export function App() {
         { type: 'separator' },
         { id: 'go:all', label: 'All Books', run: () => navigate(ALL_BOOKS) },
         { id: 'go:recent', label: 'Recent Books', run: () => navigate(['recent']) },
+        { id: 'go:reading', label: 'Currently Reading', run: () => navigate(['reading']) },
         { id: 'go:authors', label: 'Authors', run: () => navigate(['authors']) },
         { id: 'go:series', label: 'Series', run: () => navigate(['series']) },
         ...[...categories]
           .sort((a, b) => a.name.localeCompare(b.name))
           .map((c) => ({ id: `go:category:${c.id}`, label: c.name, run: () => navigate(['category', c.id]) })),
         { id: 'go:tags', label: 'Tags', run: () => navigate(['tags']) },
+        ...(sources.length ? [{ type: 'separator' as const }] : []),
+        ...sources.map((c) => ({ id: `go:source:${c.id}`, label: c.name, run: () => navigate(['source', c.id]) })),
       ],
     },
     {
@@ -634,6 +665,7 @@ export function App() {
   };
 
   const withPanel = showBulk || showDetail;
+  const showReading = inProgress.length > 0 && !readingHidden && !textQuery && path[0] !== 'source' && path[0] !== 'reading';
 
   return (
     <>
@@ -715,11 +747,11 @@ export function App() {
           />
         </Toolbar>
 
-        {allItems.length > 0 && (
+        {(allItems.length > 0 || sources.length > 0) && (
           <Breadcrumbs
             withPanel={withPanel}
             crumbs={[
-              ...crumbs(allItems, path, categories).map((c) => ({
+              ...crumbs(allItems, path, categories, sources).map((c) => ({
                 label: c.label,
                 onSelect: () => {
                   setTextQuery('');
@@ -738,6 +770,16 @@ export function App() {
         )}
       </Header>
 
+      {showReading && (
+        <Notice $withPanel={withPanel}>
+          <CurrentlyReading
+            reading={inProgress}
+            onRead={(r) => read(r.item.id, r.file, r.position.locator)}
+            onSetAside={(r) => void apply(setAsideOperations(r))}
+            onHide={() => setReadingHidden(true)}
+          />
+        </Notice>
+      )}
       {filterQuery && (
         <Notice $withPanel={withPanel} role="status" aria-label="Filters">
           <FilterChips>
@@ -806,7 +848,7 @@ export function App() {
           if (hasSelection && !(e.target as Element).closest('button, a, input, select, tr')) clearSelection();
         }}
       >
-        {allItems.length === 0 ? (
+        {allItems.length === 0 && browsed.kind !== 'source' && !(sources.length && path.length === 0) ? (
           <Empty>
             <p>Your library is empty.</p>
             <Muted as="p">
@@ -818,8 +860,21 @@ export function App() {
           <TextResults
             query={textQuery}
             items={textItems}
-            onRead={(item, file, at) => setReading({ itemId: item.id, file, at })}
+            onRead={(item, file, at) => read(item.id, file, at)}
             onOpenItem={openItem}
+          />
+        ) : browsed.kind === 'source' ? (
+          <CatalogBrowser
+            key={path.join('\n')}
+            device={sourceList.find((s) => s.device.id === browsed.id)!.device}
+            root={sourceList.find((s) => s.device.id === browsed.id)!.url}
+            {...(browsed.step && { step: browsed.step })}
+            view={view}
+            listColumns={listColumns}
+            onOpen={(url, title) => {
+              rememberTitle(url, title);
+              navigate([...path, url]);
+            }}
           />
         ) : browsed.kind === 'entries' && browsed.entries.length > 0 ? (
           <BrowseEntries entries={browsed.entries} layout={view === 'list' ? 'list' : 'grid'} onOpen={navigate} />
@@ -852,10 +907,11 @@ export function App() {
             setQuery('');
             setFilterQuery(filtersQuery({ any: false, rules: [{ field: 'tag', condition: 'anyOf', values: [tag] }] }));
           }}
-          onRead={(file) => setReading({ itemId: active.id, file })}
+          onRead={(file) => read(active.id, file)}
         />
       )}
       {backingUp && <BackupDialog onClose={() => setBackingUp(false)} />}
+      {choosingFolder && <LibraryFolderDialog onClose={() => setChoosingFolder(false)} />}
       {managingConnections && <ConnectionsDialog onClose={() => setManagingConnections(false)} />}
       {searching && (
         <SearchDialog
@@ -865,12 +921,19 @@ export function App() {
           fields={filterFieldList}
           ratings={ratings}
           mode={searching}
+          sources={searchableSources}
           onSearch={(q, mode) => {
+            setSearching(false);
+            if (mode.startsWith('source:')) {
+              // A catalog's results are a place in it: Library / <catalog> / “terms”.
+              setTextQuery('');
+              navigate(['source', mode.slice('source:'.length), `${SEARCH_STEP}${q}`]);
+              return;
+            }
             setQuery(mode === 'books' ? q : '');
             setTextQuery(mode === 'text' ? q : '');
-            setSearching(false);
           }}
-          onRead={(item, file, at) => setReading({ itemId: item.id, file, at })}
+          onRead={(item, file, at) => read(item.id, file, at)}
           onClose={() => setSearching(false)}
           onFilterQuery={setFilterQuery}
           onEditFilters={() => setEditingFilters(true)}
@@ -880,7 +943,7 @@ export function App() {
               scope: {
                 label: crumbs(allItems, path, categories).at(-1)!.label,
                 filter: (list: Item[]) => {
-                  const here = browse(list, path, categories, { ratings });
+                  const here = browse(list, path, categories, { ratings }, extras);
                   return here.kind === 'books' ? here.items : list;
                 },
               },

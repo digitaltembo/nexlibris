@@ -169,7 +169,8 @@ export function stableJson(value: unknown): string {
   return JSON.stringify(value) ?? 'undefined';
 }
 
-export const positionKey = (p: ReadingPosition | undefined) => p && { hash: p.hash, locator: p.locator, progress: p.progress };
+export const positionKey = (p: ReadingPosition | undefined) =>
+  p && { hash: p.hash, locator: p.locator, progress: p.progress, ...(p.setAside && { setAside: true }) };
 
 const targetKey = (target: Target) => JSON.stringify(target);
 
@@ -371,7 +372,17 @@ function userOp(kind: 'rating' | 'review' | 'position', userId: UserId, itemId: 
   if (kind === 'rating') return { type: 'setRating', userId, itemId, rating: data?.ratings[itemId] };
   if (kind === 'review') return { type: 'setReview', userId, itemId, text: data?.reviews[itemId]?.text };
   const position = data?.positions?.[itemId];
-  return { type: 'setPosition', userId, itemId, position: position && { hash: position.hash, locator: position.locator, progress: position.progress } };
+  return {
+    type: 'setPosition',
+    userId,
+    itemId,
+    position: position && {
+      hash: position.hash,
+      locator: position.locator,
+      progress: position.progress,
+      ...(position.setAside && { setAside: true }),
+    },
+  };
 }
 
 /** What goes with an item transferred whole: its ratings, reviews and positions, and the devices it's on. */

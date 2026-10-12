@@ -144,7 +144,8 @@ const Thumbnail = styled(Cover)`
 interface Props extends CollectionProps {
   /** Visible columns besides the title, from `visibleColumns`. */
   columns: ColumnId[];
-  sort: Sort;
+  /** None while the books are in an order of their own (a catalog's), till a header is clicked. */
+  sort: Sort | undefined;
   onSort(sort: Sort): void;
 }
 
@@ -191,20 +192,20 @@ export function LibraryList({ items, selection, onActivate, onLongPress, columns
 
   const header = (key: SortKey | undefined, text: string) => {
     if (!key) return text;
-    const active = sort.key === key;
+    const active = sort?.key === key;
     return (
       <SortHeader
-        onClick={() => onSort(active ? { key, desc: !sort.desc } : { key, desc: DEFAULT_DESC[key] })}
+        onClick={() => onSort(active ? { key, desc: !sort!.desc } : { key, desc: DEFAULT_DESC[key] })}
       >
         {text}
-        {active && <span aria-hidden>{sort.desc ? ' ↓' : ' ↑'}</span>}
+        {active && <span aria-hidden>{sort!.desc ? ' ↓' : ' ↑'}</span>}
       </SortHeader>
     );
   };
 
   const sortKey = (id: ColumnId) => BUILTIN_COLUMNS.find((c) => c.id === id)?.sort;
   const ariaSort = (key: SortKey | undefined) =>
-    key && sort.key === key ? (sort.desc ? 'descending' : 'ascending') : undefined;
+    key && sort?.key === key ? (sort.desc ? 'descending' : 'ascending') : undefined;
 
   return (
     <Table>

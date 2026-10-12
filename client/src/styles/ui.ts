@@ -239,3 +239,15 @@ export const besidePanel = css<{ $withPanel: boolean }>`
       }
     `}
 `;
+
+/** A notice above the books (an import's result, the filters, Currently Reading): sandy brown on a soft wash. */
+export const NoticeBox = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 4px 12px;
+  padding: 8px 12px;
+  background: var(--soft);
+  border-left: 4px solid var(--highlight);
+  border-radius: var(--radius);
+`;

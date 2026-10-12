@@ -2,6 +2,8 @@ import type { Item } from '@nexlibris/common';
 import { useEffect, useState } from 'react';
 import styled, { css } from 'styled-components';
 import { useThumbnailUrl } from '../library/useFileUrl';
+import { useCatalogImage } from '../catalogs/useCatalogImage';
+import { useCollectionDecor } from './CollectionDecor';
 
 const frame = css`
   display: block;
@@ -67,6 +69,18 @@ export function Cover({ item, label, className }: { item?: Item; label?: string;
   const [element, setElement] = useState<Element | null>(null);
   const near = useNearViewport(element);
   const url = useThumbnailUrl(near ? item?.cover : undefined);
+  // A catalog's book: its image on the catalog's server, loaded as stored covers are.
+  const { coverUrl, fetchImage } = useCollectionDecor();
+  const remote = item && coverUrl?.(item);
+  const remoteSrc = useCatalogImage(remote, fetchImage, near);
+  const [remoteFailed, setRemoteFailed] = useState<string>();
+  if (remote && remote !== remoteFailed && remoteSrc !== null) {
+    return remoteSrc ? (
+      <Image ref={setElement} className={className} src={remoteSrc} alt="" referrerPolicy="no-referrer" onError={() => setRemoteFailed(remote)} />
+    ) : (
+      <Placeholder ref={setElement} className={className} aria-hidden />
+    );
+  }
   if (url) return <Image ref={setElement} className={className} src={url} alt="" />;
   // A cover still to load is an empty frame rather than a title that flashes up.
   const waiting = item?.cover && url !== null;

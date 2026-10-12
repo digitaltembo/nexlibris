@@ -1,4 +1,5 @@
 import {
+  DATA_DIR,
   STORE_BATCH_BYTES,
   STORE_BATCH_FILES,
   storedFilePath,
@@ -13,6 +14,7 @@ import { createReadStream, mkdirSync, realpathSync } from 'node:fs';
 import { mkdir, open, readdir, rename, rm, stat } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 import { resolveLibraryPath } from './fileStorage';
+import { isPlaced, placedFile } from './libraryFolder';
 
 /**
  * Importing files: the desktop side of `common/src/importApi.ts`, as `ImportService.kt` is on
@@ -20,15 +22,20 @@ import { resolveLibraryPath } from './fileStorage';
  * copied, rather than read by the page and sent back over IPC.
  */
 export function createImportService(
-  root: string,
+  /** The library's folder (its `.nexlibris/` in a folder of the user's), or how to get it now. */
+  root: string | (() => string),
   /**
    * Asks the user for files to import, offering these extensions, or for a folder; the chosen
    * paths, empty if they cancel.
    */
   choose: (options: { extensions: string[]; folder: boolean }) => Promise<string[]>,
 ): MessageImpl<ImportApi>['import'] {
-  mkdirSync(root, { recursive: true });
-  const base = realpathSync(root);
+  const base = () => {
+    const dir = typeof root === 'string' ? root : root();
+    mkdirSync(dir, { recursive: true });
+    return realpathSync(dir);
+  };
+  base();
   /** The latest pick, for `store`: each chosen file with where it is on disk. */
   let latest: { token: string; files: (ChosenFile & { source: string })[] } | undefined;
 
@@ -66,7 +73,7 @@ export function createImportService(
       while (next < latest.files.length && next - start < STORE_BATCH_FILES && bytes < STORE_BATCH_BYTES) {
         const { source, ...chosen } = latest.files[next++]!;
         try {
-          const stored = await storeFile(base, source);
+          const stored = await storeFile(base(), source);
           files.push({ ...chosen, ...stored });
           bytes += stored.size;
         } catch (e) {
@@ -103,6 +110,8 @@ export function storeFile(root: string, source: string): Promise<{ hash: string;
 /**
  * Stores a stream of bytes as a content-addressed file, hashing it as it's written. With `expected`,
  * contents with any other hash are discarded and it throws: nothing is stored under the wrong name.
+ * In a library laid out in a folder of the user's (`root` its `.nexlibris/`), contents already
+ * placed there count as stored too, so a book imported again isn't kept twice.
  */
 export async function storeStream(
   root: string,
@@ -134,7 +143,10 @@ export async function storeStream(
     throw new Error(`The file's contents don't match its hash (expected ${expected.slice(0, 12)}…, got ${digest.slice(0, 12)}…).`);
   }
   const file = resolveLibraryPath(root, storedFilePath(digest));
-  if ((await stat(file).catch(() => undefined))?.isFile()) {
+  const isFile = async (path: string | undefined) => !!path && !!(await stat(path).catch(() => undefined))?.isFile();
+  const folder = dirname(root);
+  const placed = basename(root) === DATA_DIR && isPlaced(folder) ? await placedFile(folder, digest) : undefined;
+  if ((await isFile(file)) || (await isFile(placed))) {
     await rm(temp, { force: true });
   } else {
     await mkdir(dirname(file), { recursive: true });

@@ -75,6 +75,35 @@ describe('text splitting', () => {
     expect(splitXhtmlDoc(page('<p>small</p>'), 'ch2.xhtml')).toEqual([]);
   });
 
+  it('splits paragraphs but not chapters by default, and still removes fonts', async () => {
+    const body = `<p>${prose(PARA_LIMIT + 400)}</p>${Array.from({ length: 40 }, (_, i) => `<p id="n${i}">${prose(400)}</p>`).join('\n')}`;
+    const opf = `<package><manifest>
+        <item id="ch1" href="ch1.xhtml" media-type="application/xhtml+xml"/>
+        <item id="font" href="f.ttf" media-type="font/ttf"/>
+      </manifest><spine><itemref idref="ch1"/></spine></package>`;
+    const make = (): EpubEntries => ({
+      opfPath: 'content.opf',
+      order: ['content.opf', 'ch1.xhtml', 'f.ttf'],
+      data: new Map<string, string | Uint8Array>([
+        ['content.opf', opf],
+        ['ch1.xhtml', page(body)],
+        ['f.ttf', new Uint8Array([1])],
+      ]),
+    });
+
+    const defaults = make();
+    expect(await splitEpubText(defaults)).toMatchObject({ paragraphs: 1, fileSplits: 0, fonts: 1 });
+    expect(defaults.order).toEqual(['content.opf', 'ch1.xhtml']);
+
+    const neither = make();
+    expect(await splitEpubText(neither, undefined, undefined, { paragraphs: false, chapters: false })).toMatchObject({
+      paragraphs: 0,
+      fileSplits: 0,
+      fonts: 1,
+    });
+    expect(neither.data.get('ch1.xhtml')).toBe(page(body));
+  });
+
   it('rewrites an EPUB: manifest, spine, fragment links, fonts, page lists and data images', async () => {
     const body = Array.from({ length: 40 }, (_, i) => `<p id="n${i}">${prose(400)}</p>`).join('\n');
     const entries: EpubEntries = {
@@ -100,7 +129,10 @@ describe('text splitting', () => {
         ['OEBPS/f.ttf', new Uint8Array([1, 2, 3])],
       ]),
     };
-    const summary = await splitEpubText(entries, async () => new Uint8Array([0xff, 0xd8]));
+    const summary = await splitEpubText(entries, async () => new Uint8Array([0xff, 0xd8]), undefined, {
+      paragraphs: true,
+      chapters: true,
+    });
     expect(summary).toMatchObject({ fileSplits: 1, fonts: 1, dataImages: 1 });
 
     const opf = entries.data.get('OEBPS/content.opf') as string;

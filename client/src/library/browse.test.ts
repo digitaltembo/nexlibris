@@ -1,6 +1,7 @@
 import { createCategory, createItem, type Item } from '@nexlibris/common';
 import { describe, expect, it } from 'vitest';
 import { ALL_BOOKS, browse, crumbs, parentPath, viewCount, type BrowseView } from './browse';
+import { rememberTitle } from '../catalogs/titles';
 
 const book = (title: string, fields: Partial<Item> & { series?: string; seriesIndex?: number; at?: string } = {}) => {
   const { series, seriesIndex, at, ...rest } = fields;
@@ -48,12 +49,21 @@ describe('browse', () => {
     expect(labels(browse(items, [], categories))).toEqual([
       'All books: 3 books',
       'Recent books: 3 books',
+      'Currently reading: 0 books',
       'Authors: 2 authors',
       'Series: 1 series',
       'Favourites: 1 book',
       'Moods: 2 entries',
       'Tags: 3 tags',
     ]);
+  });
+
+  it('lists the books being read, in the order given, of those the search leaves', () => {
+    const reading = [emma.id, dune.id];
+    expect(labels(browse(items, [], categories, {}, { reading }))[2]).toBe('Currently reading: 2 books');
+    expect(browse(items, ['reading'], categories, {}, { reading })).toEqual({ kind: 'books', items: [emma, dune], ordered: true });
+    expect(titles(browse([dune], ['reading'], categories, {}, { reading }))).toEqual(['Dune']);
+    expect(crumbs(items, ['reading'], categories).map((c) => c.label)).toEqual(['Library', 'Currently reading']);
   });
 
   it('goes from authors, series and tags to their books', () => {
@@ -100,4 +110,22 @@ it('counts what a view shows, and goes up a level', () => {
   expect(viewCount(browse(items, ['category', moods.id], categories))).toBe('2 entries');
   expect(viewCount(browse(items, ALL_BOOKS, categories))).toBe('3 books');
   expect(parentPath(['authors', 'Frank Herbert'])).toEqual(['authors']);
+});
+
+it('browses the catalogs the library has, by the pages opened in them', () => {
+  const sources = [{ id: 'gutenberg', name: 'Project Gutenberg' }];
+  const root = browse(items, [], categories, {}, { sources });
+  expect(root.kind === 'entries' && root.entries.at(-1)).toEqual({ label: 'Project Gutenberg', detail: 'Catalog', path: ['source', 'gutenberg'] });
+  expect(browse(items, ['source', 'gutenberg'], categories, {}, { sources })).toEqual({ kind: 'source', id: 'gutenberg' });
+  const popular = 'https://www.gutenberg.org/ebooks/search.opds/?sort_order=downloads';
+  expect(browse(items, ['source', 'gutenberg', popular, 'search:dune'], categories, {}, { sources })).toEqual({ kind: 'source', id: 'gutenberg', step: 'search:dune' });
+  expect(browse(items, ['source', 'gone'], categories, {}, { sources })).toEqual({ kind: 'missing' });
+
+  rememberTitle(popular, 'Popular');
+  expect(crumbs(items, ['source', 'gutenberg', popular, 'search:dune'], categories, sources)).toEqual([
+    { label: 'Library', path: [] },
+    { label: 'Project Gutenberg', path: ['source', 'gutenberg'] },
+    { label: 'Popular', path: ['source', 'gutenberg', popular] },
+    { label: '“dune”', path: ['source', 'gutenberg', popular, 'search:dune'] },
+  ]);
 });

@@ -1,4 +1,5 @@
-import type { Category, Item } from '@nexlibris/common';
+import type { Category, Item, ItemId } from '@nexlibris/common';
+import { stepTitle } from '../catalogs/titles';
 import { filterItems, type SearchContext, type Sort } from './search';
 
 /**
@@ -8,10 +9,13 @@ import { filterItems, type SearchContext, type Sort } from './search';
  *
  *   []                          the Library: the categories
  *   ['all'], ['recent']         books
+ *   ['reading']                 the books being read (`currentlyReading.ts`), latest first
  *   ['authors'] ['series'] ['tags']        an entry per author, series or tag
  *   ['authors', name] ['series', name] ['tags', tag]   books
  *   ['category', id]            a category's entries (or, with just one, its books)
  *   ['category', id, n]         the books of its nth entry
+ *   ['source', id, ...steps]    a catalog the library browses (`catalogs/`): its start, then each page
+ *                               opened from there (an address, or `search:<terms>`)
  *
  * Everything is worked out from the books the search and filters leave, so the entries narrow
  * as they do. All books is where the app starts.
@@ -37,9 +41,27 @@ export type BrowseView =
       items: Item[];
       /** The order these books have by nature (recent first, series order), else the user's. */
       sort?: Sort;
+      /** In an order of their own that no sort gives (Currently reading: last read first), kept unless the user sorts. */
+      ordered?: boolean;
     }
+  /** A page of a catalog the library browses: its start, or `step` (`catalogs/titles.ts`). */
+  | { kind: 'source'; id: string; step?: string }
   /** A place that no longer exists, such as a removed category. */
   | { kind: 'missing' };
+
+/** A catalog the library browses, as the Library lists it. */
+export interface SourceRef {
+  id: string;
+  name: string;
+}
+
+/** What the Library shows besides the books' own groupings. */
+export interface BrowseExtras {
+  /** Catalogs the library browses, listed last. */
+  sources?: SourceRef[];
+  /** The books being read, latest first (`library/currentlyReading.ts`). */
+  reading?: ItemId[];
+}
 
 export interface Crumb {
   label: string;
@@ -57,6 +79,12 @@ const authorsOf = (item: Item) => {
   return [...new Set((authors.length ? authors : item.creators).map((c) => c.name.trim()).filter(Boolean))];
 };
 const tagsOf = (item: Item) => [...new Set(item.tags.map(tagKey).filter(Boolean))];
+
+/** Of these books, those being read, in the order given. */
+function readingOf(items: Item[], reading: ItemId[]): Item[] {
+  const byId = new Map(items.map((item) => [item.id, item]));
+  return reading.flatMap((id) => byId.get(id) ?? []);
+}
 
 const RECENT_SORT: Sort = { key: 'added', desc: true };
 const SERIES_SORT: Sort = { key: 'series', desc: false };
@@ -140,8 +168,19 @@ const entryLabel = (category: Category, index: number) => {
 };
 
 /** What's at `path`: entries to go on to, or books. `items` are the books the search and filters leave. */
-export function browse(items: Item[], path: BrowsePath, categories: Category[], context: SearchContext = {}): BrowseView {
+export function browse(
+  items: Item[],
+  path: BrowsePath,
+  categories: Category[],
+  context: SearchContext = {},
+  { sources = [], reading = [] }: BrowseExtras = {},
+): BrowseView {
   const [kind, key, sub] = path;
+  if (kind === 'source') {
+    if (!sources.some((s) => s.id === key)) return { kind: 'missing' };
+    const step = path.at(-1);
+    return { kind: 'source', id: key!, ...(path.length > 2 && step && { step }) };
+  }
   if (kind === undefined) {
     const sampleOf = samples();
     const grouped = (name: keyof typeof GROUPINGS): BrowseEntry => {
@@ -163,15 +202,18 @@ export function browse(items: Item[], path: BrowsePath, categories: Category[], 
       entries: [
         { label: 'All books', detail: books(items.length), path: ALL_BOOKS, sample: sampleOf(items, ALL_BOOKS) },
         { label: 'Recent books', detail: books(items.length), path: ['recent'], sample: recent[0] },
+        { label: 'Currently reading', detail: books(readingOf(items, reading).length), path: ['reading'], sample: readingOf(items, reading)[0] },
         grouped('authors'),
         grouped('series'),
         ...custom,
         grouped('tags'),
+        ...sources.map((source): BrowseEntry => ({ label: source.name, detail: 'Catalog', path: ['source', source.id] })),
       ],
     };
   }
   if (kind === 'all' && key === undefined) return { kind: 'books', items };
   if (kind === 'recent' && key === undefined) return { kind: 'books', items, sort: RECENT_SORT };
+  if (kind === 'reading' && key === undefined) return { kind: 'books', items: readingOf(items, reading), ordered: true };
   if (kind === 'authors' || kind === 'series' || kind === 'tags') {
     const grouping = GROUPINGS[kind];
     const found = grouping.group(items);
@@ -215,18 +257,25 @@ export function browse(items: Item[], path: BrowsePath, categories: Category[], 
 }
 
 /** The way to `path`, from the Library, for the breadcrumbs. */
-export function crumbs(items: Item[], path: BrowsePath, categories: Category[]): Crumb[] {
+export function crumbs(items: Item[], path: BrowsePath, categories: Category[], sources: SourceRef[] = []): Crumb[] {
   const trail: Crumb[] = [{ label: 'Library', path: [] }];
   const [kind, key, sub] = path;
   const add = (label: string, to: BrowsePath) => trail.push({ label, path: to });
   if (kind === 'all') add('All books', ALL_BOOKS);
   else if (kind === 'recent') add('Recent books', ['recent']);
+  else if (kind === 'reading') add('Currently reading', ['reading']);
   else if (kind === 'authors' || kind === 'series' || kind === 'tags') {
     add(GROUPINGS[kind].label, [kind]);
     if (key !== undefined) {
       // Labelled from every book, so the crumb keeps its name while the search hides the books.
       const label = kind === 'tags' ? tagLabel(key, items) : key;
       add(label, [kind, key]);
+    }
+  } else if (kind === 'source') {
+    const source = sources.find((s) => s.id === key);
+    if (source) {
+      add(source.name, ['source', source.id]);
+      path.slice(2).forEach((step, i) => add(stepTitle(step), path.slice(0, 3 + i)));
     }
   } else if (kind === 'category' && key !== undefined) {
     const category = categories.find((c) => c.id === key);

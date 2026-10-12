@@ -1,9 +1,12 @@
 import {
   createMessageHandler,
   importApiMeta,
+  libraryFolderApiMeta,
+  remoteApiMeta,
   saveApiMeta,
   storageApiMeta,
   syncHostApiMeta,
+  type MoveStatus,
   type RpcMessage,
   type RpcRequest,
   type NativeMenu,
@@ -19,18 +22,22 @@ import {
   net,
   protocol,
   shell,
+  type BrowserWindowConstructorOptions,
   type IpcMainEvent,
   type IpcMainInvokeEvent,
   type OpenDialogOptions,
 } from 'electron';
+import { existsSync, mkdirSync, realpathSync } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import { hostname } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { APP_ORIGIN, appFile, APP_SCHEME, clientIndex, isAppUrl } from './appProtocol';
+import { APP_ORIGIN, appFile, APP_SCHEME, clientIndex, isAppUrl, isReaderUrl } from './appProtocol';
 import { createFileStorage } from './fileStorage';
 import { createImportService } from './importService';
+import { dataDir, folderHolds, isPlaced, moveLibrary, moveWithin, pruneWithin, readSettings, writeSettings } from './libraryFolder';
 import { menuTemplate, parseMenus } from './menu';
+import { createRemote } from './remote';
 import { createSaveService } from './saveService';
 import { createSyncHost } from './syncHost';
 
@@ -48,15 +55,48 @@ protocol.registerSchemesAsPrivileged([
 if (!app.requestSingleInstanceLock()) app.quit();
 
 app.whenReady().then(async () => {
-  const libraryDir = process.env.NEXLIBRIS_LIBRARY_DIR ?? join(app.getPath('userData'), 'library');
   if (!(await stat(clientIndex(clientDir)).catch(() => undefined))) {
     dialog.showErrorBox('nexlibris', `The web client isn't built (no ${clientIndex(clientDir)}). Run \`npm run build\` first.`);
     app.quit();
     return;
   }
+  const settingsFile = join(app.getPath('userData'), 'settings.json');
+  const defaultDir = join(app.getPath('userData'), 'library');
+  /** The library's folder: the environment's, else the one chosen in the app (`libraryFolder.ts`), else the data folder's. */
+  const chosenDir = async () => process.env.NEXLIBRIS_LIBRARY_DIR ?? (await readSettings(settingsFile)).libraryDir ?? defaultDir;
+
+  /** What's open: the folder (a real path), whether it's laid out, and its sync host. */
+  let library!: { dir: string; placed: boolean; syncHost: ReturnType<typeof createSyncHost> };
+  async function openLibrary(dir: string) {
+    await library?.syncHost.stop();
+    mkdirSync(dir, { recursive: true });
+    const real = realpathSync(dir);
+    const data = dataDir(real);
+    const syncHost = createSyncHost({
+      // Alongside the page's own instance state (`readLocalState`), as pairings belong to this copy of the library.
+      file: join(data, 'local', 'sync-host.json'),
+      libraryDir: data,
+      ...(isPlaced(real) && { placedRoot: real }),
+      name: () => hostname().replace(/\.local$/, ''),
+      relay: relayToPage,
+    });
+    library = { dir: real, placed: isPlaced(real), syncHost };
+    await syncHost.start();
+  }
+  await openLibrary(await chosenDir());
+  app.on('will-quit', () => void library.syncHost.stop());
+
+  /** Opens another library and shows it: book windows close, and the library's window loads again. */
+  async function switchTo(dir: string | undefined) {
+    await writeSettings(settingsFile, dir ? { libraryDir: dir } : {});
+    await openLibrary(dir ?? defaultDir);
+    for (const window of BrowserWindow.getAllWindows()) if (window !== libraryWindow) window.close();
+    libraryWindow?.webContents.reload();
+  }
+  let moving: MoveStatus = { state: 'idle', done: 0, total: 0 };
 
   protocol.handle(APP_SCHEME, async (request) => {
-    const target = appFile(request.url, { client: clientDir, library: libraryDir });
+    const target = appFile(request.url, { client: clientDir, library: library.dir, placed: library.placed });
     if (!target) return new Response('Not found', { status: 404 });
     const isFile = (await stat(target.file).catch(() => undefined))?.isFile();
     if (!isFile) {
@@ -67,28 +107,82 @@ app.whenReady().then(async () => {
     return net.fetch(pathToFileURL(target.file).toString());
   });
 
-  const syncHost = createSyncHost({
-    // Alongside the page's own instance state (`readLocalState`), as pairings belong to this copy of the library.
-    file: join(libraryDir, 'local', 'sync-host.json'),
-    libraryDir,
-    name: () => hostname().replace(/\.local$/, ''),
-    relay: relayToPage,
-  });
-  await syncHost.start();
-  app.on('will-quit', () => void syncHost.stop());
-
+  const focused = () => BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+  // Each call goes to whichever library is open (the services are made per call, which costs nothing).
+  const storage = (): ReturnType<typeof createFileStorage> => createFileStorage(library.dir);
   const handle = createMessageHandler(
-    { ...storageApiMeta, ...saveApiMeta, ...importApiMeta, ...syncHostApiMeta },
+    { ...storageApiMeta, ...saveApiMeta, ...importApiMeta, ...syncHostApiMeta, ...libraryFolderApiMeta, ...remoteApiMeta },
     {
       syncHost: {
-        status: () => syncHost.status(),
-        setEnabled: ({ enabled }) => syncHost.setEnabled(enabled),
-        newCode: (request) => syncHost.newCode(request),
-        unpair: ({ origin }) => syncHost.unpair(origin),
+        status: () => library.syncHost.status(),
+        setEnabled: ({ enabled }) => library.syncHost.setEnabled(enabled),
+        newCode: (request) => library.syncHost.newCode(request),
+        unpair: ({ origin }) => library.syncHost.unpair(origin),
       },
-      storage: createFileStorage(libraryDir),
-      import: createImportService(libraryDir, async ({ extensions, folder }) => {
-        const window = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+      storage: {
+        readText: (r) => storage().readText(r),
+        writeText: (r) => storage().writeText(r),
+        appendText: (r) => storage().appendText(r),
+        exists: (r) => storage().exists(r),
+        size: (r) => storage().size(r),
+        readChunk: (r) => storage().readChunk(r),
+        writeChunk: (r) => storage().writeChunk(r),
+        remove: (r) => storage().remove(r),
+      },
+      libraryFolder: {
+        location: async () => {
+          const isDefault = existsSync(defaultDir) && library.dir === realpathSync(defaultDir);
+          return { path: library.dir, isDefault, placed: library.placed, defaultHasLibrary: !isDefault && (await folderHolds(defaultDir)) === 'library' };
+        },
+        async choose() {
+          const window = focused();
+          const options: OpenDialogOptions = { properties: ['openDirectory', 'createDirectory'], buttonLabel: 'Choose' };
+          const result = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options);
+          const path = result.canceled ? undefined : result.filePaths[0];
+          return path ? { path, holds: await folderHolds(path) } : null;
+        },
+        async move({ to, layout, placed }) {
+          if (moving.state === 'moving') throw new Error('The library is moving already.');
+          if (process.env.NEXLIBRIS_LIBRARY_DIR) throw new Error('NEXLIBRIS_LIBRARY_DIR sets where the library is; unset it to move the library.');
+          moving = { state: 'moving', done: 0, total: 0 };
+          // Nothing syncs with a library that's moving.
+          await library.syncHost.stop();
+          const from = library.dir;
+          void moveLibrary({
+            from,
+            to: to ?? defaultDir,
+            ...(layout && { layout }),
+            ...(placed && { placed }),
+            onProgress: (done, total) => (moving = { state: 'moving', done, total }),
+          })
+            .then(async () => {
+              moving = { ...moving, state: 'done' };
+              await switchTo(to);
+            })
+            .catch(async (e: unknown) => {
+              moving = { ...moving, state: 'failed', message: e instanceof Error ? e.message : String(e) };
+              await library.syncHost.start();
+            });
+          return null;
+        },
+        status: async () => moving,
+        async open({ path }) {
+          if (process.env.NEXLIBRIS_LIBRARY_DIR) throw new Error('NEXLIBRIS_LIBRARY_DIR sets where the library is; unset it to open another.');
+          await switchTo(path);
+          return null;
+        },
+        async moveFile({ from, to }) {
+          await moveWithin(library.dir, from, to);
+          return null;
+        },
+        async prune({ path }) {
+          await pruneWithin(library.dir, path);
+          return null;
+        },
+      },
+      remote: createRemote(() => realpathSync(dataDir(library.dir))),
+      import: createImportService(() => dataDir(library.dir), async ({ extensions, folder }) => {
+        const window = focused();
         // A dialog filter matches the last part of a name, so `x4.epub` is offered as `epub`.
         const filters = [{ name: 'Books', extensions: [...new Set(extensions.map((e) => e.split('.').pop()!))] }];
         const options: OpenDialogOptions = folder
@@ -98,7 +192,7 @@ app.whenReady().then(async () => {
         return result.canceled ? [] : result.filePaths;
       }),
       save: createSaveService(join(app.getPath('temp'), 'nexlibris-save'), async (name) => {
-        const window = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+        const window = focused();
         const options = { defaultPath: join(app.getPath('downloads'), name) };
         const result = window ? await dialog.showSaveDialog(window, options) : await dialog.showSaveDialog(options);
         return result.canceled ? undefined : result.filePath;
@@ -121,12 +215,12 @@ app.whenReady().then(async () => {
   setMenu([]);
   createWindow();
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    if (!libraryWindow) createWindow();
   });
   app.on('second-instance', () => {
-    const [window] = BrowserWindow.getAllWindows();
-    if (window?.isMinimized()) window.restore();
-    window?.focus();
+    if (!libraryWindow) return createWindow();
+    if (libraryWindow.isMinimized()) libraryWindow.restore();
+    libraryWindow.focus();
   });
 });
 
@@ -143,7 +237,8 @@ let nextPeerCall = 1;
 /** Passes a sync call on to the page, which has the library (see the preload's `servePeers`). */
 function relayToPage(request: RpcRequest): Promise<RpcResponse> {
   return new Promise((resolve) => {
-    const [window] = BrowserWindow.getAllWindows();
+    // The library's window answers; a book's own window doesn't sync.
+    const window = libraryWindow;
     if (!window) return resolve({ ok: false, message: 'nexlibris has no window open on that computer. Open it, then sync.' });
     const id = nextPeerCall++;
     const timer = setTimeout(() => {
@@ -161,9 +256,11 @@ function relayToPage(request: RpcRequest): Promise<RpcResponse> {
 
 /** The menu bar: the page's menus (none until it sends them) and the app's own. */
 function setMenu(menus: NativeMenu[]) {
+  // The menus are the library window's commands, so they go to it, even from a book's own window.
   const send = (id: string) => {
-    const window = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
-    window?.webContents.send('nexlibris:menu-command', id);
+    if (!libraryWindow) return;
+    if (BrowserWindow.getFocusedWindow() !== libraryWindow) libraryWindow.focus();
+    libraryWindow.webContents.send('nexlibris:menu-command', id);
   };
   Menu.setApplicationMenu(Menu.buildFromTemplate(menuTemplate(menus, { platform: process.platform, appName: app.name, send })));
 }
@@ -176,10 +273,12 @@ ipcMain.on('nexlibris:peer-response', (event, { id, response }: { id: number; re
   if (fromAppPage(event)) peerCalls.get(id)?.(response);
 });
 
-function createWindow() {
-  const window = new BrowserWindow({
-    width: 1280,
-    height: 860,
+/** The library's window; books opened from it get windows of their own (`readerWindow` in the page). */
+let libraryWindow: BrowserWindow | undefined;
+
+/** What every window of the app has. */
+function windowOptions(): BrowserWindowConstructorOptions {
+  return {
     title: 'nexlibris',
     icon: iconPath,
     // The web app's background (--bg), so there's no flash of white before it paints.
@@ -193,21 +292,41 @@ function createWindow() {
       sandbox: true,
       nodeIntegration: false,
     },
-  });
-  chooseBluetoothDevices(window);
+  };
+}
+
+/**
+ * What every window of the app does: tells the page about full screen, opens links out of the app
+ * in the browser, never navigates away from the app, and opens books in windows of their own.
+ */
+function guard(window: BrowserWindow) {
   // In full screen the window buttons are hidden, so the page needn't leave room for them.
   window.on('enter-full-screen', () => window.webContents.send('nexlibris:full-screen', true));
   window.on('leave-full-screen', () => window.webContents.send('nexlibris:full-screen', false));
-  // Links out of the app (a book's website, say) open in the browser; the window only ever shows the app.
   window.webContents.setWindowOpenHandler(({ url }) => {
+    if (isReaderUrl(url)) {
+      return { action: 'allow', overrideBrowserWindowOptions: { ...windowOptions(), width: 960, height: 1100 } };
+    }
+    // Links out of the app (a book's website, say) open in the browser.
     if (/^https?:/.test(url)) void shell.openExternal(url);
     return { action: 'deny' };
   });
+  window.webContents.on('did-create-window', (child) => guard(child));
   window.webContents.on('will-navigate', (event, url) => {
     if (isAppUrl(url)) return;
     event.preventDefault();
     if (/^https?:/.test(url)) void shell.openExternal(url);
   });
+}
+
+function createWindow() {
+  const window = new BrowserWindow({ ...windowOptions(), width: 1280, height: 860 });
+  libraryWindow = window;
+  window.on('closed', () => {
+    if (libraryWindow === window) libraryWindow = undefined;
+  });
+  chooseBluetoothDevices(window);
+  guard(window);
   void window.loadURL(`${APP_ORIGIN}/`);
 }
 

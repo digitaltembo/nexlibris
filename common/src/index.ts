@@ -2,6 +2,7 @@ export * from './types';
 export * from './operations';
 export * from './storage';
 export * from './backend';
+export * from './placedLibrary';
 export * from './migrate';
 export * from './metadata';
 export {
@@ -23,6 +24,8 @@ export * from './importApi';
 export * from './syncApi';
 export * from './sync';
 export * from './syncHostApi';
+export * from './libraryFolderApi';
+export * from './remoteApi';
 export * from './nativeMenu';
 export * from './syncHttp';
 export * from './syncFiles';

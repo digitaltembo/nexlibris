@@ -43,14 +43,24 @@ const optimizerSettings: SettingField[] = [
     help: 'Trims plain margins so illustrations fill the screen. Sparse pages can end up zoomed a lot.',
   },
   {
-    key: 'splitText',
-    label: 'Split long text',
+    key: 'splitParagraphs',
+    label: 'Split long paragraphs',
     default: 'yes',
     choices: [
       { value: 'yes', label: 'Yes' },
       { value: 'no', label: 'No' },
     ],
-    help: 'Splits very long paragraphs and chapters, and drops embedded fonts, so the reader has the memory to open them.',
+    help: 'Splits very long paragraphs so the reader has the memory to lay them out.',
+  },
+  {
+    key: 'splitChapters',
+    label: 'Split long chapters',
+    default: 'no',
+    choices: [
+      { value: 'no', label: 'No' },
+      { value: 'yes', label: 'Yes' },
+    ],
+    help: 'Splits chapters into ~7 KB files, each shown as its own chapter. Only older firmware needs it.',
   },
 ];
 
@@ -108,7 +118,8 @@ export function optimizeOptions(device: Device): OptimizeOptions {
     quality: quality >= 1 && quality <= 100 ? quality : DEFAULT_OPTIMIZE_OPTIONS.quality,
     grayscale: setting(device, 'grayscale') !== 'no',
     autoCrop: setting(device, 'autoCrop') === 'yes',
-    splitText: setting(device, 'splitText') !== 'no',
+    splitParagraphs: setting(device, 'splitParagraphs') !== 'no',
+    splitChapters: setting(device, 'splitChapters') === 'yes',
   };
 }
 

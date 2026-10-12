@@ -1,5 +1,5 @@
 import type { FileRef, Item } from '@nexlibris/common';
-import { lazy, Suspense, useEffect, useState, type ComponentType } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useState, type ComponentType } from 'react';
 import styled from 'styled-components';
 import { FORMATS, isFormatId, READ_PREFERENCE, type FormatId } from '../formats/formats';
 import { useLibrary } from '../library/LibraryContext';
@@ -97,10 +97,41 @@ interface Props {
   onClose(): void;
 }
 
-/** A full-window reader for one of an item's files. */
+/** A full-window reader for one of an item's files, over the library: its file, and where the reader left off. */
 export function Reader({ item, file, at, onClose }: Props) {
   const { backend } = useLibrary();
-  const { initial: position, report: onPosition } = useReadingPosition(item.id, file);
+  const { initial, report } = useReadingPosition(item.id, file);
+  const load = useCallback(() => backend.getFile(file.hash), [backend, file.hash]);
+  const position = at ?? initial;
+  return (
+    <BookReader
+      title={item.title}
+      file={file}
+      load={load}
+      {...(position !== undefined && { position })}
+      onPosition={report}
+      onClose={onClose}
+    />
+  );
+}
+
+export interface BookReaderProps {
+  title: string;
+  file: FileRef;
+  /** The file's contents; undefined if they're missing. A file left on the sync hub is fetched first, which can fail. */
+  load(): Promise<Blob | undefined>;
+  /** Where to open. */
+  position?: string;
+  onPosition(locator: string, progress?: number): void;
+  onClose(): void;
+}
+
+/**
+ * The reader itself, needing only the book: its title, its file and contents, and where to open,
+ * with where the reader moves reported. `Reader` gives it these from the library; a book's own
+ * window, from the library's window (`components/ReaderWindow.tsx`).
+ */
+export function BookReader({ title, file, load, position, onPosition, onClose }: BookReaderProps) {
   const [data, setData] = useState<Blob | null>();
   const [fetchError, setFetchError] = useState<string>();
   const [forcePdfjs, setForcePdfjs] = useState(false);
@@ -110,8 +141,7 @@ export function Reader({ item, file, at, onClose }: Props) {
 
   useEffect(() => {
     let cancelled = false;
-    // A file left on the sync hub is fetched first, which can fail.
-    backend.getFile(file.hash).then(
+    load().then(
       (blob) => !cancelled && setData(blob ?? null),
       (e: unknown) => {
         if (cancelled) return;
@@ -122,7 +152,7 @@ export function Reader({ item, file, at, onClose }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [backend, file.hash]);
+  }, [load]);
 
   useEffect(() => {
     if (ownChrome) return;
@@ -133,11 +163,11 @@ export function Reader({ item, file, at, onClose }: Props) {
 
   useEffect(() => {
     const previous = document.title;
-    document.title = `${item.title} · nexlibris`;
+    document.title = `${title} · nexlibris`;
     return () => {
       document.title = previous;
     };
-  }, [item.title]);
+  }, [title]);
 
   const Viewer = format && VIEWERS[format];
   const body =
@@ -153,7 +183,7 @@ export function Reader({ item, file, at, onClose }: Props) {
           data={data}
           format={format}
           storageKey={`nexlibris:${file.hash}`}
-          position={at ?? position}
+          {...(position !== undefined && { position })}
           onPosition={onPosition}
           onClose={onClose}
           options={{ forcePdfjs }}
@@ -170,13 +200,13 @@ export function Reader({ item, file, at, onClose }: Props) {
     );
   }
   return (
-    <Shell data-covers-window role="dialog" aria-label={`Reading ${item.title}`}>
+    <Shell data-covers-window role="dialog" aria-label={`Reading ${title}`}>
       <LockScroll />
       <Bar>
         <Button $variant="secondary" onClick={onClose}>
           ← Back
         </Button>
-        <Title>{item.title}</Title>
+        <Title>{title}</Title>
         {format === 'pdf' && navigator.pdfViewerEnabled && (
           <Button $variant="secondary" onClick={() => setForcePdfjs((f) => !f)}>
             {forcePdfjs ? 'Use built-in viewer' : 'Use pdf.js'}

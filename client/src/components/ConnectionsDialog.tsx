@@ -1,3 +1,8 @@
+import { catalogAuth, readCredentials, writeCredentials } from '../catalogs/credentials';
+import { loadFeed } from '../catalogs/feedCache';
+import { textFetcher } from '../catalogs/remote';
+import { sourceOf } from '../catalogs/sources';
+import { CatalogBrowser } from './CatalogBrowser';
 import { createDevice, readPairings, removePairing, userData, type Device, type DevicePatch, type FirstSyncMode, type Item, type Library, type NewPairing, type Pairing } from '@nexlibris/common';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import styled from 'styled-components';
@@ -15,7 +20,7 @@ import { canWriteFolders, directorySink, zipSink } from '../devices/opds/sinks';
 import { listDevice, planSync, type DeviceListing, type SyncPlan } from '../devices/plan';
 import { deviceItems } from '../devices/selection';
 import { runSync, type SyncProgress, type SyncResult } from '../devices/run';
-import { isCatalog, isDevice, isInstance, type CatalogType, type ConnectionType, type DeviceType, type Inventory, type RemoteBook, type SettingField } from '../devices/types';
+import { isCatalog, isDevice, isInstance, isSource, type CatalogType, type ConnectionType, type DeviceType, type Inventory, type RemoteBook, type SettingField } from '../devices/types';
 import { formatLabel } from './ItemFiles';
 import { useLibrary } from '../library/LibraryContext';
 import { describeRule, filterFields, parseFilters } from '../library/filters';
@@ -148,6 +153,7 @@ export function ConnectionsDialog({ onClose }: { onClose(): void }) {
       />
     );
   }
+  if (screen.kind === 'contents' && sourceOf(screen.device)) return <SourceContents device={screen.device} onDone={back} onClose={onClose} />;
   if (screen.kind === 'contents') return <ConnectionContents device={screen.device} onDone={back} onClose={onClose} />;
   if (screen.kind === 'connect') {
     return (
@@ -232,6 +238,26 @@ export function ConnectionsDialog({ onClose }: { onClose(): void }) {
                 </DeviceRow>
               );
             }
+            const source = sourceOf(device);
+            if (source) {
+              return (
+                <DeviceRow key={device.id}>
+                  <div>
+                    <strong>{device.name}</strong>
+                    <Muted>
+                      {source.label} · {source.url(device) || 'no address'}
+                    </Muted>
+                  </div>
+                  <Spacer />
+                  <Button $variant="secondary" $size="small" onClick={() => setScreen({ kind: 'edit', device })}>
+                    Edit
+                  </Button>
+                  <Button $size="small" disabled={!source.url(device)} onClick={() => setScreen({ kind: 'contents', device })}>
+                    On it…
+                  </Button>
+                </DeviceRow>
+              );
+            }
             return (
               <DeviceRow key={device.id}>
                 <div>
@@ -279,6 +305,7 @@ export function ConnectionsDialog({ onClose }: { onClose(): void }) {
 const DEVICE_TYPES = CONNECTION_TYPES.filter(isDevice);
 const CATALOG_TYPES = CONNECTION_TYPES.filter(isCatalog);
 const INSTANCE_TYPES = CONNECTION_TYPES.filter(isInstance);
+const SOURCE_TYPES = CONNECTION_TYPES.filter(isSource);
 
 /** Words for what a kind of connection holds, for the rules. */
 const RULES_TEXT = {
@@ -302,7 +329,7 @@ function EditConnection({
   /** After the connection is deleted, e.g. to forget how this instance reached it. */
   onRemoved(device: Device): void;
 }) {
-  const { library, apply } = useLibrary();
+  const { library, backend, apply } = useLibrary();
   const [typeId, setTypeId] = useState(device?.type ?? CONNECTION_TYPES[0]!.id);
   const [query, setQuery] = useState(device?.query ?? '');
   const [editingRules, setEditingRules] = useState(false);
@@ -313,6 +340,8 @@ function EditConnection({
   const rules = query.trim() ? parseFilters(query, fields) : undefined;
   const type = connectionType(typeId);
   const instance = !!type && isInstance(type);
+  // A catalog that's browsed takes no books, so has no rules.
+  const source = !!type && isSource(type);
   const kind = !type ? 'device' : isCatalog(type) ? 'catalog' : instance ? 'instance' : 'device';
   const { what } = RULES_TEXT[kind];
   const self = device?.id === library.origin;
@@ -321,15 +350,41 @@ function EditConnection({
     Object.fromEntries(Object.entries(device?.settings ?? {}).map(([k, v]) => [k, String(v ?? '')])),
   );
 
+  /** A browsed catalog's sign-in, read from this device's local state. */
+  const [signIn, setSignIn] = useState({ username: '', password: '' });
+  useEffect(() => {
+    if (!device || !source) return;
+    let cancelled = false;
+    void readCredentials(backend, device.id).then((c) => !cancelled && c && setSignIn(c));
+    return () => {
+      cancelled = true;
+    };
+  }, [backend, device, source]);
+  const insecure = source && !!signIn.username && /^http:/i.test(settings.url ?? '');
+
   const save = async () => {
     const values = Object.fromEntries((type?.settings ?? []).map((f) => [f.key, settings[f.key]?.trim() || undefined]));
     const label = name.trim() || type?.label || 'Connection';
+    let id = device?.id;
     if (device) {
       const patch: DevicePatch = { name: label, settings: values, query };
       await apply([{ type: 'updateDevice', id: device.id, patch }]);
     } else {
       const defined = Object.fromEntries(Object.entries(values).filter(([, v]) => v !== undefined)) as Record<string, string>;
-      await apply([{ type: 'addDevice', device: createDevice({ name: label, type: typeId, settings: defined, query }) }]);
+      const added = createDevice({ name: label, type: typeId, settings: defined, query });
+      id = added.id;
+      await apply([{ type: 'addDevice', device: added }]);
+    }
+    if (type && isSource(type) && id) {
+      // The sign-in stays on this device: in its local state, not the library.
+      await writeCredentials(backend, id, signIn.username.trim() || signIn.password ? { username: signIn.username.trim(), password: signIn.password } : undefined);
+      // A catalog's start, read now so its search is offered straight away (and kept for a day, as browsing it would).
+      if (typeof values.url === 'string') {
+        const url = values.url;
+        void catalogAuth(backend, id, url)
+          .then((auth) => loadFeed(backend, url, textFetcher(auth)))
+          .catch(() => undefined);
+      }
     }
     onDone();
   };
@@ -366,6 +421,13 @@ function EditConnection({
                 </option>
               ))}
             </optgroup>
+            <optgroup label="Browse">
+              {SOURCE_TYPES.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.label}
+                </option>
+              ))}
+            </optgroup>
           </SmallSelect>
         </Field>
         {instance && !device ? (
@@ -384,6 +446,12 @@ function EditConnection({
           Name
           <input value={name} placeholder={type?.label} onChange={(e) => setName(e.target.value)} />
         </Field>
+        {source && (
+          <Muted as="p">
+            Browse its books in the Library and under “On it…”, and add them to the library from there. Nothing is sent to it.
+          </Muted>
+        )}
+        {!source && (
         <Field as="div">
           {RULES_TEXT[kind].label}
           {query.trim() && (
@@ -415,6 +483,33 @@ function EditConnection({
                 : `Books matching the rules (say, a tag, or everything rated 4 stars and up) go in the ${what} as well as the books you add to it.`}
           </small>
         </Field>
+        )}
+        {source && (
+          <Field as="div">
+            Sign-in (optional)
+            <SignInRow>
+              <input
+                aria-label="User name"
+                placeholder="User name"
+                autoComplete="off"
+                value={signIn.username}
+                onChange={(e) => setSignIn({ ...signIn, username: e.target.value })}
+              />
+              <input
+                aria-label="Password"
+                placeholder="Password"
+                type="password"
+                autoComplete="new-password"
+                value={signIn.password}
+                onChange={(e) => setSignIn({ ...signIn, password: e.target.value })}
+              />
+            </SignInRow>
+            <small>
+              For a catalog that asks for one (HTTP Basic). Kept on this device only, sent only to the catalog’s own server.
+            </small>
+            {insecure && <small role="alert">This address isn’t https, so the password would be sent unencrypted.</small>}
+          </Field>
+        )}
         {type?.settings.map((field) => (
           <Field key={field.key}>
             {field.label}
@@ -445,14 +540,20 @@ function EditConnection({
           {device && !self && (
             <DeleteButton
               what={device.name}
-              onDelete={() => void apply([{ type: 'removeDevice', id: device.id }]).then(() => onRemoved(device))}
+              onDelete={() =>
+                void apply([{ type: 'removeDevice', id: device.id }])
+                  .then(() => (source ? writeCredentials(backend, device.id, undefined) : undefined))
+                  .then(() => onRemoved(device))
+              }
             />
           )}
           <Spacer />
           <Button $variant="secondary" onClick={onDone}>
             Cancel
           </Button>
-          <Button type="submit">{device ? 'Save' : 'Add'}</Button>
+          <Button type="submit" disabled={source && !!type?.settings.some((f) => f.check?.(settings[f.key] ?? f.default, settings, library).problems?.length)}>
+            {device ? 'Save' : 'Add'}
+          </Button>
         </ModalFooter>
           </>
         )}
@@ -846,6 +947,66 @@ type ContentsState =
   | { kind: 'failed'; message: string };
 
 /** What's on a connection: read from the device (or, for a catalog, what its last export wrote), then shown with `ContentsView`. */
+/** A browsed catalog's pages (`CatalogBrowser`), with a trail back through the ones opened. */
+function SourceContents({ device, onDone, onClose }: { device: Device; onDone(): void; onClose(): void }) {
+  const root = sourceOf(device)!.url(device);
+  const [trail, setTrail] = useState<{ url: string; title: string }[]>([]);
+  const step = trail.at(-1);
+  return (
+    <Modal title={`On ${device.name}`} onClose={onClose}>
+      {trail.length > 0 && (
+        <Trail>
+          <LinkLike onClick={() => setTrail([])}>{device.name}</LinkLike>
+          {trail.map((t, i) => (
+            <span key={`${i}:${t.url}`}>
+              {' › '}
+              {i === trail.length - 1 ? t.title : <LinkLike onClick={() => setTrail(trail.slice(0, i + 1))}>{t.title}</LinkLike>}
+            </span>
+          ))}
+        </Trail>
+      )}
+      <CatalogBrowser
+        key={step?.url ?? root}
+        device={device}
+        root={root}
+        {...(step && { step: step.url })}
+        onOpen={(url, title) => setTrail([...trail, { url, title }])}
+      />
+      <ModalFooter>
+        <Spacer />
+        <Button $variant="secondary" onClick={onDone}>
+          Back
+        </Button>
+      </ModalFooter>
+    </Modal>
+  );
+}
+
+const SignInRow = styled.div`
+  display: flex;
+  gap: 8px;
+
+  input {
+    flex: 1;
+    min-width: 0;
+  }
+`;
+
+const Trail = styled.p`
+  margin: 0 0 8px;
+  color: var(--muted);
+`;
+
+const LinkLike = styled.button.attrs({ type: 'button' })`
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+`;
+
 function ConnectionContents({ device, onDone, onClose }: { device: Device; onDone(): void; onClose(): void }) {
   const { library, backend, refresh } = useLibrary();
   const type = connectionType(device.type)!;

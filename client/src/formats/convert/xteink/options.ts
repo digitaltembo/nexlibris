@@ -9,15 +9,20 @@ export interface ImageOptions {
 }
 
 export interface OptimizeOptions extends ImageOptions {
-  /** Split oversized paragraphs and files, and remove fonts, for the firmware's memory limits. */
-  splitText: boolean;
+  /** Split oversized paragraphs, for the firmware's layout memory. */
+  splitParagraphs: boolean;
+  /**
+   * Split long spine files into ~7 KB ones. Off by default: the firmware now streams and indexes long files
+   * incrementally, and each piece shows as its own chapter.
+   */
+  splitChapters: boolean;
 }
 
 export const DEFAULT_IMAGE_OPTIONS: ImageOptions = { quality: 85, grayscale: true, autoCrop: false };
-export const DEFAULT_OPTIMIZE_OPTIONS: OptimizeOptions = { ...DEFAULT_IMAGE_OPTIONS, splitText: true };
+export const DEFAULT_OPTIMIZE_OPTIONS: OptimizeOptions = { ...DEFAULT_IMAGE_OPTIONS, splitParagraphs: true, splitChapters: false };
 
 /** The optimizer's own version: bump it when its output changes. */
-const OPTIMIZER_VERSION = '1';
+const OPTIMIZER_VERSION = '2';
 
 /**
  * The converter version for these options. Options are inputs to the output, so a copy made with other options
@@ -29,7 +34,8 @@ export function optimizerVersion(options: OptimizeOptions): string {
     options.quality !== d.quality && `q${options.quality}`,
     options.grayscale !== d.grayscale && (options.grayscale ? 'gray' : 'color'),
     options.autoCrop !== d.autoCrop && (options.autoCrop ? 'crop' : 'nocrop'),
-    options.splitText !== d.splitText && (options.splitText ? 'split' : 'nosplit'),
+    options.splitParagraphs !== d.splitParagraphs && (options.splitParagraphs ? 'paras' : 'nosplit'),
+    options.splitChapters !== d.splitChapters && (options.splitChapters ? 'chapters' : 'nochapters'),
   ].filter(Boolean);
   return [OPTIMIZER_VERSION, ...parts].join('+');
 }
