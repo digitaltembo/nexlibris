@@ -1,6 +1,7 @@
+import type { SettingField } from '../../devices/types';
 import type { FormatId } from '../formats';
 import type { ConvertContext } from './bookFromItem';
-import { DEFAULT_OPTIMIZE_OPTIONS, optimizerVersion, type OptimizeOptions } from './xteink/options';
+import { DEFAULT_OPTIMIZE_OPTIONS, OPTIMIZE_FIELDS, optimizeOptionsFrom, optimizerVersion, type OptimizeOptions } from './xteink/options';
 
 export type { ConvertContext } from './bookFromItem';
 
@@ -9,8 +10,12 @@ export interface Converter {
   id: string;
   from: FormatId[];
   to: FormatId;
-  /** Bump when output changes, so derived files can be regenerated. */
+  /** Bump when output changes, so derived files can be regenerated. A converter with options records them in it. */
   version: string;
+  /** Options asked for when converting; the converter as listed uses their defaults. */
+  options?: SettingField[];
+  /** This converter with the options' values, by key. */
+  withOptions?(values: Record<string, string>): Converter;
   run(data: Blob, from: FormatId, ctx: ConvertContext): Promise<Blob>;
 }
 
@@ -66,13 +71,15 @@ export function convertersFrom(format: string): Converter[] {
   return CONVERTERS.filter((c) => (c.from as string[]).includes(format));
 }
 
-/** The CrossPoint optimizer for a reader's screen, with options (a device's settings) recorded in its version. */
+/** The CrossPoint optimizer for a reader's screen, with its options recorded in its version. */
 export function xteinkConverter(profile: 'X4' | 'X3', options: OptimizeOptions = DEFAULT_OPTIMIZE_OPTIONS): Converter {
   return {
     id: profile === 'X4' ? 'xteink-x4' : 'xteink-x3',
     from: ['epub'],
     to: profile === 'X4' ? 'x4.epub' : 'x3.epub',
     version: optimizerVersion(options),
+    options: OPTIMIZE_FIELDS,
+    withOptions: (values) => xteinkConverter(profile, optimizeOptionsFrom(values)),
     run: async (data) => {
       const [{ optimizeEpub }, { PROFILES }] = await Promise.all([import('./xteink/optimize'), import('./xteink/image')]);
       return optimizeEpub(data, PROFILES[profile], options);

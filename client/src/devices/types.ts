@@ -1,5 +1,4 @@
 import type { Device, FileRef, Item, Library } from '@nexlibris/common';
-import type { Converter } from '../formats/convert/converters';
 import type { FormatId } from '../formats/formats';
 import type { ComponentType } from 'react';
 import type { LibraryViewType } from '../views/types';
@@ -87,12 +86,6 @@ interface ConnectionTypeBase {
   /** Formats to send, best first. An item with none of them isn't sent. (An instance takes every format.) */
   formats: FormatId[];
   settings: SettingField[];
-  /**
-   * Makes the format the device prefers (one of `formats`) for books that lack it, e.g. an EPUB optimized for
-   * the screen. The result is kept in the library, so it's made once per source file and converter version; a
-   * converter shaped by the device's settings should record them in its version.
-   */
-  makes?(device: Device): Converter | undefined;
   prepare?: Preparation;
 }
 

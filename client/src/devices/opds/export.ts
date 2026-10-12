@@ -1,8 +1,6 @@
-import { userData, type Device, type FileRef, type Item, type Library, type LibraryBackend, type Operation, type PlacedFile } from '@nexlibris/common';
+import { userData, type Device, type FileRef, type Item, type Library, type LibraryBackend, type PlacedFile } from '@nexlibris/common';
 import { FORMATS, isFormatId } from '../../formats/formats';
-import { runConversion } from '../../library/convert';
 import { filterItems } from '../../library/search';
-import { staleFiles } from '../plan';
 import { deviceItems } from '../selection';
 import type { ConnectionType } from '../types';
 import { buildCatalog, type CatalogBook, type CatalogFile } from './catalog';
@@ -32,24 +30,19 @@ export interface ExportProgress {
 }
 
 export interface ExportResult {
-  /** Files made for the catalog (e.g. X4 copies), to attach to their items. */
-  operations: Operation[];
   books: number;
   written: number;
   unchanged: number;
   removed: number;
   /** Items left out, with no file in a format the device takes. */
   skipped: string[];
-  /** Included, but with something to report (e.g. their X4 copy couldn't be made). */
-  warnings: { title: string; message: string }[];
   /** Each book file in the catalog, by path, for recording what the connection holds. */
   placed: Record<string, PlacedFile>;
 }
 
 /**
  * Writes an OPDS catalog of a connection's items: every format of each item that
- * its type takes (making its preferred one, as a sync does), with the item's
- * current metadata written in.
+ * its type takes, with the item's current metadata written in.
  */
 export async function exportCatalog(
   library: Library,
@@ -59,42 +52,13 @@ export async function exportCatalog(
   sink: CatalogSink,
   onProgress?: (progress: ExportProgress) => void,
 ): Promise<ExportResult> {
-  const result: ExportResult = {
-    operations: [],
-    books: 0,
-    written: 0,
-    unchanged: 0,
-    removed: 0,
-    skipped: [],
-    warnings: [],
-    placed: {},
-  };
+  const result: ExportResult = { books: 0, written: 0, unchanged: 0, removed: 0, skipped: [], placed: {} };
   const items = deviceItems(library, device);
 
-  // Each item's files in the device's formats, making the preferred one where it's missing.
+  // Each item's files in the device's formats.
   const chosen = new Map<string, { item: Item; files: FileRef[] }>();
-  const makes = type.makes?.(device);
-  for (const [n, original] of items.entries()) {
-    let item = original;
-    const stale = staleFiles(item, makes);
-    let files = type.formats.flatMap((format) => item.files.filter((f) => f.format === format && !stale.includes(f)));
-    if (makes && !files.some((f) => f.format === makes.to)) {
-      const source = makes.from.map((from) => item.files.find((f) => f.format === from)).find((f) => f);
-      if (source) {
-        onProgress?.({ done: n, total: items.length, current: `Optimizing ${item.title}` });
-        try {
-          const data = await backend.getFile(source.hash);
-          if (!data) throw new Error('The file is missing from the library.');
-          const made = await runConversion(backend, item, source, data, makes);
-          result.operations.push({ type: 'attachFile', id: item.id, file: made });
-          for (const old of stale) result.operations.push({ type: 'detachFile', id: item.id, hash: old.hash });
-          item = { ...item, files: [...item.files.filter((f) => !stale.includes(f)), made] };
-          files = type.formats.flatMap((format) => item.files.filter((f) => f.format === format));
-        } catch (e) {
-          result.warnings.push({ title: item.title, message: `couldn’t make ${FORMATS[makes.to].label}: ${errorMessage(e)}` });
-        }
-      }
-    }
+  for (const item of items) {
+    const files = type.formats.flatMap((format) => item.files.filter((f) => f.format === format));
     if (files.length) chosen.set(item.id, { item, files });
     else result.skipped.push(item.title);
   }
@@ -173,5 +137,3 @@ export async function exportCatalog(
   onProgress?.({ done: copies.length, total: copies.length });
   return result;
 }
-
-const errorMessage = (e: unknown) => (e instanceof Error ? e.message : String(e));

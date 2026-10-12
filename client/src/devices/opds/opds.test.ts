@@ -8,7 +8,6 @@ import {
 } from '@nexlibris/common';
 import JSZip from 'jszip';
 import { describe, expect, it } from 'vitest';
-import type { Converter } from '../../formats/convert/converters';
 import { parseXml } from '../../formats/xml';
 import type { CatalogType } from '../types';
 import { buildCatalog, slug, type CatalogBook, type CatalogFile } from './catalog';
@@ -152,21 +151,12 @@ function memorySink() {
   return { files, sink };
 }
 
-const optimizer: Converter = {
-  id: 'test-x4',
-  from: ['epub'],
-  to: 'x4.epub',
-  version: '1',
-  run: async (data) => new Blob([`${await data.text()} for x4`]),
-};
-
 const type: CatalogType = {
   kind: 'catalog',
   id: 'test.catalog',
   label: 'Catalog',
   formats: ['x4.epub', 'epub'],
   settings: [],
-  makes: () => optimizer,
   prepare: { key: (item) => item.title, run: async (item, _f, data) => new Blob([`${await data.text()} titled ${item.title}`]) },
 };
 
@@ -182,25 +172,23 @@ async function setup() {
     await backend.apply([{ type: 'addItem', item }]);
     return item;
   };
-  const dune = await add('Dune', { epub: 'dune' });
+  const dune = await add('Dune', { epub: 'dune', 'x4.epub': 'dune for x4' });
   const notes = await add('Notes', { txt: 'notes' });
   const device = createDevice({ name: 'X4', type: type.id });
   await backend.apply([{ type: 'addDevice', device }, { type: 'addDeviceItems', id: device.id, itemIds: [dune.id, notes.id] }]);
   const run = async (sink: CatalogSink) => {
     const library = await backend.getLibrary();
-    const result = await exportCatalog(library, library.devices![device.id]!, type, backend, sink);
-    await backend.apply(result.operations);
-    return result;
+    return exportCatalog(library, library.devices![device.id]!, type, backend, sink);
   };
   return { backend, dune, run };
 }
 
 describe('catalog export', () => {
-  it('makes and keeps the device format, writes metadata in, and copies only what changed', async () => {
+  it('writes each of the device’s formats a book has, with metadata in, and copies only what changed', async () => {
     const { backend, dune, run } = await setup();
     const { files, sink } = memorySink();
     const first = await run(sink);
-    expect(first).toMatchObject({ books: 1, written: 2, unchanged: 0, skipped: ['Notes'], warnings: [] });
+    expect(first).toMatchObject({ books: 1, written: 2, unchanged: 0, skipped: ['Notes'] });
     expect(files.get('books/dune_author.x4.epub')).toBe('dune for x4 titled Dune');
     expect(files.get('books/dune_author.epub')).toBe('dune titled Dune');
     const stored = (await backend.getLibrary()).items[dune.id]!.files;
@@ -212,7 +200,7 @@ describe('catalog export', () => {
     });
 
     const second = await run(sink);
-    expect(second).toMatchObject({ written: 0, unchanged: 2, removed: 0, operations: [] });
+    expect(second).toMatchObject({ written: 0, unchanged: 2, removed: 0 });
     expect(Object.keys(second.placed).sort()).toEqual(Object.keys(first.placed).sort());
 
     await backend.apply([{ type: 'updateItem', id: dune.id, patch: { title: 'Dune Messiah' } }]);

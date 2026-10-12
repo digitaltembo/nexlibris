@@ -4,65 +4,12 @@ import { useMemo } from 'react';
 import type { CatalogType, DeviceTarget, DeviceTool, DeviceType, Inventory, Plugin, RemoteBook, RemoteFile, SettingField } from '../../devices/types';
 import { embedMetadata } from '../../devices/embedMetadata';
 import { listDevice, parentOf, syncFolders } from '../../devices/plan';
-import { xteinkConverter } from '../../formats/convert/converters';
-import { DEFAULT_OPTIMIZE_OPTIONS, type OptimizeOptions } from '../../formats/convert/xteink/options';
 import { HOSTED_AT } from '../opds';
 import { CrossPointTarget } from './client';
 import { Dictionaries } from './tools/Dictionaries';
 import { Fonts } from './tools/Fonts';
 import { SleepImages } from './tools/SleepImages';
 import { LIBRARY_INDEX_PATH, LibraryIndexError, parseLibraryIndex, recentBooks } from './libraryIndex';
-
-/** How the optimized copy is made: a reader's settings, and those of a catalog for one. */
-const optimizerSettings: SettingField[] = [
-  {
-    key: 'quality',
-    label: 'Image quality',
-    default: String(DEFAULT_OPTIMIZE_OPTIONS.quality),
-    range: { min: 1, max: 100 },
-    help: 'JPEG quality of images in the optimized copy. Lower is smaller and faster to open.',
-  },
-  {
-    key: 'grayscale',
-    label: 'Images',
-    default: 'yes',
-    choices: [
-      { value: 'yes', label: 'Grayscale' },
-      { value: 'no', label: 'Keep colour' },
-    ],
-    help: 'The screen is grayscale; colour images are larger for no gain on it.',
-  },
-  {
-    key: 'autoCrop',
-    label: 'Crop image margins',
-    default: 'no',
-    choices: [
-      { value: 'no', label: 'No' },
-      { value: 'yes', label: 'Yes' },
-    ],
-    help: 'Trims plain margins so illustrations fill the screen. Sparse pages can end up zoomed a lot.',
-  },
-  {
-    key: 'splitParagraphs',
-    label: 'Split long paragraphs',
-    default: 'yes',
-    choices: [
-      { value: 'yes', label: 'Yes' },
-      { value: 'no', label: 'No' },
-    ],
-    help: 'Splits very long paragraphs so the reader has the memory to lay them out.',
-  },
-  {
-    key: 'splitChapters',
-    label: 'Split long chapters',
-    default: 'no',
-    choices: [
-      { value: 'no', label: 'No' },
-      { value: 'yes', label: 'Yes' },
-    ],
-    help: 'Splits chapters into ~7 KB files, each shown as its own chapter. Only older firmware needs it.',
-  },
-];
 
 /** What can go in the folder and file name. */
 const PLACEHOLDER_HELP = `${PLACEHOLDERS.map((p) => `<${p.key}>`).join(', ')}; <authorSort:1> for its first letter; [ … ] for a part kept only when everything in it has a value, as in [<series>/]. Books move when this changes.`;
@@ -97,31 +44,12 @@ const settings: SettingField[] = [
     help: 'Books’ file names, without the extension, from the same details. A clash gets “(2)”.',
     check: (fileName) => ({ problems: templateProblems(fileName) }),
   },
-  {
-    key: 'catalogUrl',
-    label: 'Catalog URL',
-    default: '',
-    help: 'Where you host an OPDS catalog for this reader (an “OPDS catalog for X4” connection, say), if you do. Syncing adds it to the reader’s OPDS libraries.',
-  },
-  ...optimizerSettings,
 ];
 
 const setting = (device: Device, key: string) => {
   const value = device.settings[key];
   return typeof value === 'string' && value.trim() ? value.trim() : settings.find((s) => s.key === key)!.default;
 };
-
-/** The optimizer options a device's settings ask for. Changing them makes the next sync remake its optimized copies. */
-export function optimizeOptions(device: Device): OptimizeOptions {
-  const quality = Math.round(Number(setting(device, 'quality')));
-  return {
-    quality: quality >= 1 && quality <= 100 ? quality : DEFAULT_OPTIMIZE_OPTIONS.quality,
-    grayscale: setting(device, 'grayscale') !== 'no',
-    autoCrop: setting(device, 'autoCrop') === 'yes',
-    splitParagraphs: setting(device, 'splitParagraphs') !== 'no',
-    splitChapters: setting(device, 'splitChapters') === 'yes',
-  };
-}
 
 /** Files the reader's index takes (`isBookName` in its LibraryBuilder), for listing ones it doesn't have yet. */
 const isBookName = (path: string) => {
@@ -176,17 +104,12 @@ function deviceType(id: string, label: string, profile: 'X4' | 'X3'): DeviceType
   const type: DeviceType = {
     id,
     label,
-    // The copy optimized for the device, made from the EPUB when the book doesn't have one yet.
+    // The copy optimized for the device where the book has one (made by Convert), else its EPUB.
     formats: [optimized, 'epub'],
-    makes: (device) => xteinkConverter(profile, optimizeOptions(device)),
     settings,
     folder: (device) => `/${setting(device, 'folder').replace(/^\/+|\/+$/g, '')}`,
     fileName: (device) => setting(device, 'fileName'),
     prepare: embedMetadata,
-    catalog: (device) => {
-      const url = setting(device, 'catalogUrl');
-      return url ? { name: device.name, url } : undefined;
-    },
     target: (device) => new CrossPointTarget(setting(device, 'address')),
     inventory: (device, target, library, listing) => readerInventory(device, type, target, library, listing),
     tools: readerTools(profile),
@@ -215,15 +138,14 @@ function readerTools(profile: 'X4' | 'X3'): DeviceTool[] {
   ];
 }
 
-/** A static OPDS catalog for the reader to browse: each book's optimized copy and its EPUB. */
+/** A static OPDS catalog for the reader to browse: each book's optimized copy, where it has one, and its EPUB. */
 function catalogType(id: string, label: string, profile: 'X4' | 'X3'): CatalogType {
   return {
     kind: 'catalog',
     id,
     label,
     formats: [profile === 'X4' ? 'x4.epub' : 'x3.epub', 'epub'],
-    makes: (device) => xteinkConverter(profile, optimizeOptions(device)),
-    settings: [HOSTED_AT, ...optimizerSettings],
+    settings: [HOSTED_AT],
     prepare: embedMetadata,
   };
 }

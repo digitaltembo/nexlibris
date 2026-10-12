@@ -1,5 +1,4 @@
 import type { Device, FileRef, Item, ItemId, Library, PlacedFile } from '@nexlibris/common';
-import type { Converter } from '../formats/convert/converters';
 import { matchItem } from './match';
 import type { Catalog, ConnectionType, DeviceTarget, DeviceType, RemoteBook, RemoteFile } from './types';
 import { DEFAULT_FILE_NAME, expandPath, hasPlaceholders, templateRoot } from './pathTemplate';
@@ -12,8 +11,6 @@ export interface Upload {
   file: FileRef;
   /** From the device type's preparation, recorded so the next sync can tell whether the file is current. */
   key?: string;
-  /** Make the device's format from `file` with this first, and keep the result in the library. */
-  convert?: Converter;
   /** Replacing a file a sync put there before, e.g. after the book's metadata changed. */
   replaces: boolean;
   /** The book's old copy under another name, removed once this one is sent. */
@@ -82,40 +79,21 @@ export interface PlanOptions {
   keepFound?: boolean;
 }
 
-/** A file the plan wants on the device, and how to make it. */
+/** A file the plan wants on the device. */
 export interface Wanted {
   item: Item;
   file: FileRef;
   key?: string;
-  convert?: Converter;
 }
 
-/**
- * Whether a file on the device is as the plan wants it. A copy nexlibris didn't make stands for the library's
- * file it was taken as, before any conversion, so it isn't remade while that file and the key are unchanged.
- */
-export const isCurrent = (placed: PlacedFile, wanted: Wanted) =>
-  (!wanted.convert || !!placed.found) && placed.hash === wanted.file.hash && placed.key === wanted.key;
+/** Whether a file on the device is as the plan wants it: the library's file it was sent (or taken) as, with the same key. */
+export const isCurrent = (placed: PlacedFile, wanted: Wanted) => placed.hash === wanted.file.hash && placed.key === wanted.key;
 
-/** Files `converter` made that are out of date: from an older version of it, or from a source no longer there. */
-export function staleFiles(item: Item, converter: Converter | undefined): FileRef[] {
-  return item.files.filter(
-    (f) =>
-      converter &&
-      f.derivedFrom?.converter === converter.id &&
-      (f.derivedFrom.converterVersion !== converter.version || !item.files.some((s) => s.hash === f.derivedFrom!.hash)),
-  );
-}
-
-/** What to send for an item: its best file in a format the device takes, or one to make with the type's converter. */
-export function chooseFile(item: Item, type: ConnectionType, makes: Converter | undefined): { file: FileRef; convert?: Converter } | undefined {
-  const stale = staleFiles(item, makes);
-  const files = item.files.filter((f) => !stale.includes(f));
+/** What to send for an item: its file in the first of the type's formats it has. */
+export function chooseFile(item: Item, type: ConnectionType): { file: FileRef } | undefined {
   for (const format of type.formats) {
-    const file = files.find((f) => f.format === format);
+    const file = item.files.find((f) => f.format === format);
     if (file) return { file };
-    const source = makes?.to === format && makes.from.map((from) => files.find((f) => f.format === from)).find((f) => f);
-    if (source) return { file: source, convert: makes };
   }
   return undefined;
 }
@@ -127,9 +105,8 @@ export function desiredFiles(library: Library, device: Device, type: DeviceType)
   const pathOf = bookPaths(device, type);
   const placedPath = new Map(Object.entries(device.placed).map(([path, p]) => [p.itemId, path]));
   const chosen: Wanted[] = [];
-  const makes = type.makes?.(device);
   for (const item of deviceItems(library, device)) {
-    const choice = chooseFile(item, type, makes);
+    const choice = chooseFile(item, type);
     if (choice) chosen.push({ item, ...choice, key: type.prepare?.key(item, choice.file) });
     else unsendable.push(item.id);
   }

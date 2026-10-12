@@ -58,7 +58,7 @@ export function connectionContents(library: Library, device: Device, type: Conne
     const item = matchItem(library, book);
     if (item) {
       on.add(item.id);
-      return { kind: 'match', book, item, linkable: !!chooseFile(item, type, type.makes?.(device)) };
+      return { kind: 'match', book, item, linkable: !!chooseFile(item, type) };
     }
     return { kind: 'unknown', book };
   });
@@ -89,7 +89,7 @@ function placedStatus(
  * until the library's copy changes, then replaces it.
  */
 export function linkOperations(library: Library, device: Device, type: ConnectionType, book: RemoteBook, item: Item): Operation[] {
-  const choice = chooseFile(item, type, type.makes?.(device));
+  const choice = chooseFile(item, type);
   if (!choice) throw new Error(`${item.title} has no file this connection takes, so a sync would remove it.`);
   const ops: Operation[] = [];
   if (!deviceItems(library, device).some((i) => i.id === item.id)) ops.push(...addToDevice(device, [item.id]));
@@ -141,7 +141,7 @@ export async function importFromConnection(
   const item = id ? library.items[id] : Object.values(library.items).find((i) => i.files.some((f) => f.hash === hash));
   if (!item) throw new Error(skipped ? `${name}: ${skipped.reason}` : `${name} couldn’t be imported.`);
   const current = library.devices?.[device.id] ?? device;
-  if (!chooseFile(item, type, type.makes?.(current))) return { item, linked: false };
+  if (!chooseFile(item, type)) return { item, linked: false };
   await backend.apply(linkOperations(library, current, type, book, item));
   return { item, linked: true };
 }

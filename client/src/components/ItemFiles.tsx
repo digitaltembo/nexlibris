@@ -1,6 +1,8 @@
 import { readPairings, type FileRef, type Item } from '@nexlibris/common';
 import { useEffect, useState } from 'react';
 import styled from 'styled-components';
+import type { SettingField } from '../devices/types';
+import type { Converter } from '../formats/convert/converters';
 import { FORMATS, formatFromName, isFormatId } from '../formats/formats';
 import { availableConversions, convertItemFile } from '../library/convert';
 import { removeFiles } from '../library/freeFiles';
@@ -10,6 +12,7 @@ import { isReadable } from '../reader/Reader';
 import { Button, FileButton, Muted, SmallSelect, Stack } from '../styles/ui';
 import { onFileFetched } from '../sync/files';
 import { canSync } from '../sync/connect';
+import { ConvertOptionsDialog } from './ConvertOptions';
 import { DeleteButton } from './DeleteButton';
 
 const FileRow = styled.li`
@@ -102,12 +105,17 @@ function DownloadLink({ item, file }: { item: Item; file: FileRef }) {
 function ConvertMenu({ item, file }: { item: Item; file: FileRef }) {
   const { backend, apply } = useLibrary();
   const [status, setStatus] = useState<{ busy: boolean; error?: string }>({ busy: false });
+  const [asking, setAsking] = useState<Converter & { options: SettingField[] }>();
   const conversions = availableConversions(item, file);
   if (!conversions.length) return null;
 
-  const convert = async (id: string) => {
+  const choose = (id: string) => {
     const converter = conversions.find((c) => c.id === id);
-    if (!converter) return;
+    if (converter?.options?.length) setAsking({ ...converter, options: converter.options });
+    else if (converter) void convert(converter);
+  };
+  const convert = async (converter: Converter) => {
+    setAsking(undefined);
     setStatus({ busy: true });
     try {
       await apply([await convertItemFile(backend, item, file, converter)]);
@@ -123,7 +131,7 @@ function ConvertMenu({ item, file }: { item: Item; file: FileRef }) {
         aria-label={`Convert ${fileName(item, file)}`}
         value=""
         disabled={status.busy}
-        onChange={(e) => void convert(e.target.value)}
+        onChange={(e) => choose(e.target.value)}
       >
         <option value="">{status.busy ? 'Converting…' : 'Convert…'}</option>
         {conversions.map((c) => (
@@ -133,6 +141,15 @@ function ConvertMenu({ item, file }: { item: Item; file: FileRef }) {
         ))}
       </SmallSelect>
       {status.error && <ErrorText>{status.error}</ErrorText>}
+      {asking && (
+        <ConvertOptionsDialog
+          converter={asking}
+          title={`Convert to ${formatLabel(asking.to)}`}
+          what={fileName(item, file)}
+          onConvert={(converter) => void convert(converter)}
+          onClose={() => setAsking(undefined)}
+        />
+      )}
     </>
   );
 }

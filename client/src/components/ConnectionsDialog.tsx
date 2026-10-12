@@ -755,7 +755,7 @@ export function PlanSummary({
             <li key={u.path}>
               {fileName(u.path)}{' '}
               <Muted>
-                ({u.convert ? `${formatLabel(u.convert.to)}, made from ${formatLabel(u.file.format)}` : formatLabel(u.file.format)}
+                ({formatLabel(u.file.format)}
                 {u.supersedes ? `, replacing ${fileName(u.supersedes)}` : u.replaces && ', updated'})
               </Muted>
             </li>
@@ -836,7 +836,7 @@ function SyncCatalog({ device, type, onDone, onClose }: { device: Device; type: 
       const saved = sink.saved ?? true;
       // What the catalog now holds, for "On it…" and the last sync time.
       const gone = Object.keys(latest.placed).filter((path) => !result.placed[path]);
-      await apply([...result.operations, ...(saved ? [{ type: 'recordDeviceSync' as const, id: device.id, placed: result.placed, removed: gone }] : [])]);
+      if (saved) await apply([{ type: 'recordDeviceSync', id: device.id, placed: result.placed, removed: gone }]);
       setState({ kind: 'done', result, saved, ...(to && { folder: to }) });
     } catch (e) {
       setState({ kind: 'failed', message: errorMessage(e), ...(to && { folder: to }) });
@@ -870,8 +870,7 @@ function SyncCatalog({ device, type, onDone, onClose }: { device: Device; type: 
       {(state.kind === 'ready' || state.kind === 'failed') && (
         <Muted as="p">
           A static OPDS catalog of {plural(count, 'book')}, for hosting anywhere that serves files (it’s meant for the root of a
-          site){url && <>, at {url}</>}. Books get their current metadata
-          {type.makes && ', and the optimized copy is made where a book lacks one'}.{' '}
+          site){url && <>, at {url}</>}. Books get their current metadata.{' '}
           {folder
             ? `It’s written to the folder “${folder.name}” on this computer; only what changed is copied.`
             : canWriteFolders()
@@ -893,15 +892,10 @@ function SyncCatalog({ device, type, onDone, onClose }: { device: Device; type: 
             {state.saved && state.result.removed > 0 && `; removed ${state.result.removed} no longer in it`}
             {state.saved && state.folder && ` in “${state.folder.name}”`}.
           </p>
-          {(state.result.skipped.length > 0 || state.result.warnings.length > 0) && (
+          {state.result.skipped.length > 0 && (
             <List>
               {state.result.skipped.map((title) => (
                 <li key={`s:${title}`}>{title}: left out, with no file in a format the catalog takes</li>
-              ))}
-              {state.result.warnings.map((w) => (
-                <li key={`w:${w.title}`}>
-                  {w.title}: {w.message}
-                </li>
               ))}
             </List>
           )}

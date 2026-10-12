@@ -13,7 +13,6 @@ import {
 import { describe, expect, it } from 'vitest';
 import { listDevice, planSync, type PlanOptions } from './plan';
 import { runSync } from './run';
-import type { Converter } from '../formats/convert/converters';
 import type { DeviceTarget, DeviceType, RemoteFile } from './types';
 
 /** A device as a map of path to contents. */
@@ -163,39 +162,25 @@ describe('device sync', () => {
     expect((await sync(backend, deviceId, target, withMetadata)).plan.unchanged).toBe(2);
   });
 
-  it('makes the device’s format when a book lacks it, keeps it, and remakes it for a new converter version', async () => {
-    const optimizer = (version: string): Converter => ({
-      id: 'test-x4',
-      from: ['epub'],
-      to: 'x4.epub',
-      version,
-      run: async (data) => new Blob([`${await data.text()} optimized v${version}`]),
-    });
+  it('sends the first of the device’s formats a book has, and its optimized copy once one is made', async () => {
     const { backend, deviceId, emma } = await setup();
     const target = new FakeDevice();
-    const makes = { ...type, makes: () => optimizer('1') };
 
-    const first = await sync(backend, deviceId, target, makes);
-    expect(first.plan.uploads.map((u) => [u.item.title, u.convert?.id])).toEqual([
-      ['Dune', undefined],
-      ['Emma: A Novel', 'test-x4'],
+    const first = await sync(backend, deviceId, target, type);
+    expect(first.plan.uploads.map((u) => [u.item.title, u.file.format])).toEqual([
+      ['Dune', 'x4.epub'],
+      ['Emma: A Novel', 'epub'],
     ]);
-    expect(target.files.get('/Books/Emma A Novel - Jane Austen.epub')).toBe('emma epub optimized v1');
-    let library = await backend.getLibrary();
-    const made = library.items[emma.id]!.files.find((f) => f.format === 'x4.epub')!;
-    expect(made.derivedFrom).toMatchObject({ converter: 'test-x4', converterVersion: '1' });
-    expect(first.device.placed['/Books/Emma A Novel - Jane Austen.epub']!.hash).toBe(made.hash);
+    expect(target.files.get('/Books/Emma A Novel - Jane Austen.epub')).toBe('emma epub');
+    // Nothing is made for the device: Emma keeps just her EPUB.
+    expect((await backend.getLibrary()).items[emma.id]!.files.map((f) => f.format)).toEqual(['epub']);
 
-    expect((await sync(backend, deviceId, target, makes)).plan).toMatchObject({ uploads: [], unchanged: 2 });
-
-    const second = await sync(backend, deviceId, target, { ...type, makes: () => optimizer('2') });
+    // Converted by hand, it's sent in place of the EPUB.
+    const { hash, size } = await backend.putFile(new Blob(['emma x4']));
+    await backend.apply([{ type: 'attachFile', id: emma.id, file: { hash, size, format: 'x4.epub' } }]);
+    const second = await sync(backend, deviceId, target, type);
     expect(second.plan.uploads.map((u) => [u.path, u.replaces])).toEqual([['/Books/Emma A Novel - Jane Austen.epub', true]]);
-    expect(target.files.get('/Books/Emma A Novel - Jane Austen.epub')).toBe('emma epub optimized v2');
-    library = await backend.getLibrary();
-    expect(library.items[emma.id]!.files.map((f) => [f.format, f.derivedFrom?.converterVersion])).toEqual([
-      ['epub', undefined],
-      ['x4.epub', '2'],
-    ]);
+    expect(target.files.get('/Books/Emma A Novel - Jane Austen.epub')).toBe('emma x4');
   });
 
   it('keeps the old copy when the renamed one fails to send', async () => {
@@ -432,18 +417,5 @@ describe('device sync with path templates', () => {
     ]);
     await syncWith(backend, deviceId, target, deviceType);
     expect(target.files.get('/library/Frank Herbert/Dune.epub')).toBe('dune x4, second edition');
-  });
-
-  it('takes found copies that need converting as current, rather than sending them again', async () => {
-    const { backend, deviceId, emma } = await setup();
-    const converter = { id: 'test.x4', version: 1, from: ['epub'], to: 'x4.epub' } as unknown as Converter;
-    const converting: DeviceType = { ...type, makes: () => converter };
-    const target = new MovingDevice();
-    target.files.set('/Books/Emma A Novel - Jane Austen.epub', 'optimized elsewhere');
-    const first = await sync(backend, deviceId, target, converting);
-    expect(first.plan.kept).toMatchObject([{ placed: { itemId: emma.id, hash: emma.files[0]!.hash, found: true } }]);
-    const second = await sync(backend, deviceId, target, converting);
-    expect(second.plan.uploads).toEqual([]);
-    expect(target.files.get('/Books/Emma A Novel - Jane Austen.epub')).toBe('optimized elsewhere');
   });
 });

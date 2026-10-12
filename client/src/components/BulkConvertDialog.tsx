@@ -5,6 +5,7 @@ import type { FormatId } from '../formats/formats';
 import { conversionSource, convertItemFile } from '../library/convert';
 import { useLibrary } from '../library/LibraryContext';
 import { Button, Muted, Row, Spacer, Stack } from '../styles/ui';
+import { ConvertOptions, optionDefaults } from './ConvertOptions';
 import { formatLabel } from './ItemFiles';
 import { Modal, ModalFooter } from './Modal';
 
@@ -12,7 +13,14 @@ const ErrorText = styled.p`
   color: var(--danger);
 `;
 
-const CONVERSION_TARGETS: FormatId[] = ['epub', 'cbz', 'txt'];
+const OptionsBox = styled.fieldset`
+  margin: 16px 0 0;
+  padding: 0 12px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+`;
+
+const CONVERSION_TARGETS: FormatId[] = ['epub', 'x4.epub', 'x3.epub', 'cbz', 'txt'];
 
 interface Props {
   items: Item[];
@@ -34,6 +42,12 @@ export function BulkConvertDialog({ items, onClose }: Props) {
       return source ? [{ item, ...source }] : [];
     }),
   }));
+  // Options of the converters that would run, each once (the X4 and X3 optimizers share theirs).
+  const withOptions = targets.filter((t) => t.sources.some((s) => s.converter.options?.length));
+  const fields = [
+    ...new Map(withOptions.flatMap((t) => t.sources.flatMap((s) => s.converter.options ?? [])).map((f) => [f.key, f])).values(),
+  ];
+  const [values, setValues] = useState(() => optionDefaults(fields));
 
   const convertAll = async (to: FormatId) => {
     const sources = targets.find((t) => t.to === to)?.sources ?? [];
@@ -43,7 +57,7 @@ export function BulkConvertDialog({ items, onClose }: Props) {
     for (const [n, { item, file, converter }] of sources.entries()) {
       setProgress(`Converting ${n + 1} of ${sources.length} to ${formatLabel(to)}…`);
       try {
-        await apply([await convertItemFile(backend, item, file, converter)]);
+        await apply([await convertItemFile(backend, item, file, converter.withOptions?.(values) ?? converter)]);
       } catch (e) {
         failed.push(`${item.title}: ${e instanceof Error ? e.message : e}`);
       }
@@ -70,6 +84,12 @@ export function BulkConvertDialog({ items, onClose }: Props) {
           </Row>
         ))}
       </Stack>
+      {fields.length > 0 && (
+        <OptionsBox>
+          <legend>{withOptions.map((t) => formatLabel(t.to)).join(' and ')} options</legend>
+          <ConvertOptions fields={fields} values={values} onChange={setValues} disabled={running} />
+        </OptionsBox>
+      )}
       {progress && (
         <Muted as="p" role="status">
           {progress}

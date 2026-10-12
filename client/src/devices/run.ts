@@ -1,6 +1,5 @@
-import type { FileRef, LibraryBackend, Operation, PlacedFile } from '@nexlibris/common';
-import { runConversion } from '../library/convert';
-import { parentOf, staleFiles, type SyncPlan } from './plan';
+import type { LibraryBackend, Operation, PlacedFile } from '@nexlibris/common';
+import { parentOf, type SyncPlan } from './plan';
 import type { DeviceTarget, Preparation } from './types';
 
 export interface SyncProgress {
@@ -11,10 +10,7 @@ export interface SyncProgress {
 }
 
 export interface SyncResult {
-  /**
-   * To apply to the library even if some steps failed: files made for the device (replacing out-of-date ones),
-   * and the record of what was done.
-   */
+  /** To apply to the library even if some steps failed: the record of what was done. */
   operations: Operation[];
   sent: number;
   moved: number;
@@ -76,24 +72,13 @@ export async function runSync(
 
   // Uploads next, so a book sent under a new name loses its old copy only once the new one is there.
   const failed = new Set<string>();
-  const made: Operation[] = [];
   for (const upload of plan.uploads) {
-    const verb = upload.convert ? 'Optimizing and sending' : 'Sending';
-    await step(`${verb} ${baseName(upload.path)}`, upload.path, async () => {
+    await step(`Sending ${baseName(upload.path)}`, upload.path, async () => {
       try {
         await ensureFolder(parentOf(upload.path));
-        let file: FileRef = upload.file;
-        let stored = await backend.getFile(file.hash);
+        const file = upload.file;
+        const stored = await backend.getFile(file.hash);
         if (!stored) throw new Error('The file is missing from the library.');
-        if (upload.convert) {
-          // Kept in the library, so later syncs send it without converting again.
-          file = await runConversion(backend, upload.item, file, stored, upload.convert);
-          made.push({ type: 'attachFile', id: upload.item.id, file });
-          for (const old of staleFiles(upload.item, upload.convert)) {
-            made.push({ type: 'detachFile', id: upload.item.id, hash: old.hash });
-          }
-          stored = (await backend.getFile(file.hash))!;
-        }
         const data = upload.key !== undefined && prepare ? await prepare.run(upload.item, file, stored) : stored;
         await target.upload(upload.path, data);
         placed[upload.path] = {
@@ -129,7 +114,7 @@ export async function runSync(
   }
   return {
     catalogAdded,
-    operations: [...made, { type: 'recordDeviceSync', id: deviceId, placed, removed }],
+    operations: [{ type: 'recordDeviceSync', id: deviceId, placed, removed }],
     sent: Object.keys(placed).length - moved - kept,
     moved,
     kept,
