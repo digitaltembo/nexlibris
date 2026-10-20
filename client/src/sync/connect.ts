@@ -1,9 +1,7 @@
 import {
-  createMessageClient,
   httpHubFiles,
-  httpSend,
+  httpSyncClient,
   readPairings,
-  syncApiMeta,
   type FileHash,
   type HubFiles,
   type LibraryBackend,
@@ -15,7 +13,7 @@ import { BLUETOOTH_BASE, bluetoothLink, canSyncOverBluetooth, isBluetoothAddress
 import { canSyncThroughFolder, isFolderAddress, pairedFolder } from './folder';
 import { fileFetched, hubFiles } from './files';
 import { folderKeepRule } from './instances';
-import { canSyncOverNetwork, hubClient, instanceName } from './hub';
+import { canSyncOverNetwork, canSyncWithServer, hubClient, instanceName, isOwnServer } from './hub';
 
 /**
  * Reaching a paired hub however it's paired, from its address: over the network (`http…`), over
@@ -37,7 +35,7 @@ export function describeAddress(address: string): string {
     case 'folder':
       return `through the folder “${address.slice(address.indexOf(':') + 1)}”`;
     default:
-      return `over the network (${address})`;
+      return isOwnServer(address) ? `through your account on ${new URL(address).host}` : `over the network (${address})`;
   }
 }
 
@@ -51,7 +49,7 @@ export async function connectHub(pairing: Pairing, local: LibraryBackend, intera
     case 'bluetooth': {
       const fetchOver = linkFetch(await bluetoothLink(pairing.hub.origin, interactive));
       return {
-        client: createMessageClient(syncApiMeta, httpSend(BLUETOOTH_BASE, pairing.key, fetchOver)).sync,
+        client: httpSyncClient(BLUETOOTH_BASE, pairing.key, fetchOver),
         files: httpHubFiles(BLUETOOTH_BASE, pairing.key, local, fetchOver),
       };
     }
@@ -65,8 +63,8 @@ export async function connectHub(pairing: Pairing, local: LibraryBackend, intera
   }
 }
 
-/** Whether this instance can sync with anything: over the network, over Bluetooth, through a folder, or as the hub. */
-export const canSync = () => inDesktopApp() || canSyncOverNetwork() || canSyncOverBluetooth() || canSyncThroughFolder();
+/** Whether this instance can sync with anything: over the network, with its server, over Bluetooth, through a folder, or as the hub. */
+export const canSync = () => inDesktopApp() || canSyncOverNetwork() || canSyncWithServer() || canSyncOverBluetooth() || canSyncThroughFolder();
 
 /**
  * Fetches a file this instance lacks from a hub it syncs with, for `fetchingMissingFiles`: from

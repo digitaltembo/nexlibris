@@ -141,6 +141,76 @@ export async function fetchCover(
   }
 }
 
+/** A cover Open Library has for a book: `url` full size, `preview` small enough for a list of them. */
+export interface CoverChoice {
+  url: string;
+  preview: string;
+  /** What it's the cover of, e.g. "Dune, 1965" or "ISBN 9780441172719". */
+  label: string;
+}
+
+interface SearchResult {
+  docs?: { cover_i?: number; title?: string; first_publish_year?: number }[];
+}
+
+const COVERS = 'https://covers.openlibrary.org';
+const coverById = (id: number, size: 'M' | 'L') => `${COVERS}/b/id/${id}-${size}.jpg`;
+
+/**
+ * Covers Open Library has for a book: its editions' by ISBN first, then those of the works a
+ * search by title and author finds. Throws only if Open Library can't be reached at all.
+ */
+export async function findCovers(
+  book: { isbns: string[]; title: string; authors: string[] },
+  fetchFn: typeof fetch = (input, init) => fetch(input, init),
+): Promise<CoverChoice[]> {
+  const getJson = async <T,>(path: string): Promise<T> => {
+    const response = await fetchFn(`${ORIGIN}${path}`, { headers: { Accept: 'application/json' } });
+    if (!response.ok) throw new Error(`Open Library answered ${response.status} ${response.statusText}`.trim());
+    return (await response.json()) as T;
+  };
+  const isbns = [...new Set(book.isbns.map((isbn) => isbn.replace(/[^0-9X]/gi, '')).filter(Boolean))];
+  const byIsbn = async (): Promise<CoverChoice[]> => {
+    const keys = isbns.map((isbn) => `ISBN:${isbn}`).join(',');
+    const found = await getJson<Record<string, DataRecord>>(`/api/books?bibkeys=${keys}&format=json&jscmd=data`);
+    return isbns.flatMap((isbn) => {
+      const cover = found[`ISBN:${isbn}`]?.cover;
+      const url = cover?.large ?? cover?.medium;
+      return url ? [{ url, preview: cover?.medium ?? url, label: `ISBN ${isbn}` }] : [];
+    });
+  };
+  const title = book.title.trim();
+  const bySearch = async (): Promise<CoverChoice[]> => {
+    const params = new URLSearchParams({ title, fields: 'cover_i,title,first_publish_year', limit: '20' });
+    const author = book.authors.find((a) => a.trim());
+    if (author) params.set('author', author.trim());
+    const found = await getJson<SearchResult>(`/search.json?${params}`);
+    return (found.docs ?? []).flatMap((doc) =>
+      doc.cover_i && doc.cover_i > 0
+        ? [{
+            url: coverById(doc.cover_i, 'L'),
+            preview: coverById(doc.cover_i, 'M'),
+            label: [doc.title, doc.first_publish_year].filter(Boolean).join(', '),
+          }]
+        : [],
+    );
+  };
+
+  const results = await Promise.allSettled([...(isbns.length ? [byIsbn()] : []), ...(title ? [bySearch()] : [])]);
+  if (results.length && results.every((r) => r.status === 'rejected')) {
+    const e = (results[0] as PromiseRejectedResult).reason;
+    throw new Error(`Couldn’t reach Open Library (${e instanceof Error ? e.message : String(e)}).`);
+  }
+  // The same cover can come from an ISBN and a search, by URLs that differ only in size.
+  const seen = new Set<string>();
+  return results.flatMap((r) => (r.status === 'fulfilled' ? r.value : [])).filter((choice) => {
+    const key = choice.url.replace(/-[SML]\.jpg$/, '').replace(/^http:/, 'https:');
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 /** A new item for a looked-up book, with no file, and its cover stored. */
 export async function itemFromBook(backend: LibraryBackend, book: BookInfo, fetchFn?: typeof fetch): Promise<Item> {
   const cover = book.coverUrl ? await fetchCover(book.coverUrl, fetchFn) : undefined;

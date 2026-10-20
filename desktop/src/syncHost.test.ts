@@ -1,10 +1,9 @@
 import {
   createItem,
-  createMessageClient,
   createMessageHandler,
   createSyncService,
   httpHubFiles,
-  httpSend,
+  httpSyncClient,
   MemoryStorage,
   pairWithHub,
   previewSync,
@@ -62,7 +61,7 @@ async function hub(
   return { backend, host, address: `http://127.0.0.1:${port}`, file, dir };
 }
 
-const client = (address: string, key?: string) => createMessageClient(syncApiMeta, httpSend(address, key)).sync;
+const client = (address: string, key?: string) => httpSyncClient(address, key);
 
 describe('sync host', () => {
   it('pairs with a one-time code, then syncs over HTTP', async () => {

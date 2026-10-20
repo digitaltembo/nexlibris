@@ -55,3 +55,5 @@ function LiveSettings({ initialView }: { initialView: View }) {
 
 export const Grid: Story = { render: () => <LiveSettings initialView="grid" /> };
 export const List: Story = { render: () => <LiveSettings initialView="list" /> };
+export const Bookshelf: Story = { render: () => <LiveSettings initialView="bookshelf.shelf" /> };
+export const Graph: Story = { render: () => <LiveSettings initialView="graph.force" /> };

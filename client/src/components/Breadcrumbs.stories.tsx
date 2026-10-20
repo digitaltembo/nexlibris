@@ -19,7 +19,7 @@ export const AllBooks: Story = {
     children: (
       <>
         <CrumbCount>4 books</CrumbCount>
-        <ViewSwitcher view="grid" onView={fn()} />
+        <ViewSwitcher view="grid" onView={fn()} onSettings={fn()} />
       </>
     ),
   },

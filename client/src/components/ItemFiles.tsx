@@ -1,4 +1,4 @@
-import { readPairings, type FileRef, type Item } from '@nexlibris/common';
+import { readPairings, type FileRef, type Item, type LibraryBackend } from '@nexlibris/common';
 import { useEffect, useState } from 'react';
 import styled from 'styled-components';
 import type { SettingField } from '../devices/types';
@@ -7,13 +7,14 @@ import { FORMATS, formatFromName, isFormatId } from '../formats/formats';
 import { availableConversions, convertItemFile } from '../library/convert';
 import { removeFiles } from '../library/freeFiles';
 import { useLibrary } from '../library/LibraryContext';
+import { canShowFiles, showFileInFolder } from '../library/libraryFolder';
 import { saveFile } from '../library/saveFile';
 import { isReadable } from '../reader/Reader';
-import { Button, FileButton, Muted, SmallSelect, Stack } from '../styles/ui';
+import { Button, FileButton, Muted, Stack } from '../styles/ui';
 import { onFileFetched } from '../sync/files';
 import { canSync } from '../sync/connect';
 import { ConvertOptionsDialog } from './ConvertOptions';
-import { DeleteButton } from './DeleteButton';
+import { MenuButton, type MenuAction } from './MenuButton';
 
 const FileRow = styled.li`
   display: flex;
@@ -75,45 +76,23 @@ function fileName(item: Item, file: FileRef) {
 }
 
 /**
- * Saves the file when clicked. It's only read then: reading every format up
- * front, to have download URLs ready, made opening a big book's details slow.
+ * Saves the file. It's only read then: reading every format up front, to have download URLs
+ * ready, made opening a big book's details slow.
  */
-function DownloadLink({ item, file }: { item: Item; file: FileRef }) {
-  const { backend } = useLibrary();
-  const [error, setError] = useState<string>();
-  const download = async () => {
-    setError(undefined);
-    try {
-      const blob = await backend.getFile(file.hash);
-      if (!blob) throw new Error('The file is missing from the library.');
-      const type = isFormatId(file.format) ? FORMATS[file.format].mediaType : blob.type;
-      await saveFile(new Blob([blob], { type }), fileName(item, file));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
-  };
-  return (
-    <>
-      <Name as="button" type="button" title="Download" onClick={() => void download()}>
-        {fileName(item, file)}
-      </Name>
-      {error && <Meta role="alert">{error}</Meta>}
-    </>
-  );
+async function downloadFile(backend: LibraryBackend, item: Item, file: FileRef) {
+  const blob = await backend.getFile(file.hash);
+  if (!blob) throw new Error('The file is missing from the library.');
+  const type = isFormatId(file.format) ? FORMATS[file.format].mediaType : blob.type;
+  await saveFile(new Blob([blob], { type }), fileName(item, file));
 }
 
-function ConvertMenu({ item, file }: { item: Item; file: FileRef }) {
+/** Converting a file: the conversions it has, choosing one (asking for its options first), and how it's going. */
+function useConversion(item: Item, file: FileRef) {
   const { backend, apply } = useLibrary();
   const [status, setStatus] = useState<{ busy: boolean; error?: string }>({ busy: false });
   const [asking, setAsking] = useState<Converter & { options: SettingField[] }>();
   const conversions = availableConversions(item, file);
-  if (!conversions.length) return null;
 
-  const choose = (id: string) => {
-    const converter = conversions.find((c) => c.id === id);
-    if (converter?.options?.length) setAsking({ ...converter, options: converter.options });
-    else if (converter) void convert(converter);
-  };
   const convert = async (converter: Converter) => {
     setAsking(undefined);
     setStatus({ busy: true });
@@ -124,33 +103,106 @@ function ConvertMenu({ item, file }: { item: Item; file: FileRef }) {
       setStatus({ busy: false, error: e instanceof Error ? e.message : String(e) });
     }
   };
+  const choose = (converter: Converter) => {
+    if (converter.options?.length) setAsking({ ...converter, options: converter.options });
+    else void convert(converter);
+  };
+
+  const dialog = asking && (
+    <ConvertOptionsDialog
+      converter={asking}
+      title={`Convert to ${formatLabel(asking.to)}`}
+      what={fileName(item, file)}
+      onConvert={(converter) => void convert(converter)}
+      onClose={() => setAsking(undefined)}
+    />
+  );
+  return { conversions, choose, status, dialog };
+}
+
+/**
+ * One file's row: its name (which downloads it), Read, and a menu of the rest (download, convert,
+ * show in the file manager, remove, which asks again in the row).
+ */
+function FileItem({ item, file, notDownloaded, onRead }: {
+  item: Item;
+  file: FileRef;
+  notDownloaded: boolean;
+  onRead(file: FileRef): void;
+}) {
+  const { backend, apply } = useLibrary();
+  const { conversions, choose, status, dialog } = useConversion(item, file);
+  const [confirming, setConfirming] = useState(false);
+  const [error, setError] = useState<string>();
+  const name = fileName(item, file);
+
+  const attempt = (what: string, task: () => Promise<void>) => async () => {
+    setError(undefined);
+    try {
+      await task();
+    } catch (e) {
+      setError(`Couldn’t ${what} ${name}: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  };
+  const download = attempt('download', () => downloadFile(backend, item, file));
+  const show = attempt('show', () => showFileInFolder(file.hash));
+  const remove = attempt('remove', async () => void (await removeFiles(backend, apply, [{ item, hashes: [file.hash] }])));
+
+  const actions: MenuAction[] = [
+    { label: 'Download', onSelect: () => void download() },
+    ...conversions.map((c) => ({
+      label: `Convert to ${formatLabel(c.to)}${c.options?.length ? '…' : ''}`,
+      disabled: status.busy,
+      onSelect: () => choose(c),
+    })),
+    ...(canShowFiles() && !notDownloaded ? [{ label: 'Show in folder', onSelect: () => void show() }] : []),
+    { label: 'Remove…', danger: true, onSelect: () => setConfirming(true) },
+  ];
 
   return (
-    <>
-      <SmallSelect
-        aria-label={`Convert ${fileName(item, file)}`}
-        value=""
-        disabled={status.busy}
-        onChange={(e) => choose(e.target.value)}
-      >
-        <option value="">{status.busy ? 'Converting…' : 'Convert…'}</option>
-        {conversions.map((c) => (
-          <option key={c.id} value={c.id}>
-            to {formatLabel(c.to)}
-          </option>
-        ))}
-      </SmallSelect>
-      {status.error && <ErrorText>{status.error}</ErrorText>}
-      {asking && (
-        <ConvertOptionsDialog
-          converter={asking}
-          title={`Convert to ${formatLabel(asking.to)}`}
-          what={fileName(item, file)}
-          onConvert={(converter) => void convert(converter)}
-          onClose={() => setAsking(undefined)}
-        />
-      )}
-    </>
+    <FileRow>
+      <Name as="button" type="button" title="Download" onClick={() => void download()}>
+        {name}
+      </Name>
+      <Meta>
+        {formatLabel(file.format)} · {formatSize(file.size)}
+        {file.derivedFrom && ' · converted'}
+        {notDownloaded && ' · not downloaded'}
+        {status.busy && ' · converting…'}
+      </Meta>
+      <Actions>
+        {confirming ? (
+          <>
+            <Button
+              $variant="danger"
+              $size="small"
+              autoFocus
+              onClick={() => {
+                setConfirming(false);
+                void remove();
+              }}
+            >
+              Remove
+            </Button>
+            <Button $variant="secondary" $size="small" onClick={() => setConfirming(false)}>
+              Cancel
+            </Button>
+          </>
+        ) : (
+          <>
+            {isReadable(file) && (
+              <Button $variant="secondary" $size="small" onClick={() => onRead(file)}>
+                Read
+              </Button>
+            )}
+            <MenuButton label={`Actions for ${name}`} actions={actions} />
+          </>
+        )}
+      </Actions>
+      {status.error && <ErrorText role="alert">{status.error}</ErrorText>}
+      {error && <ErrorText role="alert">{error}</ErrorText>}
+      {dialog}
+    </FileRow>
   );
 }
 
@@ -182,22 +234,12 @@ function useNotDownloaded(files: FileRef[]): Set<string> {
 }
 
 /**
- * An item's files, with reading, downloading, converting, attaching and removing (none of which need
- * edit mode). Removing a file deletes it from the library's storage unless another item has it.
+ * An item's files, with reading, downloading, converting, showing where they are (in the desktop
+ * app; all but reading in each file's menu), attaching and removing (none of which need edit mode). Removing a file deletes it from the library's storage unless another item has it.
  */
 export function ItemFiles({ item, onRead }: { item: Item; onRead(file: FileRef): void }) {
   const { backend, apply } = useLibrary();
   const notDownloaded = useNotDownloaded(item.files);
-  const [error, setError] = useState<string>();
-
-  const remove = async (file: FileRef) => {
-    setError(undefined);
-    try {
-      await removeFiles(backend, apply, [{ item, hashes: [file.hash] }]);
-    } catch (e) {
-      setError(`Couldn’t remove ${fileName(item, file)}: ${e instanceof Error ? e.message : String(e)}`);
-    }
-  };
 
   const attach = async (files: FileList | null) => {
     for (const file of Array.from(files ?? [])) {
@@ -214,27 +256,10 @@ export function ItemFiles({ item, onRead }: { item: Item; onRead(file: FileRef):
       ) : (
         <Stack as="ul">
           {item.files.map((file) => (
-            <FileRow key={file.hash}>
-              <DownloadLink item={item} file={file} />
-              <Meta>
-                {formatLabel(file.format)} · {formatSize(file.size)}
-                {file.derivedFrom && ' · converted'}
-                {notDownloaded.has(file.hash) && ' · not downloaded'}
-              </Meta>
-              <Actions>
-                {isReadable(file) && (
-                  <Button $variant="secondary" $size="small" onClick={() => onRead(file)}>
-                    Read
-                  </Button>
-                )}
-                <ConvertMenu item={item} file={file} />
-                <DeleteButton small verb="Remove" onDelete={() => void remove(file)} />
-              </Actions>
-            </FileRow>
+            <FileItem key={file.hash} item={item} file={file} notDownloaded={notDownloaded.has(file.hash)} onRead={onRead} />
           ))}
         </Stack>
       )}
-      {error && <ErrorText role="alert">{error}</ErrorText>}
       <FileButton $variant="secondary" $size="small">
         Attach file…
         <input type="file" hidden multiple onChange={(e) => void attach(e.target.files)} />

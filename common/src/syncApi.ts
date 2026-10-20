@@ -1,20 +1,22 @@
-import { post, type SimpleMeta } from 'estuary-rpc';
+import { get, post, put, TransportType, type SimpleMeta } from 'estuary-rpc';
 import type { Operation } from './operations';
 import type { ItemId, Library } from './types';
 
 /**
  * M6 sync between two instances of a library, as an estuary-rpc API. One instance (the hub: the
- * desktop app, later the M4 server) serves it, and the other (the phone, say) drives each sync:
+ * desktop app, the M4 server) serves it, and the other (the phone, say) drives each sync:
  * it fetches the hub's state, works out the merge, shows the preview, then applies its own side
  * and sends the hub its side (see `sync.ts`).
  *
- * Over HTTP, each endpoint is a POST of its request as JSON, answered with an `RpcResponse`, and
- * every call but `pair` carries the pairing's key as `Authorization: Bearer <key>`.
+ * Over HTTP, it goes by estuary-rpc's REST conventions (`rest.ts`): each endpoint a POST of its
+ * request as JSON, answered with the response as JSON (204 for none), or an error status with
+ * `{ status: 'error', message }`. Every call but `pair` carries the pairing's key as
+ * `Authorization: Bearer <key>`, as its metadata says (`authentication`).
  *
- * Files travel outside this API, as plain HTTP with the same key, so they stream rather than go
- * through JSON: `GET api/sync/files/<hash>` answers with the file's bytes, and `PUT` with the
- * bytes as the body stores them, refused unless they hash to `<hash>`. `missing` says which of
- * some files the hub lacks (see `syncFiles.ts`).
+ * Files stream rather than go through JSON, at `api/sync/files/<hash>` with the same key
+ * (`syncFilesMeta`): a GET answers with the file's bytes, and a PUT with the bytes as the body
+ * stores them, refused unless they hash to `<hash>`. `missing` says which of some files the hub
+ * lacks (see `syncFiles.ts`).
  */
 
 export interface PeerInfo {
@@ -105,21 +107,37 @@ export interface DoneRequest {
   at: string;
 }
 
+/** Calls that carry a pairing's key (`Authorization: Bearer <key>`), which the hub checks before answering. */
+const paired = { authentication: { type: 'bearer' as const, token: '' } };
+
 export const syncApiMeta = {
   sync: {
     /** Trades a one-time pairing code for a key. Handled by the hub's host (the desktop's main process). */
     pair: post<PairRequest, PairResult, SimpleMeta>('api/sync/pair'),
-    hello: post<null, PeerInfo, SimpleMeta>('api/sync/hello'),
-    state: post<StateRequest, StateResult, SimpleMeta>('api/sync/state'),
-    apply: post<ApplyRequest, ApplyResult, SimpleMeta>('api/sync/apply'),
+    hello: post<null, PeerInfo, SimpleMeta>('api/sync/hello', paired),
+    state: post<StateRequest, StateResult, SimpleMeta>('api/sync/state', paired),
+    apply: post<ApplyRequest, ApplyResult, SimpleMeta>('api/sync/apply', paired),
     /** Records a finished sync, for the hub's list of paired instances. */
-    done: post<DoneRequest, null, SimpleMeta>('api/sync/done'),
+    done: post<DoneRequest, null, SimpleMeta>('api/sync/done', paired),
     /** Which of these files (by hash) the hub doesn't have. Handled by the hub's host, which has its files. */
-    missing: post<{ hashes: string[] }, string[], SimpleMeta>('api/sync/missing'),
+    missing: post<{ hashes: string[] }, string[], SimpleMeta>('api/sync/missing', paired),
   },
 };
 
 export type SyncApi = typeof syncApiMeta;
+
+/**
+ * A hub's files, streamed by estuary-rpc's raw transport (see `syncFiles.ts`): a GET answers with
+ * the file's bytes (the client gets the `Response`), a PUT stores the body, refused unless it
+ * hashes to `hash`. Apart from the sync API since hubs that pass calls on to the page serve these
+ * themselves.
+ */
+export const syncFilesMeta = {
+  get: get<{ hash: string }, Response | void, SimpleMeta>('api/sync/files/:hash', { ...paired, transport: { transportType: TransportType.RAW } }),
+  put: put<{ hash: string }, Response | void, SimpleMeta>('api/sync/files/:hash', { ...paired, transport: { transportType: TransportType.RAW } }),
+};
+
+export type SyncFilesApi = typeof syncFilesMeta;
 
 /** What a pairing QR code holds: `nexlibris-pair:<address>#<code>`, e.g. `nexlibris-pair:http://192.168.0.11:47811#K3Q9-TX2M`. */
 export const PAIRING_PREFIX = 'nexlibris-pair:';

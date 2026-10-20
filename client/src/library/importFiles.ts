@@ -1,3 +1,4 @@
+import { libraryPlace } from './libraryFolder';
 import { createItem, LOCAL_USER, type Cover, type FileRef, type Item, type LibraryBackend, type Operation } from '@nexlibris/common';
 import { hasIsbn, normalizeIsbn } from '../isbn/isbn';
 import { CONVERTERS } from '../formats/convert/converters';
@@ -215,7 +216,9 @@ async function importBook(
       // Read the file once, since it's hashed, stored and parsed. Files the native app picked are already stored.
       const file = new File([await picked.file.arrayBuffer()], picked.file.name, { type: picked.file.type ?? '' });
       const candidate = { file, format };
-      const { hash, size } = picked.file.stored ?? (await backend.putFile(file));
+      // Stored by the native app in its own library, which isn't the account's when the library's there: sent on.
+      const already = libraryPlace().kind === 'cloud' ? undefined : picked.file.stored;
+      const { hash, size } = already ?? (await backend.putFile(file));
       if (knownHashes.has(hash)) {
         result.skipped.push({ name: file.name, reason: ALREADY_IN_LIBRARY });
         continue;

@@ -1,3 +1,4 @@
+import { hexColor } from '@nexlibris/common';
 import type { EpubierReader } from 'epubier';
 import { useEffect, useRef } from 'react';
 import styled from 'styled-components';
@@ -12,12 +13,14 @@ const Host = styled.div`
 `;
 
 /** EPUBs are read with epubier, which brings its own toolbar, including the back button. */
-export default function EpubViewer({ data, storageKey, position, onPosition, onClose }: ViewerProps) {
+export default function EpubViewer({ data, storageKey, position, onPosition, onClose, onColors }: ViewerProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
   const onPositionRef = useRef(onPosition);
   onPositionRef.current = onPosition;
+  const onColorsRef = useRef(onColors);
+  onColorsRef.current = onColors;
 
   useEffect(() => {
     let reader: EpubierReader | undefined;
@@ -31,6 +34,11 @@ export default function EpubViewer({ data, storageKey, position, onPosition, onC
         position,
         onLocationChange: ({ cfi, progress }) => onPositionRef.current?.(cfi, progress ?? undefined),
         onBackPressed: () => onCloseRef.current(),
+        // The theme picked in epubier's settings colours what's around it too (the title bar strip, the system bars).
+        onThemeChange: ({ background, dark }) => {
+          const hex = hexColor(background);
+          if (hex) onColorsRef.current?.({ background: hex, dark });
+        },
         styles: { accent: '#0d3b66', background: '#fdf8e5' },
       });
     });

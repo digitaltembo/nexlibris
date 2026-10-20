@@ -58,7 +58,7 @@ fun storageRoutes(base: String, storage: () -> PathStorage): Map<String, Route> 
  */
 fun usbFolderRoutes(
     folder: () -> PathStorage,
-    library: PathStorage,
+    library: () -> PathStorage,
     info: () -> JSONObject,
     choose: () -> JSONObject,
 ): Map<String, Route> {
@@ -67,8 +67,30 @@ fun usbFolderRoutes(
         "GET $base/info" to { _ -> info() },
         "POST $base/choose" to { _ -> choose() },
         "GET $base/list" to { b -> org.json.JSONArray(folder().list(b.getString("path"))) },
-        "POST $base/toFolder" to { b -> copyStoredFile(library, folder(), b.getString("hash")); null },
-        "POST $base/fromFolder" to { b -> copyStoredFile(folder(), library, b.getString("hash")); null },
+        "POST $base/toFolder" to { b -> copyStoredFile(library(), folder(), b.getString("hash")); null },
+        "POST $base/fromFolder" to { b -> copyStoredFile(folder(), library(), b.getString("hash")); null },
+    )
+}
+
+/** The library folder API (common/src/libraryFolderApi.ts), as Android serves it: the desktop app's, but for showing files. */
+fun libraryFolderRoutes(folders: LibraryFolderService): Map<String, Route> {
+    val base = "api/libraryFolder"
+    return mapOf(
+        "POST $base/location" to { _ -> folders.location() },
+        "POST $base/choose" to { _ -> folders.choose() },
+        "POST $base/move" to { b ->
+            val placed = b.optJSONObject("placed") ?: JSONObject()
+            folders.move(
+                b.optString("to").takeIf { b.has("to") && !b.isNull("to") },
+                b.optJSONObject("layout"),
+                placed.keys().asSequence().associateWith { placed.getString(it) },
+            )
+            null
+        },
+        "POST $base/status" to { _ -> folders.status() },
+        "POST $base/open" to { b -> folders.open(b.optString("path").takeIf { b.has("path") && !b.isNull("path") }); null },
+        "POST $base/moveFile" to { b -> folders.root.move(b.getString("from"), b.getString("to")); null },
+        "POST $base/prune" to { b -> folders.root.prune(b.getString("path")); null },
     )
 }
 
@@ -107,4 +129,33 @@ fun peerRoutes(peers: PeerService): Map<String, Route> = mapOf(
     },
     "POST api/peer/download" to { b -> peers.download(b.getString("address"), b.getString("key"), b.getString("hash")) },
     "POST api/peer/upload" to { b -> peers.upload(b.getString("address"), b.getString("key"), b.getString("hash")) },
+)
+
+/**
+ * The colours around the page (common/src/windowApi.ts): [setColors] paints behind the system bars and picks
+ * their icons' shade, given an opaque ARGB colour and whether it's dark.
+ */
+fun windowRoutes(setColors: (background: Int, dark: Boolean) -> Unit): Map<String, Route> = mapOf(
+    "POST api/window/setColors" to { b -> setColors(parseHexColor(b.getString("background")), b.getBoolean("dark")); null },
+)
+
+/** `#rrggbb` as an opaque ARGB colour. */
+fun parseHexColor(text: String): Int {
+    require(Regex("#[0-9a-fA-F]{6}").matches(text)) { "Not a #rrggbb colour: $text" }
+    return (0xFF000000 or text.substring(1).toLong(16)).toInt()
+}
+
+/** The local HTTP API (common/src/localHttpApi.ts). */
+fun localHttpRoutes(local: LocalHttpService): Map<String, Route> = mapOf(
+    "POST api/localHttp/stage" to { b -> local.stage(b.getString("token"), b.getString("data"), b.getBoolean("first")) },
+    "POST api/localHttp/fetch" to { b ->
+        local.fetch(
+            b.getString("url"),
+            b.getString("method"),
+            b.optJSONArray("headers") ?: org.json.JSONArray(),
+            if (b.isNull("body")) null else b.optString("body"),
+        )
+    },
+    "POST api/localHttp/read" to { b -> local.read(b.getString("token"), b.getLong("offset"), b.getInt("length")) },
+    "POST api/localHttp/close" to { b -> local.close(b.getString("token")) },
 )

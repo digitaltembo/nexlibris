@@ -70,29 +70,94 @@ async function loadUnrarWasm(): Promise<ArrayBuffer> {
   return (await fetch(url)).arrayBuffer();
 }
 
+type RarExtractor = Awaited<ReturnType<typeof import('node-unrar-js').createExtractorFromData>>;
+
+/**
+ * unrar's module is a singleton that calls back into whichever extractor was made last, so an extractor kept for
+ * reading pages later has to take it back each time.
+ */
+interface ExtractorInternals {
+  unrar: { extractor: unknown };
+  dataFiles: Record<string, unknown>;
+  getExtractedFileName(name: string): string;
+}
+
+/** Extracts the named files, handing each over as it comes and dropping the extractor's own copy of it. */
+function extractEach(
+  extractor: RarExtractor,
+  files: ((name: string) => boolean) | string[],
+  each: (name: string, data: Uint8Array) => void,
+) {
+  const internals = extractor as unknown as ExtractorInternals;
+  internals.unrar.extractor = extractor;
+  const wanted = Array.isArray(files) ? files : ({ name }: { name: string }) => files(name);
+  for (const f of extractor.extract({ files: wanted }).files) {
+    if (f.fileHeader.flags.directory || !f.extraction) continue;
+    each(f.fileHeader.name, f.extraction);
+    delete internals.dataFiles[internals.getExtractedFileName(f.fileHeader.name)];
+  }
+}
+
+const isWanted = (name: string) => !!imageType(name) || /(^|\/)comicinfo\.xml$/i.test(name);
+
 async function openCbr(data: Blob, options: ComicOptions): Promise<Comic> {
   const { createExtractorFromData } = await import('node-unrar-js');
   const wasmBinary = options.unrarWasm ?? (await loadUnrarWasm());
-  let files: { name: string; data: Uint8Array }[];
+  const fail = (e: unknown) => new ComicError(`Not a readable CBR: ${e instanceof Error ? e.message : String(e)}`);
+  let extractor: RarExtractor;
+  let names: string[];
+  let solid: boolean;
   try {
-    const extractor = await createExtractorFromData({ wasmBinary, data: await data.arrayBuffer() });
-    // RAR archives are often solid, so everything is extracted in one pass.
-    files = [...extractor.extract().files].flatMap((f) =>
-      f.fileHeader.flags.directory || !f.extraction ? [] : [{ name: f.fileHeader.name, data: f.extraction }],
-    );
+    extractor = await createExtractorFromData({ wasmBinary, data: await data.arrayBuffer() });
+    const list = extractor.getFileList();
+    solid = list.arcHeader.flags.solid;
+    names = [...list.fileHeaders].filter((h) => !h.flags.directory && isWanted(h.name)).map((h) => h.name);
   } catch (e) {
-    throw new ComicError(`Not a readable CBR: ${e instanceof Error ? e.message : String(e)}`);
+    throw fail(e);
   }
-  const pages = files
-    .filter((f) => imageType(f.name))
-    .map((f) => {
-      const mediaType = imageType(f.name)!;
-      const blob = new Blob([f.data as Uint8Array<ArrayBuffer>], { type: mediaType });
-      return { name: f.name, mediaType, load: async () => blob };
-    })
+  const infoName = names.find((name) => !imageType(name));
+  const pageNames = names.filter((name) => imageType(name));
+
+  let comicInfo: string | undefined;
+  let load: (name: string) => Promise<Blob>;
+  if (solid) {
+    // A solid archive's files can only be read in order, so everything is extracted in one pass, each file kept
+    // as a Blob (which the browser may keep out of memory) rather than as the extractor's bytes.
+    const blobs = new Map<string, Blob>();
+    try {
+      extractEach(extractor, isWanted, (name, bytes) => {
+        if (imageType(name)) blobs.set(name, new Blob([bytes as Uint8Array<ArrayBuffer>], { type: imageType(name) }));
+        else comicInfo = new TextDecoder().decode(bytes);
+      });
+    } catch (e) {
+      throw fail(e);
+    }
+    load = async (name) => blobs.get(name)!;
+  } else {
+    // Otherwise each page is extracted when it's asked for: comics run to hundreds of megabytes of images, too
+    // many to hold at once. The last few are kept, since a viewer asks for the next page ahead of time.
+    const extractOne = (name: string) => {
+      let bytes: Uint8Array | undefined;
+      extractEach(extractor, [name], (_, b) => (bytes = b));
+      if (!bytes) throw new ComicError(`${name} is missing from the CBR`);
+      return bytes;
+    };
+    if (infoName) comicInfo = new TextDecoder().decode(extractOne(infoName));
+    const recent = new Map<string, Blob>();
+    load = async (name) => {
+      let blob = recent.get(name);
+      if (!blob) {
+        blob = new Blob([extractOne(name) as Uint8Array<ArrayBuffer>], { type: imageType(name) });
+        recent.set(name, blob);
+        if (recent.size > 4) recent.delete(recent.keys().next().value!);
+      }
+      return blob;
+    };
+  }
+  const pages = pageNames
+    .map((name) => ({ name, mediaType: imageType(name)!, load: () => load(name) }))
     .sort(byPageOrder);
-  const info = files.find((f) => /(^|\/)comicinfo\.xml$/i.test(f.name));
-  return { pages, ...(info && { comicInfo: new TextDecoder().decode(info.data) }) };
+  return { pages, ...(comicInfo !== undefined && { comicInfo }) };
 }
 
 const CREATOR_ROLES: [field: string, role: string][] = [

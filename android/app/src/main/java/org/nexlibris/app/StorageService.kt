@@ -18,7 +18,7 @@ import java.util.Base64
  *
  * Not thread-safe; [NativeBridge] runs every call on one thread.
  */
-class StorageService(root: File) : PathStorage {
+class StorageService(root: File) : LibraryTree {
     private val root: File = root.canonicalFile
 
     init {
@@ -120,6 +120,43 @@ class StorageService(root: File) : PathStorage {
         if (!file.isFile) throw FileNotFoundException("That file isn’t stored here.")
         return file.inputStream()
     }
+
+    override fun listAll(path: String): List<String> = dir(path).list()?.sorted() ?: emptyList()
+
+    override fun isFolder(path: String): Boolean = dir(path).isDirectory
+
+    override fun open(path: String): InputStream? = resolve(path).takeIf { it.isFile }?.inputStream()
+
+    override fun writeStream(path: String, input: InputStream) = replace(resolve(path)) { temp ->
+        FileOutputStream(temp).use { out ->
+            input.copyTo(out)
+            out.fd.sync()
+        }
+    }
+
+    override fun move(from: String, to: String) {
+        val target = resolve(to)
+        target.parentFile?.mkdirs()
+        Files.move(resolve(from).toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+    }
+
+    override fun prune(path: String) {
+        var dir = resolve(path).parentFile
+        while (dir != null && dir != root) {
+            val names = dir.list() ?: return
+            if (names.any { it !in IGNORED_NAMES }) return
+            names.forEach { File(dir, it).delete() }
+            if (!dir.delete()) return
+            dir = dir.parentFile
+        }
+    }
+
+    override fun removeTree(path: String) {
+        if (path.isEmpty()) root.listFiles()?.forEach { it.deleteRecursively() } else resolve(path).deleteRecursively()
+    }
+
+    /** The folder for a path, "" being [root]. */
+    private fun dir(path: String): File = if (path.isEmpty()) root else resolve(path)
 
     /** The file for a library path, refusing anything that would leave [root]. */
     fun resolve(path: String): File {

@@ -12,6 +12,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.DocumentsContract
 import android.provider.OpenableColumns
 import android.util.Log
 import android.webkit.PermissionRequest
@@ -27,7 +28,9 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContract
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
+import androidx.core.content.edit
 import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updatePadding
 import androidx.webkit.WebViewAssetLoader
@@ -43,7 +46,8 @@ import java.util.concurrent.CompletableFuture
  * Hosts the web app in a WebView. The app is served from assets at
  * https://appassets.androidplatform.net (a real https origin, so modules,
  * workers and storage behave as in a browser), and its library is stored in the
- * app's files through [NativeBridge] rather than in the WebView's OPFS.
+ * app's files, or a folder the user picks ([LibraryFolderService]), through [NativeBridge] rather
+ * than in the WebView's OPFS.
  */
 class MainActivity : ComponentActivity() {
     private lateinit var webView: WebView
@@ -97,7 +101,7 @@ class MainActivity : ComponentActivity() {
 
     private lateinit var bluetoothHost: BluetoothHostService
 
-    /** The folder picker for the sync folder the bridge is waiting on, if any. */
+    /** The folder picker for the sync or library folder the bridge is waiting on, if any. */
     @Volatile
     private var pendingFolder: CompletableFuture<Uri?>? = null
     private val pickFolder = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
@@ -135,11 +139,21 @@ class MainActivity : ComponentActivity() {
             allowFileAccess = false
         }
 
-        val storage = StorageService(File(filesDir, "libraries/default"))
+        val syncFolders = SyncFolderService(contentResolver, getSharedPreferences("sync", MODE_PRIVATE), ::chooseSyncFolder)
+        val libraryPrefs = getSharedPreferences("library", MODE_PRIVATE)
+        val library = LibraryFolderService(
+            home = StorageService(File(filesDir, "libraries/default")),
+            folders = TreeFolders(contentResolver, ::chooseLibraryFolder) { setOfNotNull(syncFolders.tree()) },
+            chosen = object : LibraryFolderService.Setting {
+                override fun get() = libraryPrefs.getString("folder", null)
+                override fun set(value: String?) = libraryPrefs.edit { if (value == null) remove("folder") else putString("folder", value) }
+            },
+            reload = { runOnUiThread { webView.reload() } },
+        )
         val assetLoader = WebViewAssetLoader.Builder()
             .setDomain(APP_HOST)
             // Before "/", which would answer for these paths too.
-            .addPathHandler("/library/", LibraryFilesPathHandler(storage))
+            .addPathHandler("/library/", LibraryFilesPathHandler { library.root to library.placed })
             .addPathHandler("/", WebAppPathHandler(assets))
             .build()
 
@@ -196,17 +210,19 @@ class MainActivity : ComponentActivity() {
         }
 
         val saves = SaveService(File(cacheDir, "saves"), ::chooseSaveDestination)
-        val imports = ImportService(storage, ::chooseImportSources)
+        val imports = ImportService({ library.data }, ::chooseImportSources)
         bluetoothHost = BluetoothHostService(this, getSharedPreferences("sync", MODE_PRIVATE), ::prepareBluetooth)
-        val syncFolders = SyncFolderService(contentResolver, getSharedPreferences("sync", MODE_PRIVATE), ::chooseSyncFolder)
         bridge = NativeBridge(
             RpcRouter(
-                storageRoutes(storage),
+                storageRoutes("api/storage") { library.root },
+                libraryFolderRoutes(library),
                 saveRoutes(saves),
                 importRoutes(imports),
-                peerRoutes(PeerService(storage)),
+                peerRoutes(PeerService({ library.data })),
+                localHttpRoutes(LocalHttpService(File(cacheDir, "local-http"))),
                 bluetoothHostRoutes(bluetoothHost),
-                usbFolderRoutes(syncFolders::folder, storage, syncFolders::info, syncFolders::choose),
+                usbFolderRoutes(syncFolders::folder, { library.data }, syncFolders::info, syncFolders::choose),
+                windowRoutes { background, dark -> runOnUiThread { setBarColors(container, background, dark) } },
             ),
         )
         bluetoothHost.resume()
@@ -228,6 +244,15 @@ class MainActivity : ComponentActivity() {
 
         if (savedInstanceState == null || webView.restoreState(savedInstanceState) == null) {
             webView.loadUrl("https://$APP_HOST/")
+        }
+    }
+
+    /** Paints behind the system bars, which the page doesn't cover, in the page's colour, with icons to suit. */
+    private fun setBarColors(container: FrameLayout, background: Int, dark: Boolean) {
+        container.setBackgroundColor(background)
+        WindowCompat.getInsetsController(window, container).apply {
+            isAppearanceLightStatusBars = !dark
+            isAppearanceLightNavigationBars = !dark
         }
     }
 
@@ -295,12 +320,19 @@ class MainActivity : ComponentActivity() {
     }
 
     /** Shows the folder picker for the sync folder and waits for it; called on the bridge's thread. */
-    private fun chooseSyncFolder(): Uri? {
+    private fun chooseSyncFolder(): Uri? = chooseFolder(null)
+
+    /** Shows the folder picker for the library's folder, starting in Documents (where one can be made), and waits for it. */
+    private fun chooseLibraryFolder(): Uri? =
+        chooseFolder(DocumentsContract.buildDocumentUri("com.android.externalstorage.documents", "primary:Documents"))
+
+    /** Shows the system's folder picker, at [initial] if given, and waits for it; called on the bridge's thread. */
+    private fun chooseFolder(initial: Uri?): Uri? {
         val choice = CompletableFuture<Uri?>()
         runOnUiThread {
             pendingFolder?.complete(null)
             pendingFolder = choice
-            pickFolder.launch(null)
+            pickFolder.launch(initial)
         }
         return choice.get()
     }

@@ -11,6 +11,7 @@
     "typecheck": "tsc -p ."
   },
   "dependencies": {
-    "estuary-rpc": "^1.0.6"
+    "estuary-rpc": "file:../../estuary-rpc/estuary-rpc",
+    "estuary-rpc-client": "file:../../estuary-rpc/estuary-rpc-client"
   }
 }

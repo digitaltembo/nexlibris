@@ -23,15 +23,32 @@ class LibraryFilesPathHandlerTest {
         File(root, "library.json").writeText("{}")
         temp.newFile("secret").writeText("outside")
 
-        assertEquals("book", storedFile(storage, "files/ab/abcd")?.readText())
-        assertEquals("book", storedFile(storage, "files/ab/abcd?v=1")?.readText())
-        assertNull(storedFile(storage, "files/ab/missing"))
-        assertNull(storedFile(storage, "files/ab"))
-        assertEquals("thumb", storedFile(storage, "local/thumbs/ab/abcd.jpg")?.readText())
-        assertNull(storedFile(storage, "local/sync-folder.json"))
-        assertNull(storedFile(storage, "local/thumbs/../sync-folder.json"))
-        assertNull(storedFile(storage, "library.json"))
-        assertNull(storedFile(storage, "files/../library.json"))
-        assertNull(storedFile(storage, "files/../../secret"))
+        assertEquals("book", servedFile(storage, false, "files/ab/abcd")?.use { it.readBytes().decodeToString() })
+        assertEquals("book", servedFile(storage, false, "files/ab/abcd?v=1")?.use { it.readBytes().decodeToString() })
+        assertNull(servedFile(storage, false, "files/ab/missing"))
+        assertNull(servedFile(storage, false, "files/ab"))
+        assertEquals("thumb", servedFile(storage, false, "local/thumbs/ab/abcd.jpg")?.use { it.readBytes().decodeToString() })
+        assertNull(servedFile(storage, false, "local/sync-folder.json"))
+        assertNull(servedFile(storage, false, "local/thumbs/../sync-folder.json"))
+        assertNull(servedFile(storage, false, "library.json"))
+        assertNull(servedFile(storage, false, "files/../library.json"))
+        assertNull(servedFile(storage, false, "files/../../secret"))
+    }
+
+    @Test
+    fun servesBooksPlacedInAFolderButNotItsData() {
+        val root = temp.newFolder("placed")
+        val storage = StorageService(root)
+        File(root, "Frank Herbert").mkdirs()
+        File(root, "Frank Herbert/Dune.epub").writeText("book")
+        File(root, ".nexlibris/files/ab").mkdirs()
+        File(root, ".nexlibris/files/ab/abcd").writeText("waiting")
+        File(root, ".nexlibris/library.json").writeText("{}")
+        assertEquals("book", servedFile(storage, true, "Frank Herbert/Dune.epub")?.use { it.readBytes().decodeToString() })
+        assertEquals("waiting", servedFile(storage, true, ".nexlibris/files/ab/abcd")?.use { it.readBytes().decodeToString() })
+        assertNull(servedFile(storage, true, ".nexlibris/library.json"))
+        assertNull(servedFile(storage, true, "Frank Herbert/.hidden"))
+        assertNull(servedFile(storage, true, "../secret"))
+        assertNull(servedFile(storage, false, "Frank Herbert/Dune.epub"))
     }
 }

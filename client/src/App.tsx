@@ -14,7 +14,6 @@ import { CategoriesDialog } from './components/CategoriesDialog';
 import { CleanupDialog } from './components/CleanupDialog';
 import { BackupDialog } from './components/BackupDialog';
 import { LibraryFolderDialog } from './components/LibraryFolderDialog';
-import { canChooseLibraryFolder } from './library/libraryFolder';
 import { AppMenu, MenuButton, type MenuEntry } from './components/AppMenu';
 import { ConnectionsDialog } from './components/ConnectionsDialog';
 import { FiltersDialog } from './components/FiltersDialog';
@@ -52,7 +51,11 @@ import { useBluetoothHosting } from './sync/bluetoothHost';
 import { useSyncHosting } from './sync/hosting';
 import { NARROW } from './styles/GlobalStyle';
 import { besidePanel, Button, Muted, NoticeBox, Tag, TagButton, TagLabel, TagList, TagRemove } from './styles/ui';
+import { followWindowColors } from './styles/windowColors';
 import { openReaderWindow, readsInWindows, serveReaderWindows } from './library/readerWindow';
+import { choosesServer, useServerSession } from './library/account';
+import { AccountDialog } from './components/AccountDialog';
+import type { PairHow } from './components/InstanceSync';
 
 /**
  * The top bar and the breadcrumbs, held at the top while the books scroll under them. Its height is
@@ -226,7 +229,13 @@ export function App() {
   const folderInputRef = useRef<HTMLInputElement>(null);
   const [backingUp, setBackingUp] = useState(false);
   const [choosingFolder, setChoosingFolder] = useState(false);
-  const [managingConnections, setManagingConnections] = useState(false);
+  const [managingConnections, setManagingConnections] = useState<boolean | PairHow>(false);
+  const [accountOpen, setAccountOpen] = useState(false);
+  /** The account on this instance's server: the one the page came from, or in the apps the one chosen (none from a static host). */
+  const session = useServerSession();
+  // The apps can always choose a server; a page has accounts only if it came from one.
+  const hasAccounts = !!session || choosesServer();
+  const accountLabel = session && !session.account ? 'Sign in…' : 'Account…';
   const [addingByIsbn, setAddingByIsbn] = useState(false);
   const [selectionState, setSelectionState] = useState<SelectionState>(NO_SELECTION);
   const { selection, previewId } = selectionState;
@@ -265,7 +274,7 @@ export function App() {
   const browsed = useMemo(() => browse(matching, path, categories, { ratings }, extras), [matching, path, categories, ratings, extras]);
   // The breadcrumbs name catalog pages as they're read.
   useSyncExternalStore(onTitles, titlesVersion);
-  /** The books shown: a browse level's, in its own order where it has one (series, recent), else the chosen sort. */
+  /** The books shown: a browse level's, in its own order where it has one (series, reading), else the chosen sort. */
   const ownOrder = browsed.kind === 'books' && !!browsed.ordered && !leafSort;
   const shownSort = ownOrder ? undefined : (leafSort ?? (browsed.kind === 'books' ? browsed.sort : undefined) ?? sort);
   const items = useMemo(
@@ -338,7 +347,8 @@ export function App() {
   useBackToClose(cleaningUp, () => setCleaningUp(false));
   useBackToClose(backingUp, () => setBackingUp(false));
   useBackToClose(choosingFolder, () => setChoosingFolder(false));
-  useBackToClose(managingConnections, () => setManagingConnections(false));
+  useBackToClose(managingConnections !== false, () => setManagingConnections(false));
+  useBackToClose(accountOpen, () => setAccountOpen(false));
   useBackToClose(editingFilters, () => setEditingFilters(false));
   useBackToClose(searching !== false, () => setSearching(false));
   useBackToClose(reading !== undefined, closeReader);
@@ -422,7 +432,7 @@ export function App() {
   const selectAll = () => setSelectionState({ selection: new Set(items.map((i) => i.id)) });
   const selectAllRef = useRef(selectAll);
   selectAllRef.current = selectAll;
-  const overlayOpen = reading !== undefined || settingsOpen || menuOpen || backingUp || choosingFolder || managingConnections || editingCategories || searching;
+  const overlayOpen = reading !== undefined || settingsOpen || menuOpen || backingUp || choosingFolder || managingConnections !== false || accountOpen || editingCategories || searching;
 
   // Cmd/Ctrl+A selects all visible items, except where it should select text.
   useEffect(() => {
@@ -534,7 +544,8 @@ export function App() {
     'separator',
     { label: 'Connections…', onSelect: () => setManagingConnections(true) },
     { label: 'Backup…', onSelect: () => setBackingUp(true) },
-    ...(canChooseLibraryFolder() ? [{ label: 'Library folder…', onSelect: () => setChoosingFolder(true) }] : []),
+    { label: 'Library folder…', onSelect: () => setChoosingFolder(true) },
+    ...(hasAccounts ? [{ label: accountLabel, onSelect: () => setAccountOpen(true) }] : []),
     'separator',
     { label: 'Browse categories…', onSelect: () => setEditingCategories(true) },
     { label: 'Clean up library…', onSelect: () => setCleaningUp(true) },
@@ -552,6 +563,7 @@ export function App() {
         { type: 'separator' },
         { id: 'backup', label: 'Backup…', run: () => setBackingUp(true) },
         { id: 'libraryFolder', label: 'Library Folder…', run: () => setChoosingFolder(true) },
+        ...(hasAccounts ? [{ id: 'account', label: accountLabel.replace('Sign in', 'Sign In'), run: () => setAccountOpen(true) }] : []),
         { type: 'separator' },
         { id: 'settings', label: 'Settings…', accelerator: 'CmdOrCtrl+,', appMenu: true, run: () => setSettingsOpen(true) },
       ],
@@ -601,7 +613,14 @@ export function App() {
             { id: 'sort:desc', label: 'Descending', kind: 'checkbox', checked: sort.desc, run: () => setSort({ ...sort, desc: !sort.desc }) },
           ],
         },
-        { id: 'columns', label: 'Columns…', run: () => setSettingsOpen(true) },
+        {
+          id: 'columns',
+          label: 'Columns…',
+          run: () => {
+            setView('list');
+            setSettingsOpen(true);
+          },
+        },
         {
           label: 'Appearance',
           submenu: APPEARANCES.map((a) => ({
@@ -630,7 +649,6 @@ export function App() {
         { id: 'go:up', label: 'Up a Level', accelerator: 'CmdOrCtrl+[', enabled: path.length > 0, run: () => navigate(parentPath(path)) },
         { type: 'separator' },
         { id: 'go:all', label: 'All Books', run: () => navigate(ALL_BOOKS) },
-        { id: 'go:recent', label: 'Recent Books', run: () => navigate(['recent']) },
         { id: 'go:reading', label: 'Currently Reading', run: () => navigate(['reading']) },
         { id: 'go:authors', label: 'Authors', run: () => navigate(['authors']) },
         { id: 'go:series', label: 'Series', run: () => navigate(['series']) },
@@ -656,6 +674,7 @@ export function App() {
   ];
   useMenuBar(menuBar ? menuBarMenus : []);
   useEffect(() => followTitleBar(), []);
+  useEffect(() => followWindowColors(), []);
 
   const collection: CollectionProps = {
     items,
@@ -765,7 +784,7 @@ export function App() {
             {!textQuery && (path.length === 0 || path[0] === 'category') && (
               <CrumbAction onClick={() => setEditingCategories(true)}>Edit categories…</CrumbAction>
             )}
-            {!textQuery && <ViewSwitcher view={view} onView={setView} />}
+            {!textQuery && <ViewSwitcher view={view} onView={setView} onSettings={() => setSettingsOpen(true)} />}
           </Breadcrumbs>
         )}
       </Header>
@@ -911,8 +930,22 @@ export function App() {
         />
       )}
       {backingUp && <BackupDialog onClose={() => setBackingUp(false)} />}
-      {choosingFolder && <LibraryFolderDialog onClose={() => setChoosingFolder(false)} />}
-      {managingConnections && <ConnectionsDialog onClose={() => setManagingConnections(false)} />}
+      {choosingFolder && (
+        <LibraryFolderDialog
+          onClose={() => setChoosingFolder(false)}
+          onAccount={() => (setChoosingFolder(false), setAccountOpen(true))}
+          onSyncWithAccount={() => (setChoosingFolder(false), setManagingConnections('server'))}
+        />
+      )}
+      {managingConnections !== false && (
+        <ConnectionsDialog
+          onClose={() => setManagingConnections(false)}
+          {...(typeof managingConnections === 'string' && { pair: managingConnections })}
+        />
+      )}
+      {accountOpen && (
+        <AccountDialog onClose={() => setAccountOpen(false)} onLibraryFolder={() => (setAccountOpen(false), setChoosingFolder(true))} />
+      )}
       {searching && (
         <SearchDialog
           query={query}

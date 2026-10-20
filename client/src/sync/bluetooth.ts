@@ -12,14 +12,14 @@ import { inAndroidApp } from '../backends/androidBridge';
 /**
  * Reaching a hub over Bluetooth (see `common/src/bluetoothApi.ts`): the Android app, hosting sync,
  * connected to with Web Bluetooth (Chrome, Edge and the desktop app). Each sync call is a message
- * (`syncMessage.ts`); `linkFetch` makes `fetch` calls that way, so `httpSend` and `httpHubFiles`
+ * (`syncMessage.ts`); `linkFetch` makes `fetch` calls that way, so `httpSyncClient` and `httpHubFiles`
  * work over it unchanged.
  */
 
 /** Pairings over Bluetooth have addresses `bluetooth:<the phone's name>`. */
 export const BLUETOOTH_PREFIX = 'bluetooth:';
 export const isBluetoothAddress = (address: string) => address.startsWith(BLUETOOTH_PREFIX);
-/** What `httpSend` and `httpHubFiles` are given as the hub's address; the link already leads there. */
+/** What `httpSyncClient` and `httpHubFiles` are given as the hub's address; the link already leads there. */
 export const BLUETOOTH_BASE = 'http://bluetooth.invalid';
 
 /** How long a response may go without a chunk arriving before the call is given up. */
@@ -150,7 +150,7 @@ export async function connect(device: BluetoothDeviceLike): Promise<BluetoothLin
   };
 }
 
-/** `fetch` over a link, for `httpSend` and `httpHubFiles` with `BLUETOOTH_BASE` as the address. */
+/** `fetch` over a link, for `httpSyncClient` and `httpHubFiles` with `BLUETOOTH_BASE` as the address. */
 export const linkFetch = (link: BluetoothLink) => messageFetch((message) => link.exchange(message));
 
 /** Links open this session, by hub origin, so a sync and the files fetched when books open reuse them. */

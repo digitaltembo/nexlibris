@@ -4,7 +4,7 @@ import data from './fixtures/dune-data.json';
 import edition from './fixtures/dune-edition.json';
 import series from './fixtures/dune-series.json';
 import work from './fixtures/dune-work.json';
-import { fetchCover, itemFromBook, lookupIsbn, parseSeries, publishedDate, tagsFrom } from './openLibrary';
+import { fetchCover, findCovers, itemFromBook, lookupIsbn, parseSeries, publishedDate, tagsFrom } from './openLibrary';
 
 /** Open Library as recorded (trimmed responses for Dune), plus a cover; no network. */
 function openLibrary(responses: Record<string, unknown> = {}) {
@@ -87,6 +87,42 @@ describe('Open Library lookup', () => {
   it('ignores Open Library’s placeholder for a missing cover', async () => {
     const tiny = (async () => new Response(new Uint8Array(43), { headers: { 'Content-Type': 'image/gif' } })) as typeof fetch;
     expect(await fetchCover('https://covers.openlibrary.org/b/id/1-L.jpg', tiny)).toBeUndefined();
+  });
+
+  it('finds covers by ISBN and by title and author, each once', async () => {
+    const { fetchFn, requested } = openLibrary({
+      '/search.json?title=Dune&fields=cover_i%2Ctitle%2Cfirst_publish_year&limit=20&author=Frank+Herbert': {
+        docs: [
+          { cover_i: 15110282, title: 'Dune', first_publish_year: 1965 },
+          { cover_i: 11481354, title: 'Dune', first_publish_year: 1965 },
+          { title: 'Dune (no cover)' },
+          { cover_i: -1, title: 'Dune Messiah' },
+        ],
+      },
+    });
+    const covers = await findCovers({ isbns: ['978-0-441-17271-9'], title: 'Dune', authors: ['Frank Herbert'] }, fetchFn);
+    expect(covers).toEqual([
+      {
+        url: 'https://covers.openlibrary.org/b/id/15110282-L.jpg',
+        preview: 'https://covers.openlibrary.org/b/id/15110282-M.jpg',
+        label: 'ISBN 9780441172719',
+      },
+      {
+        url: 'https://covers.openlibrary.org/b/id/11481354-L.jpg',
+        preview: 'https://covers.openlibrary.org/b/id/11481354-M.jpg',
+        label: 'Dune, 1965',
+      },
+    ]);
+    expect(requested).toHaveLength(2);
+  });
+
+  it('finds covers when one lookup fails, and throws when Open Library can’t be reached', async () => {
+    const { fetchFn } = openLibrary();
+    expect(await findCovers({ isbns: ['9780441172719'], title: 'Dune', authors: [] }, fetchFn)).toHaveLength(1);
+    const offline = (async () => {
+      throw new TypeError('Failed to fetch');
+    }) as typeof fetch;
+    await expect(findCovers({ isbns: [], title: 'Dune', authors: [] }, offline)).rejects.toThrow('Couldn’t reach Open Library (Failed to fetch).');
   });
 
   it('tidies dates, series and subjects', () => {

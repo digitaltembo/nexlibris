@@ -42,6 +42,18 @@ describe.each(['cbz', 'cbr'] as const)('%s', (format) => {
   });
 });
 
+it('reads the pages of a CBR opened before another', async () => {
+  const sample = await fixture('sample.cbr');
+  const first = await openComic('cbr', sample, { unrarWasm: await unrarWasm() });
+  const firstPage = await first.pages[2]!.load();
+  await openComic('cbr', sample, { unrarWasm: await unrarWasm() });
+  // Pages are extracted when asked for, after another archive has taken unrar's (single) module.
+  const again = await first.pages[1]!.load();
+  expect(again.type).toBe('image/png');
+  expect(again.size).toBeGreaterThan(0);
+  expect(await first.pages[2]!.load()).toBe(firstPage);
+});
+
 it('rejects archives that are not comics', async () => {
   await expect(openComic('cbz', new Blob(['nope']))).rejects.toThrow(/Not a valid CBZ/);
   await expect(openComic('cbr', new Blob(['nope']), { unrarWasm: await unrarWasm() })).rejects.toThrow(/Not a readable CBR/);

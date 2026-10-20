@@ -1,30 +1,31 @@
-import {
-  createMessageClient,
-  httpSend,
-  peerApiMeta,
-  syncApiMeta,
-  unwrapSyncResponse,
-  type RpcSend,
-  type SyncClient,
-} from '@nexlibris/common';
+import { createMessageClient, httpSyncClient, peerApiMeta, type SyncClient } from '@nexlibris/common';
 import { androidTransport, inAndroidApp } from '../backends/androidBridge';
 import { inDesktopApp } from '../backends/desktopBridge';
+import { serverConnection, serverUrl } from '../library/account';
 
 /**
- * Reaching a sync hub (the desktop app) from this instance. The Android app's page is served over
- * https and may not call a plain-http address, so the app makes the call (the peer API); a browser
- * calls it with `fetch`.
+ * Reaching a sync hub (the desktop app, or the server) from this instance. The Android app's page
+ * is served over https and may not call a plain-http address, so the app makes the call (the peer
+ * API, which adds the key), given to estuary-rpc-client as its `fetch`; a browser calls it with `fetch`.
  */
-export function hubSend(address: string, key?: string): RpcSend {
-  if (!inAndroidApp()) return httpSend(address, key);
+export function hubClient(address: string, key?: string): SyncClient {
+  // The desktop app reaches its server through its main process, as it does for its account.
+  const server = isOwnServer(address) && inDesktopApp() ? serverConnection() : undefined;
+  if (server) return httpSyncClient(server.base ?? address, key, server.fetch);
+  if (!inAndroidApp()) return httpSyncClient(address, key);
   const peer = createMessageClient(peerApiMeta, androidTransport()).peer;
-  return async (request) => {
-    const { status, text } = await peer.call({ address, url: request.url, ...(key && { key }), body: JSON.stringify(request.body ?? null) });
-    return unwrapSyncResponse(status, text);
+  const relay: typeof fetch = async (input, init) => {
+    const url = new URL(String(input));
+    const { status, text } = await peer.call({
+      address,
+      url: `${url.pathname.slice(1)}${url.search}`,
+      ...(key && { key }),
+      body: typeof init?.body === 'string' ? init.body : 'null',
+    });
+    return new Response(status === 204 ? null : text, { status });
   };
+  return httpSyncClient(address, key, relay);
 }
-
-export const hubClient = (address: string, key?: string): SyncClient => createMessageClient(syncApiMeta, hubSend(address, key)).sync;
 
 /**
  * Whether this instance can sync with a hub over the network: the Android app can, and so can a
@@ -43,4 +44,26 @@ export function instanceName(): string {
   if (inAndroidApp()) return 'Android device';
   const browser = /Firefox\//.test(ua) ? 'Firefox' : /Edg\//.test(ua) ? 'Edge' : /Chrome\//.test(ua) ? 'Chrome' : /Safari\//.test(ua) ? 'Safari' : 'A browser';
   return `${browser} on ${/Mac OS X/.test(ua) ? 'a Mac' : /Windows/.test(ua) ? 'Windows' : /Linux/.test(ua) ? 'Linux' : 'this computer'}`;
+}
+
+/**
+ * Whether this instance can sync with its server (M4), whatever the page's scheme: a page's own
+ * origin is always reachable, and the apps reach theirs. Only with an account there does it pair
+ * with it (`PairServer`).
+ */
+export const canSyncWithServer = () =>
+  inAndroidApp() || inDesktopApp() || (typeof location !== 'undefined' && /^https?:$/.test(location.protocol));
+
+/** Whether a pairing is with this instance's server (`account.ts`): the page's own, or the one an app chose. */
+export const isOwnServer = (address: string) => address === serverUrl();
+
+/**
+ * The sync API on this instance's server, for pairing with it: called as the account is (signed in
+ * by the session, which pairs without a code).
+ */
+export function ownServerClient(): { address: string; client: SyncClient } {
+  const address = serverUrl();
+  const server = serverConnection();
+  if (!address || !server) throw new Error('Choose a nexlibris server first (Account…).');
+  return { address, client: httpSyncClient(server.base ?? address, undefined, server.fetch) };
 }

@@ -5,7 +5,7 @@ import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { appFile } from './appProtocol';
 import { storeStream } from './importService';
-import { folderHolds, moveLibrary, placedFile, pruneWithin } from './libraryFolder';
+import { fileToShow, folderHolds, moveLibrary, placedFile, pruneWithin } from './libraryFolder';
 
 const tempDir = () => realpathSync(mkdtempSync(join(tmpdir(), 'nexlibris-folder-')));
 const hashA = 'a'.repeat(64);
@@ -109,6 +109,15 @@ describe('moving the library', () => {
     write(join(root, 'A', 'keep.txt'), '');
     await pruneWithin(root, 'A/B/gone.epub');
     expect(readdirSync(join(root, 'A'))).toEqual(['keep.txt']);
+  });
+
+  it('shows only files in the library’s folder', async () => {
+    const root = tempDir();
+    write(join(root, 'Frank Herbert', 'Dune.epub'), 'spice');
+    expect(await fileToShow(root, 'Frank Herbert/Dune.epub')).toBe(join(root, 'Frank Herbert', 'Dune.epub'));
+    await expect(fileToShow(root, 'Frank Herbert/Gone.epub')).rejects.toThrow();
+    await expect(fileToShow(root, 'Frank Herbert')).rejects.toThrow();
+    await expect(fileToShow(root, '../outside.epub')).rejects.toThrow();
   });
 
   it('serves the books placed in a folder, and its thumbnails, but not its data', () => {

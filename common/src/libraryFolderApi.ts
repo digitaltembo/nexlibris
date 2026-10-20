@@ -3,14 +3,16 @@ import type { FileLayout } from './placedLibrary';
 import type { FileHash } from './types';
 
 /**
- * Where the desktop app keeps the library: its data folder (the default), or a folder the user
- * chose, with the books where the layout says (`placedLibrary.ts`). Moving the library between
- * them happens in the main process, which can move files without copying them; the page polls
- * `status` meanwhile. Desktop only: the browser does this itself, with folder handles.
+ * Where the desktop or Android app keeps the library: its own storage (the default; the desktop
+ * app's data folder, Android's private storage), or a folder the user chose, with the books where
+ * the layout says (`placedLibrary.ts`). Moving the library between them happens in the app (the
+ * desktop app's main process, which can move files without copying them; Android, which copies
+ * them); the page polls `status` meanwhile. A browser does this itself, with folder handles.
+ * Showing a file in the system's file manager is the desktop app's only.
  */
 
 export interface LibraryLocation {
-  /** The folder, as the system shows it. */
+  /** The folder, as the system shows it (on Android, "" for the app's own storage). */
   path: string;
   /** Whether it's the app's own data folder. */
   isDefault: boolean;
@@ -18,10 +20,15 @@ export interface LibraryLocation {
   placed: boolean;
   /** Whether the data folder has a library, when this isn't it (one left there by opening another). */
   defaultHasLibrary: boolean;
+  /** A folder the library was in that the app may no longer use, so it opened its own storage instead (Android). */
+  lost?: string;
 }
 
 export interface FolderChoice {
+  /** What names the folder to `move` and `open`: its path, or on Android its tree URI. */
   path: string;
+  /** Where it is, as the user knows it, when that isn't `path` (Android: e.g. "Documents/Books"). */
+  name?: string;
   /** What's there already: a nexlibris library (opened rather than moved into), other files, or nothing. */
   holds: 'library' | 'files' | 'nothing';
 }
@@ -56,6 +63,8 @@ export const libraryFolderApiMeta = {
     /** `Storage.move` and `prune` in the library's folder. */
     moveFile: post<{ from: string; to: string }, null, SimpleMeta>('api/libraryFolder/moveFile'),
     prune: post<{ path: string }, null, SimpleMeta>('api/libraryFolder/prune'),
+    /** Shows a file of the library's folder (`path` in it) in the system's file manager, selected. */
+    showFile: post<{ path: string }, null, SimpleMeta>('api/libraryFolder/showFile'),
   },
 };
 

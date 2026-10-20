@@ -11,7 +11,7 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** Reads the selected books from the library, as the app does, so edits show (type a tag or creator and Remove). */
+/** Reads the selected books from the library, as the app does, so edits show (type a tag or author, completed from the library's, and Add). */
 function Live(args: Parameters<typeof BulkEditor>[0]) {
   const { library } = useLibrary();
   const items = args.items.map((item) => library.items[item.id]).filter((item) => item !== undefined);
@@ -19,3 +19,14 @@ function Live(args: Parameters<typeof BulkEditor>[0]) {
 }
 
 export const ThreeBooks: Story = { render: (args) => <Live {...args} /> };
+
+/** More than 15 different tags and creators: they're typed to remove, completed from the selection's, instead of shown as chips. */
+export const ManyTagsAndCreators: Story = {
+  args: {
+    items: sampleItems.slice(0, 3).map((item, n) => ({
+      ...item,
+      tags: Array.from({ length: 6 }, (_, k) => `Topic ${n * 6 + k + 1}`),
+      creators: Array.from({ length: 6 }, (_, k) => ({ name: `Contributor ${n * 6 + k + 1}`, role: 'aut' })),
+    })),
+  },
+};

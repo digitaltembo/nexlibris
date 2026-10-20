@@ -53,13 +53,16 @@ describe('a library in a folder of the user’s', () => {
     await backend.place();
     expect(root.allPaths()).toContain('Frank Herbert/Dune Messiah.epub');
     expect(root.allPaths()).not.toContain('Frank Herbert/Dune.epub');
-
     const hash = dune.files[0]!.hash;
+    expect(await backend.filePath(hash)).toBe('Frank Herbert/Dune Messiah.epub');
+
     await backend.apply([{ type: 'detachFile', id: dune.id, hash }]);
     await backend.place();
     expect(root.allPaths()).toContain(`.nexlibris/files/${hash.slice(0, 2)}/${hash}`);
+    expect(await backend.filePath(hash)).toBe(`.nexlibris/files/${hash.slice(0, 2)}/${hash}`);
     await backend.deleteFile(hash);
     expect(await backend.hasFile(hash)).toBe(false);
+    expect(await backend.filePath(hash)).toBeUndefined();
   });
 
   it('swaps two books whose paths each want the other’s', async () => {

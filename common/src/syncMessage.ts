@@ -85,7 +85,7 @@ export class MessageAssembler {
 
 /**
  * A `fetch` that makes each call as a message over `exchange` (one request message in, one
- * response message out), for `httpSend` and `httpHubFiles`. The URL's host is ignored: only its
+ * response message out), for `httpSyncClient` and `httpHubFiles`. The URL's host is ignored: only its
  * path is sent, as the link already leads to the hub.
  */
 export function messageFetch(exchange: (message: Uint8Array) => Promise<Uint8Array>): typeof fetch {
@@ -97,6 +97,7 @@ export function messageFetch(exchange: (message: Uint8Array) => Promise<Uint8Arr
     const body = init?.body == null ? new Uint8Array() : new Uint8Array(await new Response(init.body).arrayBuffer());
     const header: SyncMessageRequest = { method, path: url.pathname.replace(/^\/+/, ''), ...(key && { key }) };
     const reply = decodeMessage<SyncMessageResponse>(await exchange(encodeMessage(header, body)));
-    return new Response(reply.body, { status: reply.header.status });
+    // A 204 (an estuary-rpc reply with no response) may not have a body, even an empty one.
+    return new Response(reply.header.status === 204 ? null : reply.body, { status: reply.header.status });
   };
 }

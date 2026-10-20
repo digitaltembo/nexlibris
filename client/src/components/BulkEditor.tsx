@@ -1,15 +1,20 @@
 import { isSourceConnection } from '../catalogs/sources';
-import { LOCAL_USER, userData, type Item, type Operation } from '@nexlibris/common';
-import { useState } from 'react';
+import { LOCAL_USER, userData, type Device, type Item, type Operation } from '@nexlibris/common';
+import { useMemo, useState } from 'react';
 import styled from 'styled-components';
 import { addToDevice, deviceItems } from '../devices/selection';
+import { isDevice, type DeviceType } from '../devices/types';
+import { connectionType } from '../plugins';
 import { deleteItems, removeFormat } from '../library/freeFiles';
 import { useLibrary } from '../library/LibraryContext';
 import { addCreatorOps, parseTags, removeCreatorOps, removeTagsOps } from '../library/bulkEdit';
+import { creatorsIn, tagsIn } from '../library/completion';
 import { textToMetadata } from '../library/metadataText';
 import { DeleteButton } from './DeleteButton';
 import { formatLabel } from './ItemFiles';
+import { SyncDevice } from './ConnectionsDialog';
 import { StarRating } from './StarRating';
+import { CompletionInput } from './CompletionInput';
 import {
   Button,
   Muted,
@@ -42,6 +47,13 @@ const Chips = styled(TagList)`
   margin-bottom: 8px;
 `;
 
+const RemoveRow = styled(Row)`
+  margin-bottom: 8px;
+`;
+
+/** Past this many different tags or creators, the selection's aren't shown as chips but typed to remove. */
+const MAX_CHIPS = 15;
+
 interface Props {
   items: Item[];
   /** Closes the panel, leaving the selection. */
@@ -69,17 +81,25 @@ export function BulkEditor({ items, onClose, onDeleted }: Props) {
   const { library, apply, backend } = useLibrary();
   const { ratings } = userData(library);
   const [newTags, setNewTags] = useState('');
+  const [oldTags, setOldTags] = useState('');
   const [newCreator, setNewCreator] = useState('');
+  const [oldCreator, setOldCreator] = useState('');
   const [field, setField] = useState({ key: '', value: '' });
   /** What the last removal by name did, shown in its section. */
   const [note, setNote] = useState<{ section: 'tags' | 'creators' | 'files'; text: string }>();
   const [format, setFormat] = useState('');
+  /** A reader the selected books are being sent to, alone. */
+  const [sendingTo, setSendingTo] = useState<{ device: Device; type: DeviceType }>();
 
   const count = items.length;
   // Catalogs browsed on a server don't take books.
   const devices = Object.values(library.devices ?? {}).filter((d) => !isSourceConnection(d));
   const tags = tally(items, (i) => i.tags);
+  const libraryTags = useMemo(() => tagsIn(Object.values(library.items)), [library.items]);
+  const onAll = tags.filter(([, n]) => n === count).map(([tag]) => tag);
   const creators = tally(items, (i) => i.creators.map((c) => c.name));
+  const libraryCreators = useMemo(() => creatorsIn(Object.values(library.items)), [library.items]);
+  const creatorOfAll = creators.filter(([, n]) => n === count).map(([name]) => name);
   const fields = tally(items, (i) => Object.keys(i.metadata));
   const formats = tally(items, (i) => i.files.map((f) => f.format));
   const chosenFormat = formats.some(([f]) => f === format) ? format : (formats[0]?.[0] ?? '');
@@ -105,10 +125,10 @@ export function BulkEditor({ items, onClose, onDeleted }: Props) {
   };
 
   const removeTags = () => {
-    const removed = parseTags(newTags);
+    const removed = parseTags(oldTags);
     if (!removed.length) return;
     report('tags', removeTagsOps(items, removed), `Removed ${removed.join(', ')} from`, `None of the selected items are tagged ${removed.join(' or ')}.`);
-    setNewTags('');
+    setOldTags('');
   };
 
   const addCreator = () => {
@@ -122,7 +142,7 @@ export function BulkEditor({ items, onClose, onDeleted }: Props) {
   const removeCreator = (name: string) => {
     if (!name.trim()) return;
     report('creators', removeCreatorOps(items, name), `Removed ${name.trim()} from`, `None of the selected items have ${name.trim()} as a creator.`);
-    setNewCreator('');
+    setOldCreator('');
   };
 
   const removeFiles = async () => {
@@ -173,6 +193,7 @@ export function BulkEditor({ items, onClose, onDeleted }: Props) {
               const on = items.filter((i) => included.has(i.id)).length;
               // Remove only takes off books added by hand; ones its search matches stay while they match.
               const byHand = items.filter((i) => device.items.includes(i.id)).length;
+              const type = connectionType(device.type);
               return (
                 <Row key={device.id}>
                   <span>
@@ -186,6 +207,16 @@ export function BulkEditor({ items, onClose, onDeleted }: Props) {
                       onClick={() => run(addToDevice(device, items.map((i) => i.id)))}
                     >
                       Add
+                    </Button>
+                  )}
+                  {type && isDevice(type) && (
+                    <Button
+                      $variant="secondary"
+                      $size="small"
+                      title="Sends these books now, choosing them for it, and leaves the rest of it as it is."
+                      onClick={() => setSendingTo({ device, type })}
+                    >
+                      Send
                     </Button>
                   )}
                   {byHand > 0 && (
@@ -237,41 +268,53 @@ export function BulkEditor({ items, onClose, onDeleted }: Props) {
 
       <PanelSection>
         <SectionHeading>Tags</SectionHeading>
-        <Chips>
-          {tags.map(([tag, n]) => (
-            <Tag key={tag}>
-              <TagLabel>
-                {tag} <Muted>({of(n)})</Muted>
-              </TagLabel>
-              <TagRemove
-                aria-label={`Remove tag ${tag} from selected items`}
-                onClick={() => run(removeTagsOps(items, [tag]))}
-              >
-                ×
-              </TagRemove>
-            </Tag>
-          ))}
-        </Chips>
+        {tags.length > MAX_CHIPS ? (
+          <>
+            <Muted as="p">The selected items have {tags.length} different tags.</Muted>
+            <RemoveRow>
+              <CompletionInput
+                placeholder="Tags to remove, comma-separated…"
+                aria-label="Tags to remove"
+                value={oldTags}
+                candidates={tags.map(([tag]) => tag)}
+                onChange={setOldTags}
+                onKeyDown={(e) => e.key === 'Enter' && removeTags()}
+              />
+              <Button $variant="secondary" $size="small" disabled={!oldTags.trim()} onClick={removeTags}>
+                Remove
+              </Button>
+            </RemoveRow>
+          </>
+        ) : (
+          <Chips>
+            {tags.map(([tag, n]) => (
+              <Tag key={tag}>
+                <TagLabel>
+                  {tag} <Muted>({of(n)})</Muted>
+                </TagLabel>
+                <TagRemove
+                  aria-label={`Remove tag ${tag} from selected items`}
+                  onClick={() => run(removeTagsOps(items, [tag]))}
+                >
+                  ×
+                </TagRemove>
+              </Tag>
+            ))}
+          </Chips>
+        )}
         <Row>
-          <input
-            placeholder="Tags to add or remove, comma-separated…"
-            aria-label="Tags to add or remove"
+          <CompletionInput
+            placeholder="Tags to add, comma-separated…"
+            aria-label="Tags to add"
             value={newTags}
-            list="bulk-tags"
-            onChange={(e) => setNewTags(e.target.value)}
+            candidates={libraryTags}
+            exclude={onAll}
+            onChange={setNewTags}
             onKeyDown={(e) => e.key === 'Enter' && addTags()}
           />
           <Button $variant="secondary" $size="small" disabled={!newTags.trim()} onClick={addTags}>
             Add
           </Button>
-          <Button $variant="secondary" $size="small" disabled={!newTags.trim()} onClick={removeTags}>
-            Remove
-          </Button>
-          <datalist id="bulk-tags">
-            {tags.map(([tag]) => (
-              <option key={tag} value={tag} />
-            ))}
-          </datalist>
         </Row>
         {note?.section === 'tags' && (
           <Muted as="p" role="status">
@@ -282,41 +325,55 @@ export function BulkEditor({ items, onClose, onDeleted }: Props) {
 
       <PanelSection>
         <SectionHeading>Creators</SectionHeading>
-        <Chips>
-          {creators.map(([name, n]) => (
-            <Tag key={name}>
-              <TagLabel>
-                {name} <Muted>({of(n)})</Muted>
-              </TagLabel>
-              <TagRemove
-                aria-label={`Remove ${name} from selected items`}
-                onClick={() => run(removeCreatorOps(items, name))}
-              >
-                ×
-              </TagRemove>
-            </Tag>
-          ))}
-        </Chips>
+        {creators.length > MAX_CHIPS ? (
+          <>
+            <Muted as="p">The selected items have {creators.length} different creators.</Muted>
+            <RemoveRow>
+              <CompletionInput
+                single
+                placeholder="A creator to remove…"
+                aria-label="Creator to remove"
+                value={oldCreator}
+                candidates={creators.map(([name]) => name)}
+                onChange={setOldCreator}
+                onKeyDown={(e) => e.key === 'Enter' && removeCreator(oldCreator)}
+              />
+              <Button $variant="secondary" $size="small" disabled={!oldCreator.trim()} onClick={() => removeCreator(oldCreator)}>
+                Remove
+              </Button>
+            </RemoveRow>
+          </>
+        ) : (
+          <Chips>
+            {creators.map(([name, n]) => (
+              <Tag key={name}>
+                <TagLabel>
+                  {name} <Muted>({of(n)})</Muted>
+                </TagLabel>
+                <TagRemove
+                  aria-label={`Remove ${name} from selected items`}
+                  onClick={() => run(removeCreatorOps(items, name))}
+                >
+                  ×
+                </TagRemove>
+              </Tag>
+            ))}
+          </Chips>
+        )}
         <Row>
-          <input
-            placeholder="An author to add, or a creator to remove…"
-            aria-label="Creator to add or remove"
+          <CompletionInput
+            single
+            placeholder="An author to add…"
+            aria-label="Author to add"
             value={newCreator}
-            list="bulk-creators"
-            onChange={(e) => setNewCreator(e.target.value)}
+            candidates={libraryCreators}
+            exclude={creatorOfAll}
+            onChange={setNewCreator}
             onKeyDown={(e) => e.key === 'Enter' && addCreator()}
           />
           <Button $variant="secondary" $size="small" disabled={!newCreator.trim()} onClick={addCreator}>
             Add
           </Button>
-          <Button $variant="secondary" $size="small" disabled={!newCreator.trim()} onClick={() => removeCreator(newCreator)}>
-            Remove
-          </Button>
-          <datalist id="bulk-creators">
-            {creators.map(([name]) => (
-              <option key={name} value={name} />
-            ))}
-          </datalist>
         </Row>
         {note?.section === 'creators' && (
           <Muted as="p" role="status">
@@ -375,6 +432,15 @@ export function BulkEditor({ items, onClose, onDeleted }: Props) {
           }}
         />
       </PanelFooter>
+      {sendingTo && (
+        <SyncDevice
+          device={sendingTo.device}
+          type={sendingTo.type}
+          only={items.map((i) => i.id)}
+          onDone={() => setSendingTo(undefined)}
+          onClose={() => setSendingTo(undefined)}
+        />
+      )}
     </Panel>
   );
 }

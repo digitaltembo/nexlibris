@@ -1,18 +1,16 @@
 import {
   createItem,
-  createMessageClient,
   createSyncHub,
   decodeMessage,
   encodeMessage,
   httpHubFiles,
-  httpSend,
+  httpSyncClient,
   MemoryStorage,
   messageFetch,
   pairWithHub,
   previewSync,
   runSync,
   StoredLibraryBackend,
-  syncApiMeta,
   transferFiles,
   type FileProgress,
   type Library,
@@ -43,7 +41,7 @@ async function setup() {
     received.push(new TextDecoder().decode(response.body));
     return encodeMessage({ status: response.status }, response.body);
   });
-  const client = (key?: string) => createMessageClient(syncApiMeta, httpSend('bt://hub', key, fetchOver)).sync;
+  const client = (key?: string) => httpSyncClient('bt://hub', key, fetchOver);
   const pair = async (keepFiles?: string) => {
     const pairing = await pairWithHub(android, client(), 'bt://hub', hub.newCode(keepFiles ? { keepFiles } : null).code, 'Android');
     await android.apply(pairedConnections(await android.getLibrary(), pairing, 'Android'));

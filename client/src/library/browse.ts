@@ -4,11 +4,11 @@ import { filterItems, type SearchContext, type Sort } from './search';
 
 /**
  * Browsing the library by category, as calibre3opds's catalog navigation does: from the Library,
- * All books, Recent books, Authors, Series, the user's own categories, and Tags, then on to the
+ * All books, Currently reading, Authors, Series, the user's own categories, and Tags, then on to the
  * books under each author, series, tag or category entry. A place is a path:
  *
  *   []                          the Library: the categories
- *   ['all'], ['recent']         books
+ *   ['all']                     books
  *   ['reading']                 the books being read (`currentlyReading.ts`), latest first
  *   ['authors'] ['series'] ['tags']        an entry per author, series or tag
  *   ['authors', name] ['series', name] ['tags', tag]   books
@@ -39,7 +39,7 @@ export type BrowseView =
   | {
       kind: 'books';
       items: Item[];
-      /** The order these books have by nature (recent first, series order), else the user's. */
+      /** The order these books have by nature (series order), else the user's. */
       sort?: Sort;
       /** In an order of their own that no sort gives (Currently reading: last read first), kept unless the user sorts. */
       ordered?: boolean;
@@ -86,7 +86,6 @@ function readingOf(items: Item[], reading: ItemId[]): Item[] {
   return reading.flatMap((id) => byId.get(id) ?? []);
 }
 
-const RECENT_SORT: Sort = { key: 'added', desc: true };
 const SERIES_SORT: Sort = { key: 'series', desc: false };
 
 /** Books grouped by a key (each book under every key it has), with each group's label. */
@@ -194,14 +193,12 @@ export function browse(
         const detail = category.entries.length === 1 ? books(matched.length) : plural(category.entries.length, 'entry', 'entries');
         return { label: category.name, detail, path: ['category', category.id], sample: sampleOf(matched, ['category', category.id]) };
       });
-    const recent = [...items].sort((a, b) => b.addedAt.localeCompare(a.addedAt));
     return {
       kind: 'entries',
       noun: 'category',
       nouns: 'categories',
       entries: [
         { label: 'All books', detail: books(items.length), path: ALL_BOOKS, sample: sampleOf(items, ALL_BOOKS) },
-        { label: 'Recent books', detail: books(items.length), path: ['recent'], sample: recent[0] },
         { label: 'Currently reading', detail: books(readingOf(items, reading).length), path: ['reading'], sample: readingOf(items, reading)[0] },
         grouped('authors'),
         grouped('series'),
@@ -212,7 +209,6 @@ export function browse(
     };
   }
   if (kind === 'all' && key === undefined) return { kind: 'books', items };
-  if (kind === 'recent' && key === undefined) return { kind: 'books', items, sort: RECENT_SORT };
   if (kind === 'reading' && key === undefined) return { kind: 'books', items: readingOf(items, reading), ordered: true };
   if (kind === 'authors' || kind === 'series' || kind === 'tags') {
     const grouping = GROUPINGS[kind];
@@ -262,7 +258,6 @@ export function crumbs(items: Item[], path: BrowsePath, categories: Category[], 
   const [kind, key, sub] = path;
   const add = (label: string, to: BrowsePath) => trail.push({ label, path: to });
   if (kind === 'all') add('All books', ALL_BOOKS);
-  else if (kind === 'recent') add('Recent books', ['recent']);
   else if (kind === 'reading') add('Currently reading', ['reading']);
   else if (kind === 'authors' || kind === 'series' || kind === 'tags') {
     add(GROUPINGS[kind].label, [kind]);

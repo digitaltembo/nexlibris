@@ -77,6 +77,11 @@ export interface DeviceListing {
 export interface PlanOptions {
   /** Take copies of chosen books already on the device (put there by hand, or by other software) as theirs, rather than sending them again. */
   keepFound?: boolean;
+  /**
+   * Send only these books (each must be chosen for the device), leaving the rest of the device as it is: no
+   * other book is sent, moved or removed, and the catalog isn't added.
+   */
+  only?: ItemId[];
 }
 
 /** A file the plan wants on the device. */
@@ -140,15 +145,20 @@ export function desiredFiles(library: Library, device: Device, type: DeviceType)
 
 /** Compares what should be on the device with what a sync placed there before and what's there now. */
 export function planSync(library: Library, device: Device, type: DeviceType, listing: DeviceListing, options: PlanOptions = {}): SyncPlan {
-  const { files, unsendable } = desiredFiles(library, device, type);
+  const { files: all, unsendable: allUnsendable } = desiredFiles(library, device, type);
+  const only = options.only && new Set(options.only);
+  const inScope = (itemId: ItemId) => !only || only.has(itemId);
+  // Out of scope, a book's files are left as they are: neither wanted (which would send them) nor unwanted (removing them).
+  const files = only ? new Map([...all].filter(([, wanted]) => only.has(wanted.item.id))) : all;
+  const unsendable = allUnsendable.filter(inScope);
   const sizes = new Map(listing.files.map((f) => [f.path, f.size]));
   const plan: SyncPlan = { uploads: [], moves: [], kept: [], removals: [], forget: [], conflicts: [], unsendable, unchanged: 0, emptied: [] };
-  const found = options.keepFound === false ? new Map<ItemId, RemoteBook[]>() : foundCopies(library, device, listing, files);
+  const found = options.keepFound === false ? new Map<ItemId, RemoteBook[]>() : foundCopies(library, device, listing, all);
   /** A found copy of the wanted book that can be its file at `path`: there already, or (if the device can move files) anywhere. */
   const foundFor = (path: string, wanted: Wanted) => {
     const extension = path.slice(path.lastIndexOf('.'));
     const copies = (found.get(wanted.item.id) ?? []).filter((book) => book.path.toLowerCase().endsWith(extension.toLowerCase()));
-    const copy = copies.find((book) => book.path === path) ?? (listing.canMove ? copies.find((book) => !files.has(book.path)) : undefined);
+    const copy = copies.find((book) => book.path === path) ?? (listing.canMove ? copies.find((book) => !all.has(book.path)) : undefined);
     if (!copy) return undefined;
     found.delete(wanted.item.id);
     const placed: PlacedFile = { itemId: wanted.item.id, hash: wanted.file.hash, size: copy.size, found: true, ...(wanted.key !== undefined && { key: wanted.key }) };
@@ -159,6 +169,7 @@ export function planSync(library: Library, device: Device, type: DeviceType, lis
   const upload = (path: string, wanted: Wanted, replaces: boolean) => plan.uploads.push({ path, ...wanted, replaces });
 
   for (const [path, placed] of Object.entries(device.placed)) {
+    if (!inScope(placed.itemId)) continue;
     const size = sizes.get(path);
     const wanted = files.get(path);
     if (size === undefined) {
@@ -178,7 +189,13 @@ export function planSync(library: Library, device: Device, type: DeviceType, lis
     }
   }
   for (const [path, wanted] of files) {
-    if (device.placed[path]) continue;
+    const there = device.placed[path];
+    if (there && !inScope(there.itemId)) {
+      // Another book's, which only a full sync moves out of the way.
+      plan.conflicts.push({ path, itemId: wanted.item.id, reason: 'Another book is there until the next full sync.' });
+      continue;
+    }
+    if (there) continue;
     if (sizes.has(path)) {
       if (!foundFor(path, wanted)) plan.conflicts.push({ path, itemId: wanted.item.id, reason: 'A file nexlibris didn’t send is already there.' });
     } else if (!foundFor(path, wanted)) {
@@ -199,8 +216,8 @@ export function planSync(library: Library, device: Device, type: DeviceType, lis
       Object.assign(u, { replaces: true, supersedes: old });
     }
   }
-  plan.emptied = emptiedFolders(device, type, [...plan.removals, ...plan.moves.map((m) => m.from)], files);
-  const catalog = type.catalog?.(device);
+  plan.emptied = emptiedFolders(device, type, [...plan.removals, ...plan.moves.map((m) => m.from)], all);
+  const catalog = only ? undefined : type.catalog?.(device);
   if (catalog && listing.catalogs && !listing.catalogs.some((c) => sameUrl(c.url, catalog.url))) plan.catalog = catalog;
   return plan;
 }

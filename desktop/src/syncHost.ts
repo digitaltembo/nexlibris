@@ -1,5 +1,7 @@
 import {
+  errorBody,
   fromPeer,
+  restReply,
   isFileHash,
   storedFilePath,
   type NewCodeRequest,
@@ -177,9 +179,11 @@ export function createSyncHost(options: SyncHostOptions) {
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, OPTIONS');
     // Chrome's Private Network Access: a page elsewhere may call this LAN address once it says so.
     res.setHeader('Access-Control-Allow-Private-Network', 'true');
+    // Replies as estuary-rpc-server makes them (`rest.ts`): the value as JSON, 204 for none, an error a status with its message.
     const reply = (status: number, body: RpcResponse) => {
-      res.writeHead(status, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify(body));
+      const out = body.ok ? restReply(body) : { status: status === 200 ? 400 : status, body: JSON.stringify(errorBody(body.message)) };
+      res.writeHead(out.status, out.body ? { 'Content-Type': 'application/json' } : {});
+      res.end(out.body);
     };
     if (req.method === 'OPTIONS') return void res.writeHead(204).end();
     const fileHash = /^\/api\/sync\/files\/([0-9a-f]{64})$/.exec(req.url ?? '')?.[1];

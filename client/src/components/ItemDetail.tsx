@@ -2,6 +2,7 @@ import { LOCAL_USER, userData, type FileRef, type Item, type MetadataValue } fro
 import { useState } from 'react';
 import styled from 'styled-components';
 import { BOOK_FIELDS, bookSize, fieldLabel, fieldText, isFixedField, type BookField } from '../library/bookFields';
+import { coverOperations, type NewCover } from '../library/editCover';
 import { diffDraft, draftFromItem, type ItemDraft } from '../library/editDraft';
 import { savedPosition } from '../library/useReadingPosition';
 import { deleteItems, freeFiles } from '../library/freeFiles';
@@ -10,11 +11,13 @@ import { metadataToText } from '../library/metadataText';
 import { roleLabel } from '../library/roles';
 import { isReadable, preferredReadable } from '../reader/Reader';
 import { Cover } from './Cover';
+import { CoverPicker } from './CoverPicker';
 import { CreatorsEditor } from './CreatorsEditor';
 import { DeleteButton } from './DeleteButton';
 import { EditableFiles, formatSize, ItemFiles } from './ItemFiles';
 import { KeyValueEditor } from './KeyValueEditor';
 import { Prose, RichText } from './RichText';
+import { SendTo, sendableConnections } from './SendTo';
 import { StarRating } from './StarRating';
 import { TagEditor } from './TagEditor';
 import {
@@ -161,6 +164,9 @@ export function ItemDetail({ item, onClose, onSelectTag, onRead }: Props) {
   const { library, apply, backend } = useLibrary();
   const { ratings, reviews } = userData(library);
   const [draft, setDraft] = useState<ItemDraft>();
+  const [sending, setSending] = useState(false);
+  // A new cover chosen while editing, shown in the header and saved with the rest.
+  const [cover, setCover] = useState<NewCover>();
   const position = savedPosition(library, item.id);
   // Carry on in the file last read, if it can still be read; otherwise start the best one.
   const resume = position && isReadable(position.file) ? position : undefined;
@@ -171,7 +177,7 @@ export function ItemDetail({ item, onClose, onSelectTag, onRead }: Props) {
   return (
     <Panel aria-label={`Details for ${item.title}`}>
       <Header>
-        <Cover item={item} />
+        {draft ? <CoverPicker item={item} cover={cover} onChange={setCover} /> : <Cover item={item} />}
         <div>
           {draft ? (
             <TitleInput
@@ -197,6 +203,11 @@ export function ItemDetail({ item, onClose, onSelectTag, onRead }: Props) {
               <Button $variant="secondary" onClick={() => setDraft(draftFromItem(item, review))}>
                 Edit
               </Button>
+              {sendableConnections(library.devices).length > 0 && (
+                <Button $variant="secondary" onClick={() => setSending(true)}>
+                  Send to…
+                </Button>
+              )}
               <DeleteButton onDelete={() => void deleteItems(backend, apply, [item])} />
             </Actions>
           )}
@@ -207,10 +218,21 @@ export function ItemDetail({ item, onClose, onSelectTag, onRead }: Props) {
       </Header>
 
       {draft ? (
-        <ItemEditor item={item} review={review} draft={draft} onChange={setDraft} onDone={() => setDraft(undefined)} />
+        <ItemEditor
+          item={item}
+          review={review}
+          draft={draft}
+          cover={cover}
+          onChange={setDraft}
+          onDone={() => {
+            setDraft(undefined);
+            setCover(undefined);
+          }}
+        />
       ) : (
         <ItemView item={item} review={review} onSelectTag={onSelectTag} onRead={onRead} />
       )}
+      {sending && <SendTo items={[item]} onClose={() => setSending(false)} />}
     </Panel>
   );
 }
@@ -289,11 +311,13 @@ interface EditorProps {
   item: Item;
   review: string | undefined;
   draft: ItemDraft;
+  /** A new cover, chosen in the header. */
+  cover: NewCover | undefined;
   onChange(draft: ItemDraft): void;
   onDone(): void;
 }
 
-function ItemEditor({ item, review, draft, onChange, onDone }: EditorProps) {
+function ItemEditor({ item, review, draft, cover, onChange, onDone }: EditorProps) {
   const { apply, backend } = useLibrary();
   const [saving, setSaving] = useState(false);
   const set = <K extends keyof ItemDraft>(key: K, value: ItemDraft[K]) => onChange({ ...draft, [key]: value });
@@ -301,10 +325,10 @@ function ItemEditor({ item, review, draft, onChange, onDone }: EditorProps) {
   const save = async () => {
     setSaving(true);
     try {
-      const ops = diffDraft(item, review, draft);
+      const ops = [...diffDraft(item, review, draft), ...(cover ? await coverOperations(backend, item, cover) : [])];
       if (ops.length) await apply(ops);
-      // Files detached here are deleted from storage too, unless another item has them.
-      if (ops.some((op) => op.type === 'detachFile')) await freeFiles(backend, [item]);
+      // Files detached here, and a replaced cover, are deleted from storage too, unless another item has them.
+      if (ops.some((op) => op.type === 'detachFile' || (op.type === 'updateItem' && op.patch.cover))) await freeFiles(backend, [item]);
       onDone();
     } finally {
       setSaving(false);

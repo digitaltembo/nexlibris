@@ -12,9 +12,7 @@ import {
   toBase64,
   fromBase64,
   transferFiles,
-  createMessageClient,
-  httpSend,
-  syncApiMeta,
+  httpSyncClient,
   type BluetoothEvent,
 } from '@nexlibris/common';
 import { describe, expect, it } from 'vitest';
@@ -105,7 +103,7 @@ describe('sync over Bluetooth', () => {
     const fake = fakePhone(phone);
     const link = await connect(fake.device);
     const { code } = fake.hub.newCode();
-    const client = createMessageClient(syncApiMeta, httpSend(BLUETOOTH_BASE, undefined, linkFetch(link))).sync;
+    const client = httpSyncClient(BLUETOOTH_BASE, undefined, linkFetch(link));
     const pairing = await pairWithHub(browser, client, 'bluetooth:Pixel', code, 'Chrome');
     rememberLink(pairing.hub.origin, link);
 
@@ -128,7 +126,7 @@ describe('sync over Bluetooth', () => {
   it('fails a call cleanly when the link drops mid-way', async () => {
     const fake = fakePhone(new StoredLibraryBackend(new MemoryStorage()));
     const link = await connect(fake.device);
-    const client = createMessageClient(syncApiMeta, httpSend(BLUETOOTH_BASE, 'k', linkFetch(link))).sync;
+    const client = httpSyncClient(BLUETOOTH_BASE, 'k', linkFetch(link));
     fake.stop();
     // Nobody answers now; dropping the link ends the wait.
     const call = client.hello(null);

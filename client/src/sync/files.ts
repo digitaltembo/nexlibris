@@ -12,13 +12,17 @@ import {
 } from '@nexlibris/common';
 import { androidTransport, inAndroidApp } from '../backends/androidBridge';
 import { filterItems } from '../library/search';
-import { hubClient } from './hub';
+import { hubClient, isOwnServer } from './hub';
+import { inDesktopApp } from '../backends/desktopBridge';
+import { serverConnection } from '../library/account';
 
 /**
  * A hub's files (see `common/src/syncFiles.ts`). In the Android app they go straight between the
  * hub and the app's storage, streamed by the app; a browser moves them with `fetch`.
  */
 export function hubFiles(pairing: Pairing, backend: LibraryBackend): HubFiles {
+  const server = isOwnServer(pairing.address) && inDesktopApp() ? serverConnection() : undefined;
+  if (server) return httpHubFiles(server.base ?? pairing.address, pairing.key, backend, server.fetch);
   if (!inAndroidApp()) return httpHubFiles(pairing.address, pairing.key, backend);
   const peer = createMessageClient(peerApiMeta, androidTransport()).peer;
   const request = (hash: FileHash) => ({ address: pairing.address, key: pairing.key, hash });

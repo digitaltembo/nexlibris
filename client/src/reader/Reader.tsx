@@ -1,4 +1,4 @@
-import type { FileRef, Item } from '@nexlibris/common';
+import type { FileRef, Item, WindowColors } from '@nexlibris/common';
 import { lazy, Suspense, useCallback, useEffect, useState, type ComponentType } from 'react';
 import styled from 'styled-components';
 import { FORMATS, isFormatId, READ_PREFERENCE, type FormatId } from '../formats/formats';
@@ -6,6 +6,7 @@ import { useLibrary } from '../library/LibraryContext';
 import { useReadingPosition } from '../library/useReadingPosition';
 import { LockScroll } from '../styles/GlobalStyle';
 import { Button, Muted, Status } from '../styles/ui';
+import { setReaderColors } from '../styles/windowColors';
 
 const Shell = styled.div`
   position: fixed;
@@ -59,6 +60,8 @@ export interface ViewerProps {
   /** Reports where the reader is, as often as it likes; saving is debounced. */
   onPosition?(locator: string, progress?: number): void;
   onClose(): void;
+  /** The viewer's own colours (epubier's themes), for what's around it: the title bar strip, the system bars. */
+  onColors?(colors: WindowColors): void;
   options: { forcePdfjs: boolean };
 }
 
@@ -135,6 +138,7 @@ export function BookReader({ title, file, load, position, onPosition, onClose }:
   const [data, setData] = useState<Blob | null>();
   const [fetchError, setFetchError] = useState<string>();
   const [forcePdfjs, setForcePdfjs] = useState(false);
+  const [colors, setColors] = useState<WindowColors>();
   const format = isFormatId(file.format) ? file.format : undefined;
   // epubier has its own toolbar and uses Escape for its menus.
   const ownChrome = format === 'epub' || format === 'x4.epub' || format === 'x3.epub';
@@ -162,6 +166,11 @@ export function BookReader({ title, file, load, position, onPosition, onClose }:
   }, [ownChrome, onClose]);
 
   useEffect(() => {
+    setReaderColors(colors);
+    return () => setReaderColors(undefined);
+  }, [colors]);
+
+  useEffect(() => {
     const previous = document.title;
     document.title = `${title} · nexlibris`;
     return () => {
@@ -186,6 +195,7 @@ export function BookReader({ title, file, load, position, onPosition, onClose }:
           {...(position !== undefined && { position })}
           onPosition={onPosition}
           onClose={onClose}
+          onColors={setColors}
           options={{ forcePdfjs }}
         />
       </Suspense>
@@ -193,7 +203,7 @@ export function BookReader({ title, file, load, position, onPosition, onClose }:
 
   if (ownChrome && data) {
     return (
-      <Shell data-covers-window>
+      <Shell data-covers-window {...(colors && { style: { background: colors.background } })}>
         <LockScroll />
         {body}
       </Shell>

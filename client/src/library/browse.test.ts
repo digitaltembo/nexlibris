@@ -48,7 +48,6 @@ describe('browse', () => {
   it('lists the categories at the Library, as calibre3opds does, with the user’s before Tags', () => {
     expect(labels(browse(items, [], categories))).toEqual([
       'All books: 3 books',
-      'Recent books: 3 books',
       'Currently reading: 0 books',
       'Authors: 2 authors',
       'Series: 1 series',
@@ -60,7 +59,7 @@ describe('browse', () => {
 
   it('lists the books being read, in the order given, of those the search leaves', () => {
     const reading = [emma.id, dune.id];
-    expect(labels(browse(items, [], categories, {}, { reading }))[2]).toBe('Currently reading: 2 books');
+    expect(labels(browse(items, [], categories, {}, { reading }))[1]).toBe('Currently reading: 2 books');
     expect(browse(items, ['reading'], categories, {}, { reading })).toEqual({ kind: 'books', items: [emma, dune], ordered: true });
     expect(titles(browse([dune], ['reading'], categories, {}, { reading }))).toEqual(['Dune']);
     expect(crumbs(items, ['reading'], categories).map((c) => c.label)).toEqual(['Library', 'Currently reading']);
@@ -72,9 +71,8 @@ describe('browse', () => {
     // Tags match ignoring case, shown as spelled most often.
     expect(labels(browse(items, ['tags'], categories))).toEqual(['Classic: 2 books', 'Romance: 1 book', 'Science Fiction: 2 books']);
     expect(browse(items, ['tags', 'science fiction'], categories)).toMatchObject({ kind: 'books', items: [messiah, dune] });
-    // Series and recent books have an order of their own; the rest take the user's.
+    // Series have an order of their own; the rest take the user's.
     expect(browse(items, ['series', 'Dune'], categories)).toMatchObject({ kind: 'books', sort: { key: 'series', desc: false } });
-    expect(browse(items, ['recent'], categories)).toMatchObject({ sort: { key: 'added', desc: true } });
     expect(browse(items, ALL_BOOKS, categories)).toEqual({ kind: 'books', items });
   });
 

@@ -1,0 +1,22 @@
+{
+  "name": "@nexlibris/server",
+  "version": "0.0.0",
+  "private": true,
+  "description": "nexlibris as a server: the web client, accounts, and each account's library in the cloud",
+  "type": "module",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "rolldown -c rolldown.config.js",
+    "start": "node dist/main.js",
+    "test": "vitest run",
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "@nexlibris/common": "^0.0.0",
+    "estuary-rpc": "file:../../estuary-rpc/estuary-rpc",
+    "estuary-rpc-server": "file:../../estuary-rpc/estuary-rpc-server"
+  },
+  "devDependencies": {
+    "rolldown": "^1.2.12"
+  }
+}

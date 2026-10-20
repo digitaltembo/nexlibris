@@ -1,3 +1,4 @@
+import { localFetch, relaysLocalHttp } from '../../devices/localFetch';
 import type { Catalog, DeviceTarget, RemoteFile } from '../../devices/types';
 
 /** A file or folder in a listing. */
@@ -35,14 +36,15 @@ interface Status {
 /**
  * A CrossPoint reader in File Transfer mode, through its web server (see
  * crosspoint-reader/docs/webserver-endpoints.md). It serves plain HTTP, so a
- * page served over HTTPS can't reach it: the browser blocks mixed content.
+ * page served over HTTPS can't reach it: the browser blocks mixed content. The
+ * Android app's page is, so the app makes its calls (`localFetch`).
  */
 export class CrossPointTarget implements DeviceTarget {
   readonly base: string;
 
   constructor(
     address: string,
-    private readonly fetchFn: typeof fetch = (input, init) => fetch(input, init),
+    private readonly fetchFn: typeof fetch = localFetch(),
   ) {
     const trimmed = address.trim().replace(/\/+$/, '');
     this.base = /^https?:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
@@ -180,7 +182,7 @@ export class CrossPointTarget implements DeviceTarget {
     if (e instanceof DOMException && e.name === 'TimeoutError') {
       return `${this.base} didn't answer. Is the reader in File Transfer mode, on the same network?`;
     }
-    if (typeof location !== 'undefined' && location.protocol === 'https:' && this.base.startsWith('http:')) {
+    if (typeof location !== 'undefined' && location.protocol === 'https:' && this.base.startsWith('http:') && !relaysLocalHttp()) {
       return `Couldn't reach ${this.base}: this page is served over HTTPS, and browsers block it from plain-HTTP devices. Use nexlibris from localhost to sync.`;
     }
     return `Couldn't reach ${this.base}. Is the reader in File Transfer mode, on the same network?`;

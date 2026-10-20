@@ -161,6 +161,11 @@ export class PlacedLibraryBackend implements LibraryBackend {
     return (await this.locate(hash)) !== undefined || (await this.settled(() => this.locate(hash))) !== undefined;
   }
 
+  /** Where a stored file is in the folder, once no files are moving; undefined if it isn't stored. */
+  filePath(hash: FileHash): Promise<string | undefined> {
+    return this.settled(() => this.locate(hash));
+  }
+
   async deleteFile(hash: FileHash): Promise<void> {
     await this.settled(async () => {
       const placed = await this.loadPlaced();

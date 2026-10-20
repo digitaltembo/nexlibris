@@ -21,13 +21,16 @@ class PickedSource(val name: String, val path: String? = null, val size: Long = 
  * Not thread-safe; [NativeBridge] runs every call on one thread.
  */
 class ImportService(
-    private val storage: StorageService,
+    /** Where the open library stores files. */
+    private val storage: () -> PathStorage,
     /**
      * Shows the system's picker, for files or (when passed true) a folder, and blocks until the user
      * chooses; empty if they cancel. A folder's files, hidden ones left out, come with their paths.
      */
     private val choose: (folder: Boolean) -> List<PickedSource>,
 ) {
+    constructor(storage: PathStorage, choose: (folder: Boolean) -> List<PickedSource>) : this({ storage }, choose)
+
     /** The latest pick, for [store]. */
     private var latest: Pair<String, List<PickedSource>>? = null
 
@@ -66,7 +69,7 @@ class ImportService(
         while (next < chosen.size && next - start < BATCH_FILES && bytes < BATCH_BYTES) {
             val source = chosen[next++]
             try {
-                val stored = source.open().use { storage.putStream(it) }
+                val stored = source.open().use { storage().putStream(it) }
                 files.put(describe(source).put("hash", stored.hash).put("size", stored.size))
                 bytes += stored.size
             } catch (e: Exception) {

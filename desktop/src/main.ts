@@ -33,9 +33,10 @@ import { hostname } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { APP_ORIGIN, appFile, APP_SCHEME, clientIndex, isAppUrl, isReaderUrl } from './appProtocol';
+import { isServerCall, proxyToServer } from './serverProxy';
 import { createFileStorage } from './fileStorage';
 import { createImportService } from './importService';
-import { dataDir, folderHolds, isPlaced, moveLibrary, moveWithin, pruneWithin, readSettings, writeSettings } from './libraryFolder';
+import { dataDir, fileToShow, folderHolds, isPlaced, moveLibrary, moveWithin, pruneWithin, readSettings, writeSettings } from './libraryFolder';
 import { menuTemplate, parseMenus } from './menu';
 import { createRemote } from './remote';
 import { createSaveService } from './saveService';
@@ -96,6 +97,8 @@ app.whenReady().then(async () => {
   let moving: MoveStatus = { state: 'idle', done: 0, total: 0 };
 
   protocol.handle(APP_SCHEME, async (request) => {
+    // The page's calls to its nexlibris server (M4), which it can't make from app:// itself.
+    if (isServerCall(request.url)) return proxyToServer(request, (input, init) => net.fetch(String(input), init));
     const target = appFile(request.url, { client: clientDir, library: library.dir, placed: library.placed });
     if (!target) return new Response('Not found', { status: 404 });
     const isFile = (await stat(target.file).catch(() => undefined))?.isFile();
@@ -177,6 +180,10 @@ app.whenReady().then(async () => {
         },
         async prune({ path }) {
           await pruneWithin(library.dir, path);
+          return null;
+        },
+        async showFile({ path }) {
+          shell.showItemInFolder(await fileToShow(library.dir, path));
           return null;
         },
       },

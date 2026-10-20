@@ -53,6 +53,9 @@ const Segmented = styled.div`
   display: inline-flex;
 
   > button {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
     padding: 6px 12px;
     border: 1px solid var(--border);
     border-radius: 0;
@@ -103,8 +106,13 @@ interface Props {
   onClose(): void;
 }
 
-/** How the library is shown: grid or list, light or dark, the sort, and the list's columns. Changes apply as they're made. */
+/**
+ * How the library is shown: light or dark, the view, and the sort (grid and bookshelf) or the columns (list), as the
+ * view has them. Changes apply as they're made.
+ */
 export function SettingsDialog({ view, onView, appearance, onAppearance, sort, onSort, columns, fields, onColumns, onClose }: Props) {
+  // The list sorts by its column headers, and the graph has no order.
+  const sorted = view === 'grid' || view === 'bookshelf.shelf';
   const toggle = (id: ColumnId, on: boolean) => onColumns(on ? [...columns, id] : columns.filter((s) => s !== id));
   const checkbox = (id: ColumnId, text: string) => (
     <label key={id}>
@@ -116,16 +124,6 @@ export function SettingsDialog({ view, onView, appearance, onAppearance, sort, o
   return (
     <Modal title="Settings" onClose={onClose}>
       <Group>
-        <legend>View</legend>
-        <Segmented role="group" aria-label="View">
-          {VIEWS.map((v) => (
-            <button key={v.id} type="button" aria-pressed={view === v.id} onClick={() => onView(v.id)}>
-              {v.label}
-            </button>
-          ))}
-        </Segmented>
-      </Group>
-      <Group>
         <legend>Appearance</legend>
         <Segmented role="group" aria-label="Appearance">
           {APPEARANCES.map((a) => (
@@ -136,43 +134,59 @@ export function SettingsDialog({ view, onView, appearance, onAppearance, sort, o
         </Segmented>
       </Group>
       <Group>
-        <legend>Sort</legend>
-        <SortRow>
-          <select
-            value={sort.key}
-            aria-label="Sort by"
-            onChange={(e) => {
-              const key = e.target.value as SortKey;
-              onSort({ key, desc: DEFAULT_DESC[key] });
-            }}
-          >
-            {Object.entries(SORT_LABELS).map(([key, label]) => (
-              <option key={key} value={key}>
-                {label}
-              </option>
-            ))}
-          </select>
-          <label>
-            <input type="checkbox" checked={sort.desc} onChange={(e) => onSort({ ...sort, desc: e.target.checked })} /> Descending
-          </label>
-        </SortRow>
-        {view === 'list' && <Muted as="p">The list’s column headers sort too.</Muted>}
+        <legend>View</legend>
+        <Segmented role="group" aria-label="View">
+          {VIEWS.map((v) => (
+            <button key={v.id} type="button" aria-pressed={view === v.id} onClick={() => onView(v.id)}>
+              {v.icon}
+              {v.label}
+            </button>
+          ))}
+        </Segmented>
       </Group>
-      <Group>
-        <legend>List columns</legend>
-        <Muted as="p">Title is always shown.</Muted>
-        <Options>{BUILTIN_COLUMNS.map((c) => checkbox(c.id, c.label))}</Options>
-        {fields.length > 0 && (
-          <>
-            <Muted as="p">Fields</Muted>
-            <Options>{fields.map((key) => checkbox(fieldColumn(key), fieldLabel(key)))}</Options>
-          </>
-        )}
-      </Group>
+      {sorted && (
+        <Group>
+          <legend>Sort</legend>
+          <SortRow>
+            <select
+              value={sort.key}
+              aria-label="Sort by"
+              onChange={(e) => {
+                const key = e.target.value as SortKey;
+                onSort({ key, desc: DEFAULT_DESC[key] });
+              }}
+            >
+              {Object.entries(SORT_LABELS).map(([key, label]) => (
+                <option key={key} value={key}>
+                  {label}
+                </option>
+              ))}
+            </select>
+            <label>
+              <input type="checkbox" checked={sort.desc} onChange={(e) => onSort({ ...sort, desc: e.target.checked })} /> Descending
+            </label>
+          </SortRow>
+        </Group>
+      )}
+      {view === 'list' && (
+        <Group>
+          <legend>List columns</legend>
+          <Muted as="p">Title is always shown.</Muted>
+          <Options>{BUILTIN_COLUMNS.map((c) => checkbox(c.id, c.label))}</Options>
+          {fields.length > 0 && (
+            <>
+              <Muted as="p">Fields</Muted>
+              <Options>{fields.map((key) => checkbox(fieldColumn(key), fieldLabel(key)))}</Options>
+            </>
+          )}
+        </Group>
+      )}
       <ModalFooter>
-        <Button $variant="secondary" onClick={() => onColumns(DEFAULT_COLUMNS)}>
-          Reset columns
-        </Button>
+        {view === 'list' && (
+          <Button $variant="secondary" onClick={() => onColumns(DEFAULT_COLUMNS)}>
+            Reset columns
+          </Button>
+        )}
         <Spacer />
         <Button onClick={onClose}>Done</Button>
       </ModalFooter>

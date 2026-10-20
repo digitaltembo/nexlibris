@@ -13,9 +13,13 @@ import java.net.URL
  * between the hub and [storage], streamed, rather than through the page.
  */
 class PeerService(
-    private val storage: StorageService,
+    /** Where the open library stores files. */
+    private val storage: () -> PathStorage,
     private val open: (URL) -> HttpURLConnection = { it.openConnection() as HttpURLConnection },
 ) {
+    constructor(storage: PathStorage, open: (URL) -> HttpURLConnection = { it.openConnection() as HttpURLConnection }) :
+        this({ storage }, open)
+
     fun call(address: String, url: String, key: String?, body: String): JSONObject {
         require(isAllowed(address, url)) { "Not a sync call: $address/$url" }
         val connection = try {
@@ -46,28 +50,28 @@ class PeerService(
         reusing(connection) {
             val status = reaching(address) { connection.responseCode }
             if (status != HttpURLConnection.HTTP_OK) throw IOException(hubError(connection, status))
-            val stored = connection.inputStream.use { storage.putStream(it, hash) }
+            val stored = connection.inputStream.use { storage().putStream(it, hash) }
             return JSONObject().put("size", stored.size)
         }
     }
 
     /** Sends a stored file to the hub. */
     fun upload(address: String, key: String, hash: String): JSONObject {
-        val file = storage.resolve(storedFilePath(hash))
-        if (!file.isFile) throw FileNotFoundException("That file isn’t stored here.")
+        val library = storage()
+        val size = library.size(storedFilePath(hash)) ?: throw FileNotFoundException("That file isn’t stored here.")
         val connection = fileConnection(address, key, hash)
         reusing(connection) {
             connection.requestMethod = "PUT"
             connection.doOutput = true
-            connection.setFixedLengthStreamingMode(file.length())
+            connection.setFixedLengthStreamingMode(size)
             connection.setRequestProperty("Content-Type", "application/octet-stream")
             val status = reaching(address) {
-                connection.outputStream.use { out -> file.inputStream().use { it.copyTo(out) } }
+                connection.outputStream.use { out -> library.openStored(hash).use { it.copyTo(out) } }
                 connection.responseCode
             }
             if (status != HttpURLConnection.HTTP_OK) throw IOException(hubError(connection, status))
             connection.inputStream.use { it.readBytes() }
-            return JSONObject().put("size", file.length())
+            return JSONObject().put("size", size)
         }
     }
 
@@ -84,7 +88,7 @@ class PeerService(
         return connection
     }
 
-    /** The message in a hub's error reply (an `RpcResponse`), or the HTTP status. */
+    /** The message in a hub's error reply (estuary-rpc's `{status: "error", message}`), or the HTTP status. */
     private fun hubError(connection: HttpURLConnection, status: Int): String {
         val text = connection.errorStream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() } ?: ""
         return runCatching { JSONObject(text).getString("message") }.getOrElse { "The hub replied with HTTP $status." }

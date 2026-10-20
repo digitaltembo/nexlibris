@@ -26,5 +26,5 @@ function LiveTags() {
   );
 }
 
-/** Adding and removing change the tags shown, as in the app. */
+/** Adding and removing change the tags shown, as in the app; typing completes the sample library's tags (try "fa"). */
 export const Live: Story = { render: () => <LiveTags /> };

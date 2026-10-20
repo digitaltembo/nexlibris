@@ -1,5 +1,12 @@
 import styled from 'styled-components';
 import { VIEWS, type View } from '../views/views';
+import { EyeIcon } from './icons';
+
+const Bar = styled.div`
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+`;
 
 const Group = styled.div`
   display: inline-flex;
@@ -30,15 +37,25 @@ const Choice = styled.button.attrs({ type: 'button' })`
   }
 `;
 
-/** Grid, list, or a plugin's view, as quiet icon buttons (the breadcrumbs' far right). */
-export function ViewSwitcher({ view, onView }: { view: View; onView(view: View): void }) {
+/**
+ * Grid, list, or a plugin's view, as quiet icon buttons (the breadcrumbs' far right), after an eye that opens the
+ * view's settings (appearance, sort, columns) when `onSettings` is given.
+ */
+export function ViewSwitcher({ view, onView, onSettings }: { view: View; onView(view: View): void; onSettings?(): void }) {
   return (
-    <Group role="group" aria-label="View">
-      {VIEWS.map((v) => (
-        <Choice key={v.id} aria-pressed={view === v.id} aria-label={v.label} title={v.label} onClick={() => onView(v.id)}>
-          {v.icon}
+    <Bar>
+      {onSettings && (
+        <Choice aria-label="View settings" title="View settings" onClick={onSettings}>
+          <EyeIcon />
         </Choice>
-      ))}
-    </Group>
+      )}
+      <Group role="group" aria-label="View">
+        {VIEWS.map((v) => (
+          <Choice key={v.id} aria-pressed={view === v.id} aria-label={v.label} title={v.label} onClick={() => onView(v.id)}>
+            {v.icon}
+          </Choice>
+        ))}
+      </Group>
+    </Bar>
   );
 }

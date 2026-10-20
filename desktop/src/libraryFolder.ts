@@ -1,6 +1,6 @@
 import { DATA_DIR, LAYOUT_PATH, PLACED_PATH, storedFilePath, type FileHash, type FileLayout, type FolderChoice } from '@nexlibris/common';
 import { existsSync, realpathSync } from 'node:fs';
-import { cp, mkdir, readdir, readFile, rename, rm, rmdir, writeFile } from 'node:fs/promises';
+import { cp, mkdir, readdir, readFile, rename, rm, rmdir, stat, writeFile } from 'node:fs/promises';
 import { dirname, join, relative, sep } from 'node:path';
 import { resolveLibraryPath } from './fileStorage';
 
@@ -53,6 +53,13 @@ export async function placedFile(root: string, hash: FileHash): Promise<string |
   } catch {
     return undefined;
   }
+}
+
+/** A file in the library's folder to show in the file manager (`showFile`), as a path the system takes. */
+export async function fileToShow(root: string, path: string): Promise<string> {
+  const file = resolveLibraryPath(root, path);
+  if (!(await stat(file).catch(() => undefined))?.isFile()) throw new Error('The file isn’t in the library’s folder.');
+  return file;
 }
 
 /** Moves a file within the library's folder (`Storage.move`), replacing any at `to`. */

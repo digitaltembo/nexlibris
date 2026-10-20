@@ -29,6 +29,9 @@ class SyncFolderService(
         return DocumentTreeStorage(resolver, tree).also { cached = tree to it }
     }
 
+    /** The folder's tree URI, if one was chosen. */
+    fun tree(): String? = prefs.getString(PREF_TREE, null)
+
     fun info(): JSONObject = JSONObject().put("path", runCatching { folder().where }.getOrNull() ?: JSONObject.NULL)
 
     /** Asks for the folder; returns where it is, or throws if none was chosen. */

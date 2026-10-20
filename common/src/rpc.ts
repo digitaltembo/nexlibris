@@ -36,11 +36,15 @@ export type MessageClient<A> = {
     : MessageClient<A[K]>;
 };
 
-/** What implementing an API takes: a function per endpoint, nested the same way. */
-export type MessageImpl<A> = {
+/**
+ * What implementing an API takes: a function per endpoint, nested the same way. Like an estuary-rpc
+ * endpoint, each gets a closure (`C`), whatever the transport knows of the call: who made it, say,
+ * for the server (`server/src/app.ts`). Over a message channel there's none.
+ */
+export type MessageImpl<A, C = void> = {
   [K in keyof A]: A[K] extends (input: infer Req, closure: never) => Promise<infer Res>
-    ? (input: Req) => Promise<Res>
-    : MessageImpl<A[K]>;
+    ? (input: Req, closure: C) => Promise<Res>
+    : MessageImpl<A[K], C>;
 };
 
 const endpoints = (api: ApiMeta, visit: (meta: SimpleMeta, path: string[]) => void, path: string[] = []) => {
@@ -63,24 +67,32 @@ export function createMessageClient<A extends ApiMeta>(api: A, send: RpcSend): M
   return client as MessageClient<A>;
 }
 
+/** Each endpoint of `api` by its method and URL (`POST api/sync/hello`), with its metadata: how a transport finds what's called. */
+export function endpointMeta(api: ApiMeta): Map<string, SimpleMeta> {
+  const metas = new Map<string, SimpleMeta>();
+  endpoints(api, (meta) => metas.set(`${meta.method} ${meta.url}`, meta));
+  return metas;
+}
+
 /**
  * The serving side, for implementations written in TypeScript (the Android app implements
- * the same protocol natively): routes a request to the matching endpoint of `impl`.
+ * the same protocol natively): routes a request to the matching endpoint of `impl`, passing it
+ * `closure`.
  */
-export function createMessageHandler<A extends ApiMeta>(
+export function createMessageHandler<A extends ApiMeta, C = void>(
   api: A,
-  impl: MessageImpl<A>,
-): (message: RpcMessage) => Promise<RpcResponse> {
-  const routes = new Map<string, (body: unknown) => Promise<unknown>>();
+  impl: MessageImpl<A, C>,
+): (message: RpcMessage | RpcRequest, closure: C) => Promise<RpcResponse> {
+  const routes = new Map<string, (body: unknown, closure: C) => Promise<unknown>>();
   endpoints(api, (meta, path) => {
     const fn = path.reduce<unknown>((node, key) => (node as Record<string, unknown>)[key], impl);
-    routes.set(`${meta.method} ${meta.url}`, fn as (body: unknown) => Promise<unknown>);
+    routes.set(`${meta.method} ${meta.url}`, fn as (body: unknown, closure: C) => Promise<unknown>);
   });
-  return async ({ method, url, body }) => {
+  return async ({ method, url, body }, closure) => {
     const route = routes.get(`${method} ${url}`);
     if (!route) return { ok: false, message: `No endpoint for ${method} ${url}` };
     try {
-      return { ok: true, value: (await route(body)) ?? null };
+      return { ok: true, value: (await route(body, closure)) ?? null };
     } catch (e) {
       return { ok: false, message: e instanceof Error ? e.message : String(e) };
     }

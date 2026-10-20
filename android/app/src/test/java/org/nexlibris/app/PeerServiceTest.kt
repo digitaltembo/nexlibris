@@ -35,7 +35,7 @@ class PeerServiceTest {
     private fun storage() = StorageService(File(temp.root, "library"))
 
     /**
-     * A stand-in hub: for the key "good", answers each POST with `{ok: true, value: {echo: body}}`,
+     * A stand-in hub: for the key "good", answers each POST with `{echo: body}` (as estuary-rpc replies),
      * and serves and stores [files] at `GET`/`PUT /api/sync/files/<hash>`; anything else gets a 401.
      * Connections are kept alive, and counted in [connections].
      */
@@ -65,14 +65,14 @@ class PeerServiceTest {
             seen += Triple(path, key, body.toString(Charsets.UTF_8))
             val hash = path.removePrefix("/api/sync/files/").takeIf { h -> h != path }
             val (status, reply) = when {
-                key != "Bearer good" -> "401 Unauthorized" to """{"ok":false,"message":"Not paired"}""".toByteArray()
+                key != "Bearer good" -> "401 Unauthorized" to """{"status":"error","message":"Not paired"}""".toByteArray()
                 hash != null && method == "PUT" -> {
                     files[hash] = body
-                    "200 OK" to """{"ok":true,"value":{"size":${body.size}}}""".toByteArray()
+                    "200 OK" to """{"size":${body.size}}""".toByteArray()
                 }
                 hash != null -> files[hash]?.let { bytes -> "200 OK" to bytes }
-                    ?: ("404 Not Found" to """{"ok":false,"message":"That file isn’t on this computer."}""".toByteArray())
-                else -> "200 OK" to """{"ok":true,"value":{"echo":${body.toString(Charsets.UTF_8)}}}""".toByteArray()
+                    ?: ("404 Not Found" to """{"status":"error","message":"That file isn’t on this computer."}""".toByteArray())
+                else -> "200 OK" to """{"echo":${body.toString(Charsets.UTF_8)}}""".toByteArray()
             }
             val out = socket.getOutputStream()
             out.write("HTTP/1.1 $status\r\nContent-Length: ${reply.size}\r\n\r\n".toByteArray())
@@ -100,7 +100,7 @@ class PeerServiceTest {
     fun passesTheHubsReplyBackAsItCame() {
         val result = PeerService(storage()).call(address, "api/sync/hello", "good", """{"since":3}""")
         assertEquals(200, result.getInt("status"))
-        assertEquals(3, JSONObject(result.getString("text")).getJSONObject("value").getJSONObject("echo").getInt("since"))
+        assertEquals(3, JSONObject(result.getString("text")).getJSONObject("echo").getInt("since"))
         assertEquals(Triple("/api/sync/hello", "Bearer good", """{"since":3}"""), seen.single())
 
         val refused = PeerService(storage()).call(address, "api/sync/state", null, "null")

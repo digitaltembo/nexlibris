@@ -10,17 +10,21 @@ import java.io.InputStream
 import java.security.DigestInputStream
 import java.security.MessageDigest
 import java.util.Base64
+import java.util.UUID
 
 /**
- * Storage in the user's sync folder, a folder in shared storage (say Documents/nexlibris-sync) picked
- * with the system's folder picker, which a computer sees when the phone is plugged in by USB. It's
- * reached through the storage provider rather than as files, so it works whoever wrote what's in
- * it: files copied in over USB belong to another user, which the app couldn't open directly.
+ * Storage in a folder of the user's in shared storage, picked with the system's folder picker:
+ * the sync folder (say Documents/nexlibris-sync), which a computer sees when the phone is plugged
+ * in by USB, or the library's folder ([LibraryFolderService]). It's reached through the storage
+ * provider rather than as files, so it works whoever wrote what's in it (files copied in over USB
+ * belong to another user, which the app couldn't open directly), and needs no permission beyond
+ * the lasting one the picker grants for that folder.
  *
  * Only folders on the device's own storage (ExternalStorageProvider) are taken: their document ids
- * are paths, so a file's id is the folder's plus its path, with no lookups.
+ * are paths, so a file's id is the folder's plus its path, with no lookups. Paths are taken from
+ * [base] in the folder ("" for its top), e.g. `.nexlibris` for a library's own files.
  */
-class DocumentTreeStorage(private val resolver: ContentResolver, private val tree: Uri) : PathStorage {
+class DocumentTreeStorage(private val resolver: ContentResolver, private val tree: Uri, private val base: String = "") : LibraryTree {
     private val rootId: String = DocumentsContract.getTreeDocumentId(tree)
 
     init {
@@ -30,15 +34,22 @@ class DocumentTreeStorage(private val resolver: ContentResolver, private val tre
     /** Where it is, as a computer browsing the phone sees it, e.g. "Documents/nexlibris-sync". */
     val where: String get() = rootId.substringAfter(':').ifEmpty { "the phone’s storage" }
 
+    /** The document id of a path from the folder's top. */
+    private fun docId(full: String): String = when {
+        full.isEmpty() -> rootId
+        rootId.endsWith(":") -> "$rootId$full"
+        else -> "$rootId/$full"
+    }
+
     private fun id(path: String): String {
         val segments = path.split('/')
         require(path.isNotEmpty() && segments.none { it.isEmpty() || it == "." || it == ".." }) { "Bad path: $path" }
-        return if (rootId.endsWith(":")) "$rootId$path" else "$rootId/$path"
+        return docId(if (base.isEmpty()) path else "$base/$path")
     }
 
     private fun uri(path: String): Uri = DocumentsContract.buildDocumentUriUsingTree(tree, id(path))
 
-    private fun dirUri(path: String): Uri = if (path.isEmpty()) DocumentsContract.buildDocumentUriUsingTree(tree, rootId) else uri(path)
+    private fun dirUri(path: String): Uri = if (path.isEmpty()) DocumentsContract.buildDocumentUriUsingTree(tree, docId(base)) else uri(path)
 
     /** The document's size and whether it's a folder, or null if there's none. */
     private fun stat(path: String): Pair<Long, Boolean>? = try {
@@ -89,13 +100,59 @@ class DocumentTreeStorage(private val resolver: ContentResolver, private val tre
         if (last) commit(upload, path)
     }
 
-    override fun list(path: String): List<String> {
-        val parent = stat(path)
-        if (parent == null || !parent.second) return emptyList()
-        val children = DocumentsContract.buildChildDocumentsUriUsingTree(tree, id(path))
+    override fun list(path: String): List<String> = listAll(path).filterNot { it.startsWith(".") }
+
+    override fun listAll(path: String): List<String> {
+        if (!isFolder(path)) return emptyList()
+        val children = DocumentsContract.buildChildDocumentsUriUsingTree(tree, DocumentsContract.getDocumentId(dirUri(path)))
         return resolver.query(children, arrayOf(DocumentsContract.Document.COLUMN_DISPLAY_NAME), null, null, null)?.use { cursor ->
-            buildList { while (cursor.moveToNext()) cursor.getString(0)?.takeIf { !it.startsWith(".") }?.let(::add) }
+            buildList { while (cursor.moveToNext()) cursor.getString(0)?.let(::add) }
         }?.sorted() ?: emptyList()
+    }
+
+    override fun isFolder(path: String): Boolean = if (path.isEmpty()) base.isEmpty() || folderStat(base) else stat(path)?.second == true
+
+    override fun open(path: String): InputStream? = if (exists(path)) resolver.openInputStream(uri(path)) else null
+
+    override fun writeStream(path: String, input: InputStream) = replace(path) { out -> input.copyTo(out) }
+
+    override fun move(from: String, to: String) {
+        if (from == to) return
+        val fromDir = from.substringBeforeLast('/', "")
+        val toDir = to.substringBeforeLast('/', "")
+        val name = to.substringAfterLast('/')
+        if (stat(from)?.second != false) throw FileNotFoundException("No file: $from")
+        // Through a hidden name: the target may differ only in case, which on this storage is the same file.
+        val moving = sibling(from, ".moving")
+        remove(moving)
+        DocumentsContract.renameDocument(resolver, uri(from), moving.substringAfterLast('/')) ?: throw IOException("Couldn't move $from")
+        var at = moving
+        if (fromDir != toDir) {
+            makeDirs(toDir)
+            DocumentsContract.moveDocument(resolver, uri(moving), dirUri(fromDir), dirUri(toDir)) ?: throw IOException("Couldn't move $from")
+            at = if (toDir.isEmpty()) moving.substringAfterLast('/') else "$toDir/${moving.substringAfterLast('/')}"
+        }
+        remove(to)
+        DocumentsContract.renameDocument(resolver, uri(at), name) ?: throw IOException("Couldn't move $from to $to")
+    }
+
+    override fun prune(path: String) {
+        var dir = path.substringBeforeLast('/', "")
+        while (dir.isNotEmpty()) {
+            val names = listAll(dir)
+            if (names.any { it !in IGNORED_NAMES }) return
+            DocumentsContract.deleteDocument(resolver, uri(dir))
+            dir = dir.substringBeforeLast('/', "")
+        }
+    }
+
+    override fun removeTree(path: String) {
+        if (path.isNotEmpty()) {
+            // The provider deletes a folder with everything in it.
+            if (stat(path) != null) DocumentsContract.deleteDocument(resolver, uri(path))
+        } else {
+            for (name in listAll("")) DocumentsContract.deleteDocument(resolver, uri(name))
+        }
     }
 
     override fun remove(path: String) {
@@ -104,15 +161,13 @@ class DocumentTreeStorage(private val resolver: ContentResolver, private val tre
 
     override fun openStored(hash: String): InputStream {
         val path = storedFilePath(hash)
-        if (!exists(path)) throw FileNotFoundException("That file isn’t in the sync folder.")
+        if (!exists(path)) throw FileNotFoundException("That file isn’t in the folder.")
         return resolver.openInputStream(uri(path)) ?: throw FileNotFoundException("Couldn't open $path")
     }
 
-    /** Stores [input] as `files/<hash>`, checking it hashes to [expected] as it's copied. */
+    /** Stores [input] as `files/<hash>`, hashing it as it's copied; with [expected], other contents are refused. */
     override fun putStream(input: InputStream, expected: String?): StoredFile {
-        requireNotNull(expected) { "The sync folder only takes files by hash" }
-        val path = storedFilePath(expected)
-        val temp = sibling(path, ".put")
+        val temp = if (expected != null) sibling(storedFilePath(expected), ".put") else "files/.put-${UUID.randomUUID()}"
         remove(temp)
         create(temp)
         try {
@@ -121,10 +176,11 @@ class DocumentTreeStorage(private val resolver: ContentResolver, private val tre
                 (resolver.openOutputStream(uri(temp), "w") ?: throw IOException("Couldn't open $temp")).use { source.copyTo(it) }
             }
             val hash = digest.digest().joinToString("") { "%02x".format(it) }
-            if (hash != expected) {
+            if (expected != null && hash != expected) {
                 throw IOException("The file's contents don't match its hash (expected ${expected.take(12)}…, got ${hash.take(12)}…).")
             }
-            if (exists(path)) remove(temp) else commit(temp, path)
+            val path = storedFilePath(hash)
+            if (!exists(path)) move(temp, path)
             return StoredFile(hash, size)
         } finally {
             remove(temp)
@@ -168,7 +224,19 @@ class DocumentTreeStorage(private val resolver: ContentResolver, private val tre
         }
     }
 
+    /** Whether the folder [full] (from the top) is there. */
+    private fun folderStat(full: String): Boolean = try {
+        resolver.query(DocumentsContract.buildDocumentUriUsingTree(tree, docId(full)), arrayOf(DocumentsContract.Document.COLUMN_MIME_TYPE), null, null, null)
+            ?.use { it.moveToFirst() && it.getString(0) == DocumentsContract.Document.MIME_TYPE_DIR } == true
+    } catch (_: Exception) {
+        false
+    }
+
     private fun makeDirs(dir: String) {
+        if (base.isNotEmpty() && !folderStat(base)) {
+            DocumentsContract.createDocument(resolver, DocumentsContract.buildDocumentUriUsingTree(tree, rootId), DocumentsContract.Document.MIME_TYPE_DIR, base)
+                ?: throw IOException("Couldn't create the folder $base")
+        }
         if (dir.isEmpty()) return
         var parent = ""
         for (segment in dir.split('/')) {

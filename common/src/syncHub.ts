@@ -1,5 +1,6 @@
 import type { LibraryBackend } from './backend';
 import { hashBlob } from './backend';
+import { errorBody, restReply } from './rest';
 import { createMessageHandler, type MessageImpl, type RpcResponse } from './rpc';
 import type { ScopeRule } from './scope';
 import { createSyncService } from './sync';
@@ -51,7 +52,13 @@ function randomText(length: number, alphabet: string): string {
   return Array.from(bytes, (b) => alphabet[b % alphabet.length]).join('');
 }
 
-const json = (status: number, body: RpcResponse): HubResponse => ({ status, body: new TextEncoder().encode(JSON.stringify(body)) });
+/** An error, as estuary-rpc-server sends one (`rest.ts`). */
+const fail = (status: number, message: string): HubResponse => ({ status, body: new TextEncoder().encode(JSON.stringify(errorBody(message))) });
+/** A call's result as estuary-rpc-server sends it: the value as JSON, 204 for none, an error as a bad request. */
+const answer = (response: RpcResponse): HubResponse => {
+  const { status, body } = restReply(response);
+  return { status, body: new TextEncoder().encode(body) };
+};
 
 export function createSyncHub(
   backend: LibraryBackend,
@@ -98,45 +105,45 @@ export function createSyncHub(
   async function handle(request: HubRequest): Promise<HubResponse> {
     const fileHash = /^api\/sync\/files\/([0-9a-f]{64})$/.exec(request.path)?.[1];
     if (fileHash && (request.method === 'GET' || request.method === 'PUT')) {
-      if (!(await authorize(request.key))) return json(401, { ok: false, message: NOT_PAIRED });
+      if (!(await authorize(request.key))) return fail(401, NOT_PAIRED);
       if (request.method === 'GET') {
         // Only files stored here: the backend may otherwise go and fetch one from a hub of its own.
         const blob = (await backend.hasFile(fileHash)) ? await backend.getFile(fileHash) : undefined;
-        if (!blob) return json(404, { ok: false, message: `That file isn’t on ${options.name()}.` });
+        if (!blob) return fail(404, `That file isn’t on ${options.name()}.`);
         return { status: 200, body: new Uint8Array(await blob.arrayBuffer()) };
       }
       const data = new Blob([request.body as Uint8Array<ArrayBuffer>]);
-      if ((await hashBlob(data)) !== fileHash) return json(400, { ok: false, message: 'The file’s contents don’t match its hash.' });
+      if ((await hashBlob(data)) !== fileHash) return fail(400, 'The file’s contents don’t match its hash.');
       const { size } = await backend.putFile(data);
-      return json(200, { ok: true, value: { size } });
+      return answer({ ok: true, value: { size } });
     }
     const endpoint = /^api\/sync\/(pair|hello|state|apply|done|missing)$/.exec(request.path)?.[1];
-    if (request.method !== 'POST' || !endpoint) return json(404, { ok: false, message: 'Not found' });
+    if (request.method !== 'POST' || !endpoint) return fail(404, 'Not found');
     let body: unknown;
     try {
       body = JSON.parse(new TextDecoder().decode(request.body) || 'null');
     } catch {
-      return json(400, { ok: false, message: 'Bad request' });
+      return fail(400, 'Bad request');
     }
     try {
-      if (endpoint === 'pair') return json(200, { ok: true, value: await pair(body as PairRequest) });
+      if (endpoint === 'pair') return answer({ ok: true, value: await pair(body as PairRequest) });
       const peer = await authorize(request.key);
-      if (!peer) return json(401, { ok: false, message: NOT_PAIRED });
+      if (!peer) return fail(401, NOT_PAIRED);
       if (endpoint === 'missing') {
         const hashes = (body as { hashes?: unknown })?.hashes;
         if (!Array.isArray(hashes) || !hashes.every((h) => typeof h === 'string' && isFileHash(h))) throw new Error('Bad request.');
         const lacking: string[] = [];
         for (const hash of hashes as string[]) if (!(await backend.hasFile(hash))) lacking.push(hash);
-        return json(200, { ok: true, value: lacking });
+        return answer({ ok: true, value: lacking });
       }
       if (endpoint === 'done') {
         const state = await load();
         await save({ peers: state.peers.map((p) => (p.origin === peer.origin ? { ...p, lastSyncedAt: now().toISOString() } : p)) });
-        return json(200, { ok: true, value: null });
+        return answer({ ok: true, value: null });
       }
-      return json(200, await relay({ id: 0, method: 'POST', url: `api/sync/${endpoint}`, body: fromPeer(endpoint, body, peer.origin) }));
+      return answer(await relay({ id: 0, method: 'POST', url: `api/sync/${endpoint}`, body: fromPeer(endpoint, body, peer.origin) }));
     } catch (e) {
-      return json(200, { ok: false, message: e instanceof Error ? e.message : String(e) });
+      return fail(400, e instanceof Error ? e.message : String(e));
     }
   }
 

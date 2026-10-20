@@ -56,7 +56,7 @@ class RpcRouterTest {
     fun servesTheSyncFolderAlongsideTheLibrary() {
         val library = StorageService(File(temp.root, "library"))
         val folder = StorageService(File(temp.root, "sync"))
-        val router = RpcRouter(storageRoutes(library), usbFolderRoutes({ folder }, library, { JSONObject().put("path", "Documents/sync") }, { JSONObject() }))
+        val router = RpcRouter(storageRoutes(library), usbFolderRoutes({ folder }, { library }, { JSONObject().put("path", "Documents/sync") }, { JSONObject() }))
         router.handle(request("POST", "api/usbFolder/writeText", """{"path":"library.json","text":"{}"}"""))
         assertEquals("{}", folder.readText("library.json"))
         assertEquals(null, library.readText("library.json"))
@@ -68,7 +68,17 @@ class RpcRouterTest {
             router.handle(request("GET", "api/usbFolder/info", "{}")).getJSONObject("value").getString("path"),
         )
         // With no folder chosen yet, the folder's calls say so.
-        val missing = RpcRouter(usbFolderRoutes({ throw IllegalStateException("Choose the sync folder first.") }, library, { JSONObject() }, { JSONObject() }))
+        val missing = RpcRouter(usbFolderRoutes({ throw IllegalStateException("Choose the sync folder first.") }, { library }, { JSONObject() }, { JSONObject() }))
         assertEquals("Choose the sync folder first.", missing.handle(request("GET", "api/usbFolder/exists", """{"path":"a"}""")).getString("message"))
+    }
+
+    @Test
+    fun setsWindowColors() {
+        val set = mutableListOf<Pair<Int, Boolean>>()
+        val router = RpcRouter(windowRoutes { background, dark -> set += background to dark })
+        assertTrue(router.handle(request("POST", "api/window/setColors", """{"background":"#1c1813","dark":true}""")).getBoolean("ok"))
+        assertEquals(listOf(0xFF1C1813.toInt() to true), set)
+        assertFalse(router.handle(request("POST", "api/window/setColors", """{"background":"red","dark":false}""")).getBoolean("ok"))
+        assertEquals(1, set.size)
     }
 }

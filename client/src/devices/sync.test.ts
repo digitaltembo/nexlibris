@@ -119,6 +119,47 @@ describe('device sync', () => {
     expect(second.plan).toMatchObject({ uploads: [], removals: [], conflicts: [], unchanged: 2 });
   });
 
+  it('sends only the books asked for, leaving the rest of the device alone', async () => {
+    const { backend, deviceId, dune, emma } = await setup();
+    const target = new CatalogDevice();
+    await sync(backend, deviceId, target, { ...type, catalog: () => undefined });
+    // Emma is no longer chosen and Dune is renamed: a full sync would remove one and move the other.
+    target.files.set('/Books/Ulysses.epub', 'by hand');
+    await backend.apply([
+      { type: 'removeDeviceItems', id: deviceId, itemIds: [emma.id] },
+      { type: 'updateItem', id: dune.id, patch: { title: 'Dune Messiah' } },
+    ]);
+    const kindred = createItem({ title: 'Kindred', creators: [{ name: 'Octavia Butler', role: 'aut' }], files: [] });
+    const { hash, size } = await backend.putFile(new Blob(['kindred epub']));
+    kindred.files.push({ hash, size, format: 'epub' });
+    await backend.apply([{ type: 'addItem', item: kindred }, { type: 'addDeviceItems', id: deviceId, itemIds: [kindred.id] }]);
+
+    const catalog = { name: 'Mine', url: 'https://example.com/opds' };
+    const { plan, result } = await sync(backend, deviceId, target, { ...type, catalog: () => catalog }, { only: [kindred.id] });
+    expect(plan).toMatchObject({ moves: [], removals: [], conflicts: [], unsendable: [], emptied: [] });
+    expect(plan.catalog).toBeUndefined();
+    expect(plan.uploads.map((u) => u.path)).toEqual(['/Books/Kindred - Octavia Butler.epub']);
+    expect(result).toMatchObject({ sent: 1, removed: 0, errors: [] });
+    expect(Object.fromEntries(target.files)).toEqual({
+      '/Books/Dune - Frank Herbert.epub': 'dune x4',
+      '/Books/Emma A Novel - Jane Austen.epub': 'emma epub',
+      '/Books/Kindred - Octavia Butler.epub': 'kindred epub',
+      '/Books/Ulysses.epub': 'by hand',
+    });
+
+    // Asked for alone, the renamed book is moved (sent again here, the device can't move) without the rest.
+    const renamed = await sync(backend, deviceId, target, type, { only: [dune.id] });
+    expect(renamed.plan.uploads).toMatchObject([{ path: '/Books/Dune Messiah - Frank Herbert.epub', supersedes: '/Books/Dune - Frank Herbert.epub' }]);
+    expect([...target.files.keys()].sort()).toEqual([
+      '/Books/Dune Messiah - Frank Herbert.epub',
+      '/Books/Emma A Novel - Jane Austen.epub',
+      '/Books/Kindred - Octavia Butler.epub',
+      '/Books/Ulysses.epub',
+    ]);
+    // A full sync then takes Emma off.
+    expect((await sync(backend, deviceId, target)).plan.removals).toEqual(['/Books/Emma A Novel - Jane Austen.epub']);
+  });
+
   it('removes what it sent once it is no longer chosen, and resends changed files', async () => {
     const { backend, deviceId, dune, emma } = await setup();
     const target = new FakeDevice();

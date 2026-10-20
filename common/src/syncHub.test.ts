@@ -4,12 +4,10 @@ import { createItem } from './operations';
 import { stateDigest } from './repair';
 import { MemoryStorage } from './storage';
 import { pairWithHub, previewSync, readPairings, runSync } from './sync';
-import { syncApiMeta } from './syncApi';
 import { transferFiles } from './syncFiles';
 import { createSyncHub } from './syncHub';
-import { httpHubFiles, httpSend } from './syncHttp';
+import { httpHubFiles, httpSyncClient } from './syncHttp';
 import { decodeMessage, encodeMessage, messageFetch, type SyncMessageRequest } from './syncMessage';
-import { createMessageClient } from './rpc';
 
 /** A hub reached as over Bluetooth: each call a message to `createSyncHub`'s `handle`. */
 function setup() {
@@ -23,7 +21,7 @@ function setup() {
     return encodeMessage({ status: response.status }, response.body);
   });
   const ADDRESS = 'bluetooth://hub';
-  const client = (key?: string) => createMessageClient(syncApiMeta, httpSend(ADDRESS, key, fetchOver)).sync;
+  const client = (key?: string) => httpSyncClient(ADDRESS, key, fetchOver);
   return { phone, browser, hub, fetchOver, client, ADDRESS, advance: (ms: number) => (clock += ms) };
 }
 

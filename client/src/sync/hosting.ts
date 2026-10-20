@@ -1,3 +1,4 @@
+import { libraryPlace } from '../library/libraryFolder';
 import {
   createMessageClient,
   createMessageHandler,
@@ -26,7 +27,8 @@ const handledByHost = async (): Promise<never> => {
 export function useSyncHosting(backend: LibraryBackend, refresh: () => Promise<void>) {
   useEffect(() => {
     const desktop = window.NexlibrisDesktop;
-    if (!inDesktopApp() || !desktop?.servePeers) return;
+    // With the library in the account, the computer isn't a hub: the main process serves its own library's files.
+    if (!inDesktopApp() || !desktop?.servePeers || libraryPlace().kind === 'cloud') return;
     let name = 'Computer';
     void syncHost()
       .status(null)

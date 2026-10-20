@@ -1,13 +1,11 @@
 import {
-  createMessageClient,
-  httpSend,
+  httpSyncClient,
   pairingText,
   pairWithHub,
   parsePairingText,
   previewSync,
   removePairing,
   runSync,
-  syncApiMeta,
   transferFiles,
   type BluetoothHostStatus,
   type FileProgress,
@@ -55,7 +53,9 @@ import {
 import { syncHost } from '../sync/hosting';
 import { fileFetched } from '../sync/files';
 import { addInstances, EVERY_BOOK, keptBy, letGo, type LeftBooks } from '../sync/instances';
-import { canSyncOverNetwork, hubClient, instanceName } from '../sync/hub';
+import { canSyncOverNetwork, hubClient, instanceName, isOwnServer, ownServerClient } from '../sync/hub';
+import { choosesServer, useServerSession } from '../library/account';
+import { libraryPlace } from '../library/libraryFolder';
 import { Button, Muted, Row, Spacer } from '../styles/ui';
 import { CameraScanner } from './CameraScanner';
 import { KeptBooks, PeerKeptBooks } from './KeptBooks';
@@ -141,13 +141,16 @@ const when = (iso: string | undefined) => (iso ? new Date(iso).toLocaleString() 
 const TRANSPORT_LABEL: Record<Transport, string> = { network: 'over the network', bluetooth: 'over Bluetooth', folder: 'through a folder' };
 
 /** How a paired instance is reached, for a connection's line, e.g. "over Bluetooth". */
-export const transportLabel = (pairing: Pairing) => TRANSPORT_LABEL[transportOf(pairing.address)];
+export const transportLabel = (pairing: Pairing) => (isOwnServer(pairing.address) ? 'through your account' : TRANSPORT_LABEL[transportOf(pairing.address)]);
 
-export type PairHow = 'network' | 'bluetooth' | 'folder';
+export type PairHow = 'network' | 'bluetooth' | 'folder' | 'server';
 
 /** The ways this instance can pair with another, for adding a connection. */
 export function PairChoices({ onChoose }: { onChoose(how: PairHow): void }) {
-  const none = !canSyncOverNetwork() && !canSyncOverBluetooth() && !canSyncThroughFolder();
+  const session = useServerSession();
+  // The account on this instance's server, unless the library is in it already.
+  const account = !!session?.account && libraryPlace().kind !== 'cloud';
+  const none = !account && !canSyncOverNetwork() && !canSyncOverBluetooth() && !canSyncThroughFolder();
   return (
     <Section>
       <Muted as="p">
@@ -155,6 +158,11 @@ export function PairChoices({ onChoose }: { onChoose(how: PairHow): void }) {
         the books chosen for each device, all of them to start with.
       </Muted>
       <Choices>
+        {account && (
+          <Button $variant="secondary" onClick={() => onChoose('server')}>
+            Your account on {session!.name}…
+          </Button>
+        )}
         {canSyncOverNetwork() && (
           <Button $variant="secondary" onClick={() => onChoose('network')}>
             A computer on this network…
@@ -186,6 +194,7 @@ export function PairChoices({ onChoose }: { onChoose(how: PairHow): void }) {
 export function PairScreen({ how, onPaired, onBack }: { how: PairHow } & PairProps) {
   if (how === 'network') return <PairNetwork onPaired={onPaired} onBack={onBack} />;
   if (how === 'bluetooth') return <PairBluetooth onPaired={onPaired} onBack={onBack} />;
+  if (how === 'server') return <PairServer onPaired={onPaired} onBack={onBack} />;
   return <PairFolder onPaired={onPaired} onBack={onBack} />;
 }
 
@@ -587,6 +596,53 @@ function PairNetwork({ onPaired, onBack }: PairProps) {
   );
 }
 
+/**
+ * Pairing with the account signed in on the server this page came from (M4), which keeps a copy
+ * of the library that this one syncs with, as with another device. The session vouches for this
+ * page, so there's no code.
+ */
+function PairServer({ onPaired, onBack }: PairProps) {
+  const { backend, library } = useLibrary();
+  const session = useServerSession();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string>();
+  const [first, setFirst] = useState<FirstSyncMode>('combine');
+
+  const pair = async () => {
+    setError(undefined);
+    setBusy(true);
+    try {
+      const { address, client } = ownServerClient();
+      onPaired(await pairWithHub(backend, client, address, '', instanceName()), first);
+    } catch (e) {
+      setError(errorMessage(e));
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <Section>
+        <h3>Keep a copy in your account</h3>
+        <Muted as="p">
+          This library stays {choosesServer() ? 'on this device' : 'in this browser'}, and your account{session?.account && ` (${session.account.name})`} on{' '}
+          {session?.name ?? 'this server'} keeps a copy, which it syncs with as with another device. Your other devices can connect
+          to your account the same way, and each syncs through it. Choose which books’ files stay here as well afterwards; the rest
+          are fetched from your account when you open them.
+        </Muted>
+        <Row>
+          <Button $variant="primary" disabled={busy || !session?.account} onClick={() => void pair()}>
+            {busy ? 'Connecting…' : 'Connect'}
+          </Button>
+        </Row>
+      </Section>
+      {Object.keys(library.items).length > 0 && <FirstSyncChoice value={first} onChange={setFirst} hub="your account" />}
+      {error && <ErrorText>{error}</ErrorText>}
+      <BackFooter onBack={onBack} busy={busy} />
+    </>
+  );
+}
+
 /** Pairing with a phone hosting sync over Bluetooth: choose it in the browser's chooser, then enter the code it shows. */
 function PairBluetooth({ onPaired, onBack }: PairProps) {
   const { backend } = useLibrary();
@@ -612,7 +668,7 @@ function PairBluetooth({ onPaired, onBack }: PairProps) {
     setError(undefined);
     setBusy(true);
     try {
-      const client = createMessageClient(syncApiMeta, httpSend(BLUETOOTH_BASE, undefined, linkFetch(link))).sync;
+      const client = httpSyncClient(BLUETOOTH_BASE, undefined, linkFetch(link));
       const pairing = await pairWithHub(backend, client, `${BLUETOOTH_PREFIX}${link.name}`, code.trim(), instanceName());
       rememberLink(pairing.hub.origin, link);
       onPaired(pairing);

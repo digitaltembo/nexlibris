@@ -3,7 +3,7 @@ import { loadFeed } from '../catalogs/feedCache';
 import { textFetcher } from '../catalogs/remote';
 import { sourceOf } from '../catalogs/sources';
 import { CatalogBrowser } from './CatalogBrowser';
-import { createDevice, readPairings, removePairing, userData, type Device, type DevicePatch, type FirstSyncMode, type Item, type Library, type NewPairing, type Pairing } from '@nexlibris/common';
+import { applyOperations, createDevice, readPairings, removePairing, userData, type Device, type DevicePatch, type FirstSyncMode, type Item, type ItemId, type Library, type Operation, type NewPairing, type Pairing } from '@nexlibris/common';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import styled from 'styled-components';
 import {
@@ -18,7 +18,7 @@ import { forgetFolder, mayWrite, savedFolder, saveFolder } from '../library/save
 import { exportCatalog, type CatalogSink, type ExportProgress, type ExportResult } from '../devices/opds/export';
 import { canWriteFolders, directorySink, zipSink } from '../devices/opds/sinks';
 import { listDevice, planSync, type DeviceListing, type SyncPlan } from '../devices/plan';
-import { deviceItems } from '../devices/selection';
+import { addToDevice, deviceItems } from '../devices/selection';
 import { runSync, type SyncProgress, type SyncResult } from '../devices/run';
 import { isCatalog, isDevice, isInstance, isSource, type CatalogType, type ConnectionType, type DeviceType, type Inventory, type RemoteBook, type SettingField } from '../devices/types';
 import { formatLabel } from './ItemFiles';
@@ -106,9 +106,9 @@ const order = (origin: string) => (device: Device) => (device.id === origin ? 0 
  * stores them as devices.) Adding and editing them, syncing each, and seeing what's on each; and,
  * in the apps, letting other instances connect to this one.
  */
-export function ConnectionsDialog({ onClose }: { onClose(): void }) {
+export function ConnectionsDialog({ onClose, pair }: { onClose(): void; /** Opens on pairing this way, e.g. with the account. */ pair?: PairHow }) {
   const { library, backend, refresh } = useLibrary();
-  const [screen, setScreen] = useState<Screen>({ kind: 'list' });
+  const [screen, setScreen] = useState<Screen>(pair ? { kind: 'pair', how: pair } : { kind: 'list' });
   /** How this instance reaches others: kept here, not in the library. */
   const [pairings, setPairings] = useState<Pairing[]>([]);
   const loadPairings = useCallback(() => void readPairings(backend).then(setPairings), [backend]);
@@ -579,28 +579,51 @@ function EditConnection({
 
 type SyncState =
   | { kind: 'connecting' }
-  | { kind: 'planned'; description: string; plan: SyncPlan; library: Library; listing: DeviceListing; keepFound: boolean }
+  | { kind: 'planned'; description: string; plan: SyncPlan; library: Library; listing: DeviceListing; keepFound: boolean; adding: Operation[] }
   | { kind: 'syncing'; progress: SyncProgress }
   | { kind: 'done'; result: SyncResult }
   | { kind: 'failed'; message: string };
 
-function SyncDevice({ device, type, onDone, onClose }: { device: Device; type: DeviceType; onDone(): void; onClose(): void }) {
+/**
+ * Syncing a reader: connecting, a preview of what will change, then carrying it out. Given `only`, it sends just
+ * those books (choosing any it doesn't have yet, as it sends them), leaving everything else on it as it is.
+ */
+export function SyncDevice({
+  device,
+  type,
+  only,
+  onDone,
+  onClose,
+}: {
+  device: Device;
+  type: DeviceType;
+  only?: ItemId[];
+  onDone(): void;
+  onClose(): void;
+}) {
   const { library, backend, apply } = useLibrary();
   const [state, setState] = useState<SyncState>({ kind: 'connecting' });
   const title = (id: string) => library.items[id]?.title ?? 'A removed item';
+  const options = (keepFound: boolean) => ({ keepFound, ...(only && { only }) });
 
   const check = async () => {
     setState({ kind: 'connecting' });
     try {
       const target = type.target(device);
       const { description } = await target.connect();
-      const library = await backend.getLibrary();
+      const stored = await backend.getLibrary();
+      const chosen = new Set(deviceItems(stored, stored.devices?.[device.id] ?? device).map((i) => i.id));
+      const missing = (only ?? []).filter((id) => !chosen.has(id) && stored.items[id]);
+      const adding = missing.length ? addToDevice(stored.devices?.[device.id] ?? device, missing) : [];
+      // Planned as if they were chosen already; they are once sent.
+      const library = adding.length ? applyOperations(stored, adding).library : stored;
       const current = library.devices?.[device.id] ?? device;
       const listed = await listDevice(current, type, target, library);
       // The whole device, to find copies of chosen books outside the folders a sync lists.
       const found = type.inventory ? (await type.inventory(current, target, library, listed.files)).books : undefined;
       const listing = { ...listed, ...(found && { found }) };
-      setState({ kind: 'planned', description, plan: planSync(library, current, type, listing), library, listing, keepFound: true });
+      const plan = planSync(library, current, type, listing, options(true));
+      setState({ kind: 'planned', description, plan, library, listing, keepFound: true, adding });
     } catch (e) {
       setState({ kind: 'failed', message: errorMessage(e) });
     }
@@ -609,9 +632,10 @@ function SyncDevice({ device, type, onDone, onClose }: { device: Device; type: D
   // oxlint-disable-next-line react-hooks/exhaustive-deps, react/set-state-in-effect
   useEffect(() => void check(), []);
 
-  const sync = async (plan: SyncPlan) => {
+  const sync = async (plan: SyncPlan, adding: Operation[]) => {
     setState({ kind: 'syncing', progress: { done: 0, total: plan.moves.length + plan.uploads.length + plan.removals.length } });
     try {
+      if (adding.length) await apply(adding);
       const result = await runSync(device.id, plan, type.target(device), backend, type.prepare, (progress) =>
         setState({ kind: 'syncing', progress }),
       );
@@ -628,7 +652,7 @@ function SyncDevice({ device, type, onDone, onClose }: { device: Device; type: D
       ? state.plan.uploads.length + state.plan.moves.length + state.plan.kept.length + state.plan.removals.length + (state.plan.catalog ? 1 : 0)
       : 0;
   return (
-    <Modal title={`Sync ${device.name}`} onClose={busy ? () => undefined : onClose}>
+    <Modal title={only ? `Send to ${device.name}` : `Sync ${device.name}`} onClose={busy ? () => undefined : onClose}>
       {state.kind === 'connecting' && <Muted as="p">Connecting to {device.name}…</Muted>}
       {state.kind === 'planned' && (
         <PlanSummary
@@ -638,7 +662,7 @@ function SyncDevice({ device, type, onDone, onClose }: { device: Device; type: D
           keepFound={state.keepFound}
           onKeepFound={(keepFound) => {
             const current = state.library.devices?.[device.id] ?? device;
-            setState({ ...state, keepFound, plan: planSync(state.library, current, type, state.listing, { keepFound }) });
+            setState({ ...state, keepFound, plan: planSync(state.library, current, type, state.listing, options(keepFound)) });
           }}
         />
       )}
@@ -679,8 +703,8 @@ function SyncDevice({ device, type, onDone, onClose }: { device: Device; type: D
         <Spacer />
         {state.kind === 'failed' && <Button onClick={() => void check()}>Try again</Button>}
         {state.kind === 'planned' && (
-          <Button disabled={work === 0} onClick={() => void sync(state.plan)}>
-            {work === 0 ? 'Up to date' : 'Sync'}
+          <Button disabled={work === 0 && !state.adding.length} onClick={() => void sync(state.plan, state.adding)}>
+            {work === 0 ? (state.adding.length ? 'Choose' : 'Up to date') : only ? 'Send' : 'Sync'}
           </Button>
         )}
         {state.kind === 'done' && (
