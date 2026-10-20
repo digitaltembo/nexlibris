@@ -1,6 +1,6 @@
 import type { Item } from '@nexlibris/common';
-import { fieldSuggestions, type FilterField } from './filters';
-import { formatTerm } from './search';
+import { fieldLabel } from './bookFields';
+import { formatTerm, metadataKeys } from './search';
 
 /**
  * Completions for the search box: the word being typed (the one at the caret) becomes a field
@@ -53,12 +53,12 @@ const FIXED_VALUES: Record<string, string[]> = {
 };
 
 /** Field names to complete, with what they're called. `text` and the cover flag aren't typed as fields. */
-const fieldNames = (fields: FilterField[]) => [
+const fieldNames = (fields: SearchField[]) => [
   ...fields.filter((f) => f.id !== 'text' && f.kind !== 'flag'),
   { id: 'has', label: 'Has', kind: 'flag' as const },
 ];
 
-export function suggest(query: string, caret: number, items: Item[], fields: FilterField[], limit = 8): Suggestion[] {
+export function suggest(query: string, caret: number, items: Item[], fields: SearchField[], limit = 8): Suggestion[] {
   const { start, end } = wordAt(query, caret);
   const word = query.slice(start, caret);
   const replace = (text: string): Pick<Suggestion, 'query' | 'caret'> => {
@@ -98,4 +98,72 @@ export function suggest(query: string, caret: number, items: Item[], fields: Fil
     }
   }
   return out.slice(0, limit);
+}
+
+/* The fields a search can name, and the values in use for each, to complete. */
+
+export type FieldKind = 'text' | 'set' | 'rating' | 'number' | 'date' | 'flag';
+
+export interface SearchField {
+  /** The search field: `author`, `tag`, a metadata key, … */
+  id: string;
+  label: string;
+  kind: FieldKind;
+}
+
+const BUILTIN_FIELDS: SearchField[] = [
+  { id: 'text', label: 'Anything', kind: 'text' },
+  { id: 'title', label: 'Title', kind: 'text' },
+  { id: 'author', label: 'Author', kind: 'text' },
+  { id: 'series', label: 'Series', kind: 'text' },
+  { id: 'tag', label: 'Tags', kind: 'set' },
+  { id: 'format', label: 'Format', kind: 'set' },
+  { id: 'rating', label: 'Rating', kind: 'rating' },
+  { id: 'added', label: 'Added', kind: 'date' },
+  { id: 'originallyPublished', label: 'First published', kind: 'date' },
+  { id: 'published', label: 'Edition published', kind: 'date' },
+  { id: 'publisher', label: 'Publisher', kind: 'text' },
+  { id: 'language', label: 'Language', kind: 'text' },
+  { id: 'pages', label: 'Pages', kind: 'number' },
+  { id: 'cover', label: 'Cover', kind: 'flag' },
+  { id: 'isbn', label: 'ISBN', kind: 'text' },
+];
+
+/** Metadata the built-in fields cover or that isn't worth filtering on. */
+const HIDDEN_METADATA = new Set(['seriesIndex', 'description', 'titleSort', 'authorSort', 'coverColor']);
+
+const label = fieldLabel;
+
+/** The fields a search can name: the built-in ones, then the library's other metadata fields. */
+export function searchFields(items: Iterable<Item>): SearchField[] {
+  const list = [...items];
+  const builtin = new Set(BUILTIN_FIELDS.map((f) => f.id));
+  const extra = [...metadataKeys(list)]
+    .filter((key) => !builtin.has(key) && !HIDDEN_METADATA.has(key))
+    .sort((a, b) => a.localeCompare(b))
+    .map((key): SearchField => {
+      const numeric = list.some((item) => typeof item.metadata[key] === 'number');
+      return { id: key, label: label(key), kind: numeric ? 'number' : 'text' };
+    });
+  return [...BUILTIN_FIELDS, ...extra];
+}
+
+/** Values in use for a field, most common first, to suggest while typing a search. */
+export function fieldSuggestions(items: Iterable<Item>, field: string, limit = 200): string[] {
+  const counts = new Map<string, number>();
+  const add = (value: unknown) => {
+    if (typeof value !== 'string' || !value.trim()) return;
+    counts.set(value, (counts.get(value) ?? 0) + 1);
+  };
+  for (const item of items) {
+    if (field === 'author') item.creators.forEach((c) => add(c.name));
+    else if (field === 'tag') item.tags.forEach(add);
+    else if (field === 'format') item.files.forEach((f) => add(f.format));
+    else if (field === 'title') add(item.title);
+    else add(item.metadata[field]);
+  }
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, limit)
+    .map(([value]) => value);
 }

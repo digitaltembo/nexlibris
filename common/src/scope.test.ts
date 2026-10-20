@@ -6,9 +6,9 @@ import { MemoryStorage } from './storage';
 import { createSyncService } from './sync';
 import { LOCAL_USER } from './types';
 
-const dune = createItem({ title: 'Dune', tags: ['travel'] });
-const emma = createItem({ title: 'Emma' });
-const reader = createDevice({ name: 'Reader', type: 'crosspoint.x4' });
+const dune = createItem({ title: 'Dune', tags: ['travel'], files: [{ hash: 'dune-file', size: 1, format: 'epub' }] });
+const emma = createItem({ title: 'Emma', files: [{ hash: 'emma-file', size: 1, format: 'epub' }] });
+const reader = createDevice({ name: 'Reader', type: 'crosspoint.reader' });
 const setup: Operation[] = [
   { type: 'addItem', item: dune },
   { type: 'addItem', item: emma },
@@ -45,14 +45,19 @@ describe('scope', () => {
     expect(scopeChanges(setup, new Set([dune.id, emma.id])).at(-1)).toMatchObject({ removed: [] });
   });
 
-  it('keeps a hub’s books from deletion by an instance it scopes, and says which it has that it no longer picks', async () => {
+  it('keeps a hub’s books from deletion by an instance, and its files to the books it shows it', async () => {
     const backend = new StoredLibraryBackend(new MemoryStorage());
     await backend.apply(setup);
     const service = createSyncService(backend, { name: () => 'Hub', scope: () => travel });
     const { revision } = await backend.getLibrary();
-    const result = await service.apply({ ops: [{ type: 'removeItem', id: dune.id }], expectRevision: revision, peer: 'phone', have: [dune.id, emma.id] });
+    const result = await service.apply({ ops: [{ type: 'removeItem', id: dune.id }], expectRevision: revision, peer: 'phone', have: [dune.id] });
     expect(Object.keys((await backend.getLibrary()).items)).toHaveLength(2);
-    expect(result.outside).toEqual([emma.id]);
+    // Files of books it's shown, and of ones it said it has; not others'.
+    await service.state({ since: 0, peer: 'phone', have: [] });
+    expect(await service.allows({ hash: 'dune-file', peer: 'phone' })).toBe(true);
+    expect(await service.allows({ hash: 'emma-file', peer: 'phone' })).toBe(false);
+    await service.state({ since: 0, peer: 'phone', have: [dune.id, emma.id] });
+    expect(await service.allows({ hash: 'emma-file', peer: 'phone' })).toBe(true);
     // Unscoped, as a folder's hub is, deletions go through.
     const open = createSyncService(backend, { name: () => 'Hub' });
     await open.apply({ ops: [{ type: 'removeItem', id: emma.id }], expectRevision: result.revision });

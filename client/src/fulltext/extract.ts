@@ -1,5 +1,5 @@
 import JSZip from 'jszip';
-import type { FormatId } from '../formats/formats';
+import { EPUB_FORMATS, isEpub, READER_EPUBS, type FormatId } from '../formats/formats';
 import { decodeText } from '../formats/text';
 import { attribute, byLocalName, childElements, isElement, localName, nodeText, parseMarkup, rootElement, textContent, type Element } from './markup';
 
@@ -39,20 +39,17 @@ export const MAX_BOOK_TEXT = 16_000_000;
 export const MAX_SECTION_SOURCE = 8_000_000;
 
 /** The formats with text to extract, best first: which of an item's files is indexed. */
-export const TEXT_FORMATS: FormatId[] = ['epub', 'pdf', 'txt', 'rtf', 'x4.epub', 'x3.epub'];
+export const TEXT_FORMATS: FormatId[] = ['epub', 'pdf', 'txt', 'rtf', ...READER_EPUBS];
 
 /**
  * Formats whose text is read anywhere, a worker included. PDFs and RTF need the page: pdf.js runs its own
  * worker from there, and rtf.js renders to the DOM (see `extractPage.ts`).
  */
-export const WORKER_FORMATS: FormatId[] = ['epub', 'x4.epub', 'x3.epub', 'txt'];
+export const WORKER_FORMATS: FormatId[] = [...EPUB_FORMATS, 'txt'];
 
 export async function extractText(data: Blob, format: FormatId): Promise<TextDoc> {
+  if (isEpub(format)) return extractEpub(data);
   switch (format) {
-    case 'epub':
-    case 'x4.epub':
-    case 'x3.epub':
-      return extractEpub(data);
     case 'txt':
       return textDoc(collapse(decodeText(await data.arrayBuffer())));
     case 'pdf':

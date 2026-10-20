@@ -4,7 +4,7 @@ import { SearchBox } from './SearchBox';
 
 const meta = {
   component: SearchBox,
-  args: { value: '', placeholder: 'Search 5 items…', onOpen: fn(), onClear: fn(), filterCount: 0, onFilters: fn() },
+  args: { value: '', placeholder: 'Search 5 items…', onOpen: fn(), onClear: fn() },
 } satisfies Meta<typeof SearchBox>;
 export default meta;
 type Story = StoryObj<typeof meta>;
@@ -14,4 +14,3 @@ export const Empty: Story = {};
 export const Searched: Story = { args: { value: 'author:"Frank Herbert" dune' } };
 /** A search of the text inside books, marked as such. */
 export const InsideBooks: Story = { args: { value: 'harpoon', inText: true } };
-export const WithFilters: Story = { args: { value: 'dune', filterCount: 2 } };

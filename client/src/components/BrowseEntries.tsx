@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import styled from 'styled-components';
 import type { BrowseEntry, BrowsePath } from '../library/browse';
 import { NARROW } from '../styles/GlobalStyle';
@@ -115,22 +116,30 @@ const Row = styled.button.attrs({ type: 'button' })`
   }
 `;
 
-interface Props {
-  entries: BrowseEntry[];
-  layout: 'grid' | 'list';
-  onOpen(path: BrowsePath): void;
+/** An entry as a card or row shows it: its name, what's under it if known, and what it shows as a cover. */
+export interface EntryCard {
+  key: string;
+  label: string;
+  /** E.g. "12 books"; left out while it isn't known (or never is). */
+  detail?: string;
+  /** The front of the stack: a cover, else a placeholder with the label. */
+  cover: ReactNode;
+  onOpen(): void;
 }
 
-/** A browse level's entries (categories, authors, series, tags), as stacked covers or as rows. */
-export function BrowseEntries({ entries, layout, onOpen }: Props) {
+/**
+ * Entries that lead somewhere (the Library's categories, a catalog's places), as stacked covers
+ * with the name and count below, or as rows of the name and count.
+ */
+export function EntryCards({ entries, layout }: { entries: EntryCard[]; layout: 'grid' | 'list' }) {
   if (layout === 'list') {
     return (
       <Rows>
         {entries.map((entry) => (
-          <li key={entry.path.join('/')}>
-            <Row onClick={() => onOpen(entry.path)}>
+          <li key={entry.key}>
+            <Row onClick={entry.onOpen}>
               <span>{entry.label}</span>
-              <Detail>{entry.detail}</Detail>
+              {entry.detail && <Detail>{entry.detail}</Detail>}
             </Row>
           </li>
         ))}
@@ -140,16 +149,36 @@ export function BrowseEntries({ entries, layout, onOpen }: Props) {
   return (
     <Grid>
       {entries.map((entry) => (
-        <li key={entry.path.join('/')}>
-          <Card onClick={() => onOpen(entry.path)}>
-            <Stack>
-              <Cover item={entry.sample} {...(!entry.sample?.cover && { label: entry.label })} />
-            </Stack>
+        <li key={entry.key}>
+          <Card onClick={entry.onOpen}>
+            <Stack>{entry.cover}</Stack>
             <Label>{entry.label}</Label>
-            <Detail>{entry.detail}</Detail>
+            {entry.detail && <Detail>{entry.detail}</Detail>}
           </Card>
         </li>
       ))}
     </Grid>
+  );
+}
+
+interface Props {
+  entries: BrowseEntry[];
+  layout: 'grid' | 'list';
+  onOpen(path: BrowsePath): void;
+}
+
+/** A browse level's entries (categories, authors, series, tags), as stacked covers or as rows. */
+export function BrowseEntries({ entries, layout, onOpen }: Props) {
+  return (
+    <EntryCards
+      layout={layout}
+      entries={entries.map((entry) => ({
+        key: entry.path.join('/'),
+        label: entry.label,
+        detail: entry.detail,
+        cover: <Cover item={entry.sample} {...(!entry.sample?.cover && { label: entry.label })} />,
+        onOpen: () => onOpen(entry.path),
+      }))}
+    />
   );
 }

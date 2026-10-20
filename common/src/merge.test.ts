@@ -319,6 +319,10 @@ function edits(library: Library, count: number, next: () => number): Operation[]
       () => item && { type: 'removeTags', id: item.id, tags: [pick(['a', 'b', 'c', 'fiction'])!] },
       () => item && { type: 'attachFile', id: item.id, file: file(pick(['a', 'b', 'c'])!) },
       () => item && { type: 'detachFile', id: item.id, hash: file(pick(['a', 'b', 'c'])!).hash },
+      () => {
+        const attached = item && pick(item.files);
+        return attached && { type: 'setFileMetadataKey', id: item!.id, hash: attached.hash, metadataKey: pick(['k1', 'k2', undefined]) };
+      },
       () => item && next() < 0.3 ? { type: 'removeItem', id: item.id } : undefined,
       () => item && { type: 'setRating', userId: LOCAL_USER, itemId: item.id, rating: pick([1, 3, 5, undefined]) },
       () => item && { type: 'setReview', userId: LOCAL_USER, itemId: item.id, text: pick(['Good', 'Meh', undefined]) },
@@ -327,8 +331,9 @@ function edits(library: Library, count: number, next: () => number): Operation[]
       () => device && { type: 'updateDevice', id: device.id, patch: { name: pick(['P', 'Q']), settings: { [pick(['address', 'folder'])!]: pick(['1', '2', undefined]) } } },
       () => device && item && { type: 'addDeviceItems', id: device.id, itemIds: [item.id] },
       () => device && item && { type: 'removeDeviceItems', id: device.id, itemIds: [item.id] },
+      () => device && item && { type: 'setDeviceFiles', id: device.id, itemId: item.id, hashes: pick([[file('a').hash], [file('a').hash, file('b').hash], undefined]) },
       () => device && next() < 0.3 ? { type: 'removeDevice', id: device.id } : undefined,
-      () => device && { type: 'recordDeviceSync', id: device.id, placed: { [`/b/${pick(['1', '2'])}`]: { itemId: 'x', hash: file('a').hash, size: 1, key: 'k' } }, removed: [] },
+      () => device && { type: 'recordDeviceSync', id: device.id, placed: { [`/b/${pick(['1', '2'])}`]: { itemId: 'x', hash: file('a').hash, size: 1 } }, removed: [] },
       () => ({ type: 'setCategory', category: createCategory({ name: pick(['M', 'N'])!, entries: [{ label: 'E', query: 'tag:a' }] }) }),
       () => category && { type: 'setCategory', category: { ...category, name: pick(['M', 'N', 'O'])! } },
       () => category && next() < 0.3 ? { type: 'removeCategory', id: category.id } : undefined,

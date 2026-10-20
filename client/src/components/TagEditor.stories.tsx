@@ -28,3 +28,20 @@ function LiveTags() {
 
 /** Adding and removing change the tags shown, as in the app; typing completes the sample library's tags (try "fa"). */
 export const Live: Story = { render: () => <LiveTags /> };
+
+function LiveFormats() {
+  const [formats, setFormats] = useState(['epub', 'pdf']);
+  return (
+    <TagEditor
+      tags={formats}
+      candidates={['epub', 'x4.epub', 'x3.epub', 'pdf', 'cbz', 'cbr', 'azw3', 'mobi', 'txt']}
+      only
+      noun="format"
+      onAdd={(added) => setFormats((current) => [...new Set([...current, ...added])])}
+      onRemove={(format) => setFormats((current) => current.filter((f) => f !== format))}
+    />
+  );
+}
+
+/** As a connection's "Only specific formats": completes from the formats nexlibris knows, and takes nothing else. */
+export const Formats: Story = { render: () => <LiveFormats /> };

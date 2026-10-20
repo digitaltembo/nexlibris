@@ -15,6 +15,9 @@ import { onFileFetched } from '../sync/files';
 import { canSync } from '../sync/connect';
 import { ConvertOptionsDialog } from './ConvertOptions';
 import { MenuButton, type MenuAction } from './MenuButton';
+import { AddTo } from './AddTo';
+import { writableConnections } from './SendTo';
+import { isBehind } from '../library/fileMetadata';
 
 const FileRow = styled.li`
   display: flex;
@@ -130,9 +133,10 @@ function FileItem({ item, file, notDownloaded, onRead }: {
   notDownloaded: boolean;
   onRead(file: FileRef): void;
 }) {
-  const { backend, apply } = useLibrary();
+  const { backend, apply, library } = useLibrary();
   const { conversions, choose, status, dialog } = useConversion(item, file);
   const [confirming, setConfirming] = useState(false);
+  const [adding, setAdding] = useState(false);
   const [error, setError] = useState<string>();
   const name = fileName(item, file);
 
@@ -156,6 +160,7 @@ function FileItem({ item, file, notDownloaded, onRead }: {
       onSelect: () => choose(c),
     })),
     ...(canShowFiles() && !notDownloaded ? [{ label: 'Show in folder', onSelect: () => void show() }] : []),
+    ...(writableConnections(library).length ? [{ label: 'Add to…', onSelect: () => setAdding(true) }] : []),
     { label: 'Remove…', danger: true, onSelect: () => setConfirming(true) },
   ];
 
@@ -167,6 +172,7 @@ function FileItem({ item, file, notDownloaded, onRead }: {
       <Meta>
         {formatLabel(file.format)} · {formatSize(file.size)}
         {file.derivedFrom && ' · converted'}
+        {isBehind(item, file) && ' · details older than the library’s'}
         {notDownloaded && ' · not downloaded'}
         {status.busy && ' · converting…'}
       </Meta>
@@ -202,6 +208,7 @@ function FileItem({ item, file, notDownloaded, onRead }: {
       {status.error && <ErrorText role="alert">{status.error}</ErrorText>}
       {error && <ErrorText role="alert">{error}</ErrorText>}
       {dialog}
+      {adding && <AddTo items={[item]} file={file} onClose={() => setAdding(false)} />}
     </FileRow>
   );
 }

@@ -47,7 +47,7 @@ describe('mergeItems', () => {
       cover: { hash: 'd'.repeat(64), mediaType: 'image/jpeg' },
     });
     const third = createItem({ title: 'Dune', creators: author('Frank Herbert'), files: [pdf] });
-    const device = createDevice({ name: 'X4', type: 'crosspoint.x4' });
+    const device = createDevice({ name: 'X4', type: 'crosspoint.reader' });
     const library = build([
       { type: 'addItem', item: keep },
       { type: 'addItem', item: other },

@@ -1,16 +1,20 @@
 import { mergeTags, type BookMetadata, type Cover, type Creator } from '@nexlibris/common';
+import { PLUGIN_FORMATS } from '../plugins/formats';
 
-export type FormatId = 'epub' | 'x4.epub' | 'x3.epub' | 'pdf' | 'cbz' | 'cbr' | 'txt' | 'rtf' | 'mobi' | 'azw3' | 'azw';
+type BaseFormatId = 'epub' | 'pdf' | 'cbz' | 'cbr' | 'txt' | 'rtf' | 'mobi' | 'azw3' | 'azw';
+
+/** A format nexlibris knows: its own, and those plugins add (`plugins/formats.ts`), such as `x4.epub`. */
+export type FormatId = BaseFormatId | keyof typeof PLUGIN_FORMATS;
 
 export interface FormatInfo {
   label: string;
   mediaType: string;
+  /** An EPUB made for a particular reader (a plugin's, say): read, parsed, indexed and written as an EPUB. */
+  epub?: boolean;
 }
 
-export const FORMATS: Record<FormatId, FormatInfo> = {
+const BASE_FORMATS: Record<BaseFormatId, FormatInfo> = {
   epub: { label: 'EPUB', mediaType: 'application/epub+zip' },
-  'x4.epub': { label: 'EPUB (X4)', mediaType: 'application/epub+zip' },
-  'x3.epub': { label: 'EPUB (X3)', mediaType: 'application/epub+zip' },
   pdf: { label: 'PDF', mediaType: 'application/pdf' },
   cbz: { label: 'Comic (CBZ)', mediaType: 'application/vnd.comicbook+zip' },
   cbr: { label: 'Comic (CBR)', mediaType: 'application/vnd.comicbook-rar' },
@@ -21,24 +25,50 @@ export const FORMATS: Record<FormatId, FormatInfo> = {
   azw: { label: 'Kindle (AZW)', mediaType: 'application/vnd.amazon.ebook' },
 };
 
+export const FORMATS: Record<FormatId, FormatInfo> = { ...BASE_FORMATS, ...PLUGIN_FORMATS };
+
+export function isFormatId(format: string): format is FormatId {
+  return format in FORMATS;
+}
+
+/** Whether a format is an EPUB: `epub`, or one made for a particular reader (`x4.epub`). */
+export const isEpub = (format: string) => format === 'epub' || (isFormatId(format) && !!FORMATS[format].epub);
+
+/** The EPUBs: `epub` first, then plugins' (the formats whose metadata nexlibris can write). */
+export const EPUB_FORMATS: FormatId[] = (Object.keys(FORMATS) as FormatId[]).filter(isEpub);
+
+/** Readers' EPUBs, made from an EPUB by a plugin's converter: every EPUB but `epub` itself. */
+export const READER_EPUBS: FormatId[] = EPUB_FORMATS.filter((format) => format !== 'epub');
+
 /** Formats that are Kindle/Mobipocket files, read by converting to EPUB. */
 export const KINDLE_FORMATS: FormatId[] = ['mobi', 'azw3', 'azw'];
 
 /** When an item has several files, the one opened by "Read", best first. */
-export const READ_PREFERENCE: FormatId[] = ['epub', 'x4.epub', 'x3.epub', 'pdf', 'cbz', 'cbr', 'rtf', 'txt'];
+export const READ_PREFERENCE: FormatId[] = [...EPUB_FORMATS, 'pdf', 'cbz', 'cbr', 'rtf', 'txt'];
 
 /** For `<input accept>`. */
 export const IMPORT_ACCEPT = '.epub,.pdf,.cbz,.cbr,.txt,.rtf,.mobi,.azw3,.azw';
 
-/** The format a filename denotes, recognizing compound extensions like `.x4.epub`. */
-export function formatFromName(name: string): FormatId | undefined {
-  const match = /\.((?:x[34]\.)?[a-z0-9]+)$/i.exec(name);
-  const ext = match?.[1]?.toLowerCase();
-  return ext && ext in FORMATS ? (ext as FormatId) : undefined;
+/** Extensions of more than one part (`x4.epub`), longest first, which a file's name is checked for before its last one. */
+const COMPOUND = (Object.keys(FORMATS) as FormatId[]).filter((f) => f.includes('.')).sort((a, b) => b.length - a.length);
+
+/** A file name's extension as a format would be named: a compound one (`x4.epub`) where it has one, else its last. */
+function extensionOf(name: string): string | undefined {
+  const lower = name.toLowerCase();
+  const compound = COMPOUND.find((format) => lower.endsWith(`.${format}`));
+  return compound ?? /\.([a-z0-9]+)$/i.exec(name)?.[1]?.toLowerCase();
 }
 
-export function isFormatId(format: string): format is FormatId {
-  return format in FORMATS;
+/** The format a filename denotes, recognizing compound extensions like `.x4.epub`. */
+export function formatFromName(name: string): FormatId | undefined {
+  const ext = extensionOf(name);
+  return ext && isFormatId(ext) ? ext : undefined;
+}
+
+/** A file name without its extension, a compound one (`.x4.epub`) included. */
+export function stripExtension(name: string): string {
+  const ext = extensionOf(name);
+  return ext ? name.slice(0, name.length - ext.length - 1) : name;
 }
 
 /** Library metadata read out of a file, before it becomes an item. */
@@ -61,7 +91,7 @@ export function splitTags(values: readonly string[]): string[] {
 }
 
 export function titleFromFilename(name: string): string {
-  return name.replace(/\.(x[34]\.)?[a-z0-9]+$/i, '').replace(/[_]+/g, ' ').trim() || 'Untitled';
+  return stripExtension(name).replace(/[_]+/g, ' ').trim() || 'Untitled';
 }
 
 export function emptyParsedItem(filename: string): ParsedItem {

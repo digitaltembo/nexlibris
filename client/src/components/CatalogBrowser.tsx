@@ -1,17 +1,17 @@
-import type { Device, Item } from '@nexlibris/common';
+import { createItem, type Device, type Item, type LibraryBackend } from '@nexlibris/common';
 import { useEffect, useMemo, useState } from 'react';
 import styled from 'styled-components';
 import { addFromCatalog, inLibrary } from '../catalogs/addBook';
-import { loadFeed, loadSearch, rememberPages, type CachedFeed } from '../catalogs/feedCache';
-import type { OpdsBook, OpdsDownload, OpdsEntry, OpdsFeed, OpdsNavigation } from '../catalogs/opdsFeed';
+import { loadFeed, loadSearch, readCachedFeed, rememberPages, type CachedFeed } from '../catalogs/feedCache';
+import { withDetails, type OpdsBook, type OpdsDownload, type OpdsEntry, type OpdsFeed, type OpdsNavigation } from '../catalogs/opdsFeed';
 import { type CatalogAuth } from '../catalogs/credentials';
 import { CantDownload, fetchSignedInImage, textFetcher, type TextFetcher } from '../catalogs/remote';
 import { useCatalogAuth } from '../catalogs/sources';
-import { useCatalogImage, type ImageFetcher } from '../catalogs/useCatalogImage';
+import { type ImageFetcher } from '../catalogs/useCatalogImage';
 import { sourceOf } from '../catalogs/sources';
 import { rememberTitle, SEARCH_STEP } from '../catalogs/titles';
 import { useLibrary } from '../library/LibraryContext';
-import { Badge, Button, Muted } from '../styles/ui';
+import { Button, Muted } from '../styles/ui';
 import { catalogItemId, opdsItem } from '../catalogs/asItem';
 import { availableFields, DEFAULT_COLUMNS, visibleColumns } from '../library/columns';
 import { sortItems, type Sort } from '../library/search';
@@ -21,7 +21,9 @@ import { CollectionDecorContext, type CollectionDecor } from './CollectionDecor'
 import { LibraryGrid, type CollectionProps } from './LibraryGrid';
 import { LibraryList } from './LibraryList';
 import { Modal, ModalFooter } from './Modal';
-import { RichText } from './RichText';
+import { ItemDetail } from './ItemDetail';
+import { EntryCards } from './BrowseEntries';
+import { Cover, GeneratedCover } from './Cover';
 
 /**
  * A page of an OPDS catalog the library browses (`catalogs/`): the places it links to, then its
@@ -45,6 +47,10 @@ interface Props {
   listColumns?: string[];
   /** For tests and stories. */
   fetcher?: TextFetcher;
+  /** In a modal (a connection's "On it…"): a book's details open in another, not the right-hand pane. */
+  embedded?: boolean;
+  /** A book's details opened in the right-hand pane, or closed: the page makes room for it. */
+  onDetail?(open: boolean): void;
 }
 
 type State =
@@ -54,9 +60,61 @@ type State =
 
 const NO_SELECTION: ReadonlySet<string> = new Set();
 
+/** What's known of a place without asking the catalog: from the page it leads to, if that's cached. */
+interface PlaceInfo {
+  detail?: string;
+  thumbnail?: string;
+}
+
+const plural = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString()} ${n === 1 ? one : many}`;
+
+/** A place's count as words: of books where its page holds only books, else entries; "+" where there are more pages. */
+function countOf(feed: OpdsFeed): string {
+  const books = feed.entries.every((e) => e.kind === 'book');
+  const text = plural(feed.entries.length, books ? 'book' : 'entry', books ? 'books' : 'entries');
+  return feed.next ? text.replace(/^([\d,.\s]+)/, '$1+') : text;
+}
+
+/**
+ * Covers and counts for a page's places, filled in as they're found: a place's own count and
+ * thumbnail, else from its page where that's in the cache (the first cover there, how many it
+ * holds). Nothing is fetched for them: catalogs are read only as the user opens pages.
+ */
+function usePlaceInfo(backend: LibraryBackend, places: OpdsNavigation[]): Map<string, PlaceInfo> {
+  const [info, setInfo] = useState(new Map<string, PlaceInfo>());
+  const hrefs = places.map((p) => p.href).join('\n');
+  useEffect(() => {
+    let cancelled = false;
+    const wanted = hrefs ? hrefs.split('\n') : [];
+    void Promise.all(
+      wanted.map(async (href) => {
+        const cached = await readCachedFeed(backend, href).catch(() => undefined);
+        if (!cached || cancelled) return;
+        const feed = cached.feed;
+        const thumbnail = feed.entries.find((e) => e.thumbnail)?.thumbnail;
+        setInfo((was) => new Map(was).set(href, { detail: countOf(feed), ...(thumbnail && { thumbnail }) }));
+      }),
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [backend, hrefs]);
+  return info;
+}
+
+/** Under a place's name: how many it holds where that's known, else its own words if they're short (Gutenberg's author). */
+function placeDetail(place: OpdsNavigation, info: PlaceInfo | undefined): string | undefined {
+  if (info?.detail) return info.detail;
+  if (place.count !== undefined) return plural(place.count, 'book');
+  return place.detail && place.detail.length <= 60 ? place.detail : undefined;
+}
+
+/** A place as an item, for `Cover` (its image through the browser's `CollectionDecor`). */
+const placeItem = (place: OpdsNavigation): Item => ({ ...createItem({ title: place.title }, new Date(0).toISOString()), id: `place:${place.href}` });
+
 const errorMessage = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
-export function CatalogBrowser({ device, root, step, onOpen, view = 'grid', listColumns = DEFAULT_COLUMNS, fetcher: given }: Props) {
+export function CatalogBrowser({ device, root, step, onOpen, view = 'grid', listColumns = DEFAULT_COLUMNS, fetcher: given, embedded, onDetail }: Props) {
   const { backend, library } = useLibrary();
   const signIn = useCatalogAuth(backend, device.id, root);
   const auth = signIn.ready ? signIn.auth : undefined;
@@ -65,11 +123,17 @@ export function CatalogBrowser({ device, root, step, onOpen, view = 'grid', list
   const [state, setState] = useState<State>({ kind: 'loading' });
   const [check, setCheck] = useState(0);
   const [open, setOpen] = useState<OpdsBook>();
+  const inPane = !!open && !embedded;
+  useEffect(() => onDetail?.(inPane), [inPane, onDetail]);
+  // Gone with the page (going elsewhere in the Library): its pane too.
+  useEffect(() => () => onDetail?.(false), [onDetail]);
   /** The list's sort, once its headers are clicked; till then, the catalog's own order. */
   const [sort, setSort] = useState<Sort>();
   const terms = step?.startsWith(SEARCH_STEP) ? step.slice(SEARCH_STEP.length) : undefined;
   const url = terms === undefined ? (step ?? root) : undefined;
   const template = sourceOf(device)?.searchTemplate?.(device);
+  const pagePlaces = state.kind === 'ready' ? state.pages.flatMap((page) => page.feed.entries).filter((e): e is OpdsNavigation => e.kind === 'navigation') : [];
+  const placeInfo = usePlaceInfo(backend, pagePlaces);
 
   useEffect(() => {
     // Not before the sign-in is known, so a catalog that needs one isn't asked without it.
@@ -143,14 +207,21 @@ export function CatalogBrowser({ device, root, step, onOpen, view = 'grid', list
   const shown = books.map((book) => opdsItem(device.id, book, readAt));
   const items = sort ? sortItems(shown, sort) : shown;
   const owned = new Map(books.map((book) => [book, inLibrary(libraryItems, book)]));
+  /** Places with a real cover to hand: their own thumbnail, or the first cover on their page if it's cached. */
+  const placeCovers = new Map(
+    places.flatMap((place) => {
+      const thumbnail = place.thumbnail ?? placeInfo.get(place.href)?.thumbnail;
+      return thumbnail ? [[placeItem(place).id, thumbnail] as const] : [];
+    }),
+  );
   const decor: CollectionDecor = {
-    coverUrl: (item) => byId.get(item.id)?.thumbnail,
+    coverUrl: (item) => byId.get(item.id)?.thumbnail ?? placeCovers.get(item.id),
     ...(fetchImage && { fetchImage }),
     badge: (item) => (owned.get(byId.get(item.id)!) ? 'In library' : undefined),
   };
   const collection: CollectionProps = {
     items,
-    selection: NO_SELECTION,
+    selection: open ? new Set([catalogItemId(device.id, open)]) : NO_SELECTION,
     onActivate: (id) => setOpen(byId.get(id)),
     onLongPress: (id) => setOpen(byId.get(id)),
   };
@@ -178,19 +249,23 @@ export function CatalogBrowser({ device, root, step, onOpen, view = 'grid', list
         </Sections>
       )}
       {places.length > 0 && (
-        <Places>
-          {places.map((place) => (
-            <li key={place.id}>
-              <Place onClick={() => onOpen(place.href, place.title)}>
-                {place.thumbnail && <img src={place.thumbnail} alt="" loading="lazy" referrerPolicy="no-referrer" />}
-                <span>
-                  <strong>{place.title}</strong>
-                  {place.detail && <Muted>{place.detail}</Muted>}
-                </span>
-              </Place>
-            </li>
-          ))}
-        </Places>
+        <CollectionDecorContext.Provider value={decor}>
+          <EntryCards
+            layout={view === 'list' ? 'list' : 'grid'}
+            entries={places.map((place) => {
+              const item = placeItem(place);
+              const detail = placeDetail(place, placeInfo.get(place.href));
+              return {
+                key: place.id,
+                label: place.title,
+                ...(detail && { detail }),
+                // The place's name drawn as a cover, unless a real one is to hand.
+                cover: placeCovers.has(item.id) ? <Cover item={item} label={place.title} /> : <GeneratedCover title={place.title} />,
+                onOpen: () => onOpen(place.href, place.title),
+              };
+            })}
+          />
+        </CollectionDecorContext.Provider>
       )}
       {books.length > 0 && (
         <CollectionDecorContext.Provider value={decor}>
@@ -217,7 +292,20 @@ export function CatalogBrowser({ device, root, step, onOpen, view = 'grid', list
           {state.more && state.more !== 'loading' && <ErrorText role="alert">{state.more}</ErrorText>}
         </More>
       )}
-      {open && <CatalogBook book={open} {...(auth && { auth })} owned={owned.get(open) ?? inLibrary(libraryItems, open)} onOpen={(to, title) => (setOpen(undefined), onOpen(to, title))} onClose={() => setOpen(undefined)} />}
+      {open && (
+        <CollectionDecorContext.Provider value={decor}>
+          <CatalogBook
+            key={catalogItemId(device.id, open)}
+            book={open}
+            asItem={(book) => opdsItem(device.id, book, readAt)}
+            {...(auth && { auth })}
+            fetcher={fetcher}
+            embedded={!!embedded}
+            onOpen={(to, title) => (setOpen(undefined), onOpen(to, title))}
+            onClose={() => setOpen(undefined)}
+          />
+        </CollectionDecorContext.Provider>
+      )}
     </Browser>
   );
 }
@@ -232,25 +320,51 @@ function when(iso: string): string {
 const sizeOf = (bytes: number) => (bytes >= 1e6 ? `${(bytes / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1e3))} KB`);
 const downloadLabel = (d: OpdsDownload) => d.title ?? d.format?.toUpperCase() ?? d.type ?? 'File';
 
-/** A catalog's book: what it says of it, its downloads (each to add to the library), and where it leads. */
+/**
+ * A catalog's book in the details pane, read-only (`ItemDetail`'s `remote`): what the catalog says
+ * of it, Add to library (its first download nexlibris reads; each of its downloads under Files),
+ * and the pages it leads to. In a modal where the browser is in one (`embedded`).
+ */
 export function CatalogBook({
-  book,
-  owned,
+  book: listed,
+  asItem,
   auth,
+  fetcher,
+  embedded,
   onOpen,
   onClose,
 }: {
   book: OpdsBook;
-  /** The catalog's sign-in, for its downloads and cover. */
+  /** A book as an item, as the catalog's views show it. */
+  asItem(book: OpdsBook): Item;
+  /** The catalog's sign-in, for its downloads. */
   auth?: CatalogAuth;
-  owned: Item | undefined;
+  /** For a book given as a link to its page (`OpdsBook.details`): reading that page. */
+  fetcher: TextFetcher;
+  embedded?: boolean;
   onOpen(url: string, title: string): void;
   onClose(): void;
 }) {
-  const { backend, refresh } = useLibrary();
+  const { backend, library, refresh } = useLibrary();
   const [adding, setAdding] = useState<string>();
-  const cover = useCatalogImage(book.cover, useMemo(() => (auth ? (url: string) => fetchSignedInImage(url, auth) : undefined), [auth]));
   const [result, setResult] = useState<{ text: string; link?: string; error?: boolean }>();
+  // A book the list gives only as a link to its page (Gutenberg's): that page, read now it's opened.
+  const [loaded, setLoaded] = useState<{ book?: OpdsBook; error?: string }>({});
+  useEffect(() => {
+    if (!listed.details) return;
+    let cancelled = false;
+    void loadFeed(backend, listed.details, fetcher).then(
+      ({ cached }) => !cancelled && setLoaded({ book: withDetails(listed, cached.feed) }),
+      (e: unknown) => !cancelled && setLoaded({ error: errorMessage(e) }),
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [backend, listed, fetcher]);
+  const book = loaded.book ?? listed;
+  const reading = !!listed.details && !loaded.book && !loaded.error;
+  const item = asItem(book);
+  const owned = inLibrary(Object.values(library.items), book);
 
   const add = async (download: OpdsDownload) => {
     setAdding(download.href);
@@ -272,61 +386,80 @@ export function CatalogBook({
       setAdding(undefined);
     }
   };
+  const readable = book.downloads.filter((d) => d.format);
+  const first = readable[0];
 
+  const detail = (
+    <ItemDetail
+      item={item}
+      embedded={!!embedded}
+      onClose={adding ? () => undefined : onClose}
+      remote={{
+        ...(owned && { owned }),
+        actions: reading ? (
+          <Muted>Reading its page…</Muted>
+        ) : loaded.error ? (
+          <ErrorText as="span" role="alert">
+            Couldn’t read its page: {loaded.error}
+          </ErrorText>
+        ) : first ? (
+          <Button disabled={!!adding} onClick={() => void add(first)}>
+            {adding === first.href ? 'Adding…' : owned ? 'Add again' : 'Add to library'}
+          </Button>
+        ) : (
+          <Muted>{book.downloads.length ? 'nexlibris can’t read its downloads' : 'The catalog offers no download'}</Muted>
+        ),
+        ...(book.downloads.length > 0 && {
+          files: (
+            <Downloads>
+              {book.downloads.map((d) => (
+                <li key={d.href}>
+                  <span>
+                    {downloadLabel(d)}
+                    {d.length && <Muted> · {sizeOf(d.length)}</Muted>}
+                  </span>
+                  {d.format ? (
+                    <Button $variant="secondary" $size="small" disabled={!!adding} onClick={() => void add(d)}>
+                      {adding === d.href ? 'Adding…' : 'Add to library'}
+                    </Button>
+                  ) : (
+                    <Muted>nexlibris can’t read this format</Muted>
+                  )}
+                </li>
+              ))}
+            </Downloads>
+          ),
+        }),
+        footer: (
+          <>
+            {result && (
+              <p role={result.error ? 'alert' : 'status'}>
+                {result.error ? <ErrorText as="span">{result.text}</ErrorText> : result.text}{' '}
+                {result.link && (
+                  <a href={result.link} target="_blank" rel="noopener noreferrer">
+                    Download it
+                  </a>
+                )}
+              </p>
+            )}
+            {book.related.length > 0 && (
+              <Sections>
+                {book.related.map((r) => (
+                  <Button key={r.href} $variant="secondary" $size="small" disabled={!!adding} onClick={() => onOpen(r.href, r.title)}>
+                    {r.title} ›
+                  </Button>
+                ))}
+              </Sections>
+            )}
+          </>
+        ),
+      }}
+    />
+  );
+  if (!embedded) return detail;
   return (
-    <Modal title={book.title} onClose={adding ? () => undefined : onClose}>
-      <Detail>
-        {cover && <img src={cover} alt="" referrerPolicy="no-referrer" />}
-        <div>
-          {book.authors.length > 0 && <p>by {book.authors.join(', ')}</p>}
-          {(book.published || book.language) && (
-            <Muted as="p">{[book.published?.slice(0, 10), book.language].filter(Boolean).join(' · ')}</Muted>
-          )}
-          {owned && <Badge>In library as “{owned.title}”</Badge>}
-        </div>
-      </Detail>
-      {book.summary && <RichText text={book.summary} />}
-      {book.tags.length > 0 && <Muted as="p">{book.tags.join(' · ')}</Muted>}
-      {book.downloads.length > 0 ? (
-        <Downloads>
-          {book.downloads.map((d) => (
-            <li key={d.href}>
-              <span>
-                {downloadLabel(d)}
-                {d.length && <Muted> · {sizeOf(d.length)}</Muted>}
-              </span>
-              {d.format ? (
-                <Button $size="small" disabled={!!adding} onClick={() => void add(d)}>
-                  {adding === d.href ? 'Adding…' : 'Add to library'}
-                </Button>
-              ) : (
-                <Muted>nexlibris can’t read this format</Muted>
-              )}
-            </li>
-          ))}
-        </Downloads>
-      ) : (
-        <Muted as="p">The catalog offers no download for this book.</Muted>
-      )}
-      {result && (
-        <p role={result.error ? 'alert' : 'status'}>
-          {result.error ? <ErrorText as="span">{result.text}</ErrorText> : result.text}{' '}
-          {result.link && (
-            <a href={result.link} target="_blank" rel="noopener noreferrer">
-              Download it
-            </a>
-          )}
-        </p>
-      )}
-      {book.related.length > 0 && (
-        <Sections>
-          {book.related.map((r) => (
-            <Button key={r.href} $variant="secondary" $size="small" disabled={!!adding} onClick={() => onOpen(r.href, r.title)}>
-              {r.title} ›
-            </Button>
-          ))}
-        </Sections>
-      )}
+    <Modal title={item.title} onClose={adding ? () => undefined : onClose}>
+      {detail}
       <ModalFooter>
         <Button $variant="secondary" disabled={!!adding} onClick={onClose}>
           Close
@@ -368,61 +501,6 @@ const Sections = styled.div`
   flex-wrap: wrap;
   gap: 6px;
   margin: 8px 0;
-`;
-
-const Places = styled.ul`
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 4px 12px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-`;
-
-const Place = styled.button.attrs({ type: 'button' })`
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  width: 100%;
-  padding: 8px;
-  border: none;
-  border-bottom: 1px solid var(--soft-border, var(--border));
-  background: none;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-
-  &:hover {
-    background: var(--hover);
-  }
-
-  img {
-    width: 22px;
-    height: 22px;
-    object-fit: contain;
-  }
-
-  span {
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
-  }
-`;
-
-const Detail = styled.div`
-  display: flex;
-  gap: 16px;
-  align-items: flex-start;
-
-  img {
-    width: 120px;
-    border-radius: 4px;
-  }
-
-  p {
-    margin: 0 0 6px;
-  }
 `;
 
 const Downloads = styled.ul`

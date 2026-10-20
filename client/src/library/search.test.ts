@@ -1,6 +1,6 @@
 import { createItem, type Item } from '@nexlibris/common';
 import { describe, expect, it } from 'vitest';
-import { describeRule, filterFields, filtersQuery, parseFilters, type Filters } from './filters';
+import { searchFields } from './suggest';
 import { filterItems, formatQuery, parseQuery } from './search';
 
 const item = (title: string, extra: Partial<Item> = {}, addedAt = '2026-09-20T00:00:00Z'): Item => ({
@@ -88,60 +88,11 @@ describe('search syntax', () => {
   });
 });
 
-describe('filters', () => {
-  const fields = filterFields(all);
-
+describe('search fields', () => {
   it('offers the built-in fields and the library’s other metadata', () => {
+    const fields = searchFields(all);
     expect(fields.map((f) => f.id)).toContain('mood');
     expect(fields.map((f) => f.id)).not.toContain('seriesIndex');
     expect(fields.find((f) => f.id === 'pages')?.kind).toBe('number');
-  });
-
-  it('turns rules into search text and back', () => {
-    const filters: Filters = {
-      any: false,
-      rules: [
-        { field: 'tag', condition: 'anyOf', values: ['Science fiction', 'Romance'] },
-        { field: 'rating', condition: 'atLeast', values: ['4'] },
-        { field: 'format', condition: 'absent', values: [] },
-        { field: 'added', condition: 'inLast', values: ['30 days'] },
-        { field: 'author', condition: 'notContains', values: ['Austen'] },
-        { field: 'published', condition: 'before', values: ['1900'] },
-      ],
-    };
-    const query = filtersQuery(filters);
-    expect(query).toBe('tag:"Science fiction",Romance rating:4+ -has:format added:"last 30 days" -author:Austen published:<1900');
-    expect(parseFilters(query, fields)).toEqual(filters);
-    expect(filtersQuery({ ...filters, any: true })).toMatch(/^tag:.* or rating:4\+ or -has:format or /);
-    expect(parseFilters(filtersQuery({ ...filters, any: true }), fields)).toEqual({ ...filters, any: true });
-  });
-
-  it('takes dates before AD 1 as a minus year', () => {
-    const filters: Filters = { any: false, rules: [{ field: 'originallyPublished', condition: 'before', values: ['-0500'] }] };
-    expect(filtersQuery(filters)).toBe('originallyPublished:<-0500');
-    expect(parseFilters('originallyPublished:<-0500', fields)).toEqual(filters);
-  });
-
-  it('leaves out rules without a value, and reads plain words as Anything', () => {
-    expect(filtersQuery({ any: false, rules: [{ field: 'author', condition: 'contains', values: [' '] }] })).toBe('');
-    expect(parseFilters('verne', fields)).toEqual({ any: false, rules: [{ field: 'text', condition: 'contains', values: ['verne'] }] });
-  });
-
-  it('says when search text is more than rules can show', () => {
-    expect(parseFilters('"a phrase"', fields)).toBeUndefined();
-    expect(parseFilters('a b or c', fields)).toBeUndefined();
-    expect(parseFilters('rating:>4', fields)).toBeUndefined();
-  });
-
-  it('describes rules in words', () => {
-    expect(describeRule({ field: 'rating', condition: 'atLeast', values: ['4'] }, fields)).toBe('Rating is at least 4★');
-    expect(describeRule({ field: 'format', condition: 'absent', values: [] }, fields)).toBe('Has no file');
-    expect(describeRule({ field: 'cover', condition: 'present', values: [] }, fields)).toBe('Has a cover');
-    expect(describeRule({ field: 'series', condition: 'absent', values: [] }, fields)).toBe('Series is empty');
-    expect(describeRule({ field: 'format', condition: 'anyOf', values: ['epub', 'pdf'] }, fields)).toBe('Format is epub or pdf');
-    expect(describeRule({ field: 'tag', condition: 'anyOf', values: ['Fantasy', 'Sci-fi', 'Horror'] }, fields)).toBe(
-      'Tags include Fantasy, Sci-fi or Horror',
-    );
-    expect(describeRule({ field: 'added', condition: 'inLast', values: ['30 days'] }, fields)).toBe('Added in the last 30 days');
   });
 });

@@ -4,21 +4,22 @@ What's next, and the decisions that shape it. How things are built is in the [RE
 
 ## TLDR
 
-Status as of 2026-10-08. Milestones are listed in the order they're planned; numbers are stable names (code refers to M4 and M6), not an order.
+Status as of 2026-10-19. Milestones are listed in the order they're planned; numbers are stable names (code refers to M4 and M6), not an order.
 
 | Milestone | Status |
 |---|---|
 | **Done** | M0 Foundations, M2 In-app reading, M3 Devices (CrossPoint X4/X3, OPDS catalogs written and browsed), M5 ISBN scanning. |
 | **M1 Calibre-lite** | Nearly done. **Left:** prove it on the 1,123-book Calibre library, Kindle parsing, storage in a Web Worker. |
 | **M6 Sync** | Works over LAN, Bluetooth and a USB folder; a phone sees only the books chosen for it, and deleting there leaves the hub's copy. **Left:** matching books on a first sync, a real phone. |
+| **M13 Connections** | Built: connections that read, write or both, each writer with a catalog (Add to…, Send to…, search); additive syncs; files behind their details; OPDS, static export (Cloudflare), instances and folders built in; CrossPoint a plugin with the X4/X3 formats. **Left:** folders in the apps, browsing connections by author/series, exposure on the folder hub and server, checking it by hand. |
 | **M7 Apps** | Android and desktop both work. **Left:** packaging and signing, native restore, a real X4. |
-| **M4 Server** | Not started. |
+| **M4 Server** | Started: accounts, a library per account (books' files on disk or in S3, GCS or B2), moving a browser's library there and back, or syncing with it; the desktop and Android apps sign in to a server at an address the user gives, and open the account's library or sync with it. **Left:** scoping, catalogs, Docker. |
 | **M8 Background work** | Full-text search done, its work in a worker with the text stored compressed. **Left:** jobs manager, OCR, Kindle books' text. |
 | **M9 Loans** | Researched, not started. |
 | **M10 Reader devices** | Not started. |
 | **M11 Sharing**, **M12 Audio and video** | Long shots: not before M4. |
 
-**Next:** finish M1 and M6, then M7's packaging, then M4.
+**Next:** check M13 by hand and finish M1 and M6, then M7's packaging, then the rest of M4.
 
 ## Vision
 
@@ -31,7 +32,8 @@ An application for managing libraries of content (ebooks first, then audio and v
 - **Stable IDs, operations, content addressing.** UUIDs for everything; every change is a typed operation appended to a change log; files are stored by hash. Sync, devices and multi-user all build on these.
 - **Per-user data keyed by user** from day one, though there's one local user.
 - **Sync is predictable over clever.** Additive changes go both ways; where both sides changed the same thing, the pairing's source of truth wins, shown in a preview first. A state hash after each merge catches anything that slipped.
-- **Everywhere the library goes is a connection.** Readers, catalogs and other instances of nexlibris share one model and one dialog; for an instance, its books are the ones it gets. A hub shows an instance only those, and books deleted there stay on the hub.
+- **Everywhere the library goes is a connection,** and a connection reads (lists a place's books and downloads them), writes (takes books), or both. Readers, catalogs, folders and other instances of nexlibris share one model and one dialog; what a connection writes, and what an instance exposes to a peer, is its catalog: books added by hand, and those its search adds.
+- **Sending only copies.** Sending or syncing to a connection sends files the library already has; it never converts or rewrites them. A connection that prefers formats the books lack asks first: convert (into the library, once) or send anyway. Syncs only add; deleting is always the user's own act.
 - **A bare top bar and one set of commands.** The bar holds the name and search; commands are one list shown as a drawer or the native menu bar.
 - **Browsing as calibre3opds does,** with the user's own categories, which also become OPDS custom feeds. Other OPDS catalogs are connections too, browsed in the Library beside its own books; they're read only as the user opens them, cached for a day.
 - **No DRM circumvention.** nexlibris may carry encrypted loans to a device but never holds keys or decrypts.
@@ -62,27 +64,39 @@ M0 Foundations, M2 In-app reading, M3 Devices and M5 ISBN scanning are done; the
 
 **Done when:** I edit on the phone offline and on the desktop meanwhile, sync, and both agree, with the preview having shown which edit won each clash. Books added on either side end up on both.
 
+### M13 — Connections
+Built: connections by what they do (read, write, or both: `devices/types.ts`), each write connection holding a catalog (books or particular files, plus what its search adds) managed by Add to…, Send to…, a book's details and Bulk edit; strictly additive syncs; files sent as stored, marked behind their book's details, with one send flow asking to convert to preferred formats and update files; OPDS server, static export (formats, Cloudflare search routing and Basic Auth), instance and folder built in (`connections/`); CrossPoint one reader type with a model, adding the X4/X3 formats and converter; instances exposing only their catalog for a peer (files too, `allows`), with Sync from, Sync to, single books, and offers to a hub; read connections browsed in the Library. Left:
+- **Folders in the apps:** the folder connection uses `showDirectoryPicker`, so Chrome, Edge or the desktop app's Chromium. Android needs it over `DocumentTreeStorage`, and the desktop app would do better with a folder storage in the main process (no permission prompts).
+- **Browsing by organization:** a reader's, folder's or instance's books show flat in the Library (`['connection', id]`), and OPDS servers keep `['source', …]`. Give read connections levels (authors, series, tags) and fold `source` into `connection`.
+- **Exposure everywhere:** the folder hub and the server don't scope what a peer sees by its connection's catalog yet (the server allows every file).
+- **Instance browsing at scale:** "On it…" reads the peer's whole view through `state`; a paged, searchable `browse` endpoint if libraries get large.
+- Verify the Done-when by hand, on a real X4, Cloudflare Pages and a phone.
+
+**Done when:** I browse Gutenberg and download a book; send a book that has only an EPUB to the X4 and am asked to convert it; edit a book's title and see its files marked behind, then updated and replaced on the next sync; export a catalog of `tag:"xteink"` books as `x4.epub`s whose search works on Cloudflare Pages; back the library up to a USB drive and read it back in another instance; and from the desktop, browse only the phone's books its connection exposes, and download one.
+
 ### M7 — Apps
 Both apps already run on real hardware (Android on a Pixel 7a, the desktop app on macOS). What's left is making them installable and closing their gaps.
 - **Android:** release signing.
 - **Android:** restore natively. A restore still writes every file over the bridge (~60 s for 335 MB).
 - **Desktop:** packaging (`.app` and installers), so it no longer runs from the repo.
+- **Android:** a sync with a real X4 (its calls to the reader now go through the app, as the page can't call plain http).
 - **Desktop:** a sync and an OPDS round trip with a real X4.
 
 **Done when:** both apps install from a release build, and the library lives on my phone and works offline.
 
 ### M4 — Server
-- Node backend in `server/` implementing `LibraryBackend` over estuary-rpc with filesystem storage. The client can point at a server or at local storage.
-- Serves the sync API (M6), so browsers, phones and the desktop sync with it as they do with each other.
+Built: `server/` serves the web app, accounts (sign-in by a session cookie; sign-up open, first account only, or closed), the library per account over estuary-rpc-server (books' files on disk or in an S3-style bucket: AWS, GCS, Backblaze B2, MinIO, R2), and the sync API per account. Signed out, the page works as before; signed in, the library moves to the account and back (Library folder), or stays and syncs with it (Connections). The desktop and Android apps choose a server by its address (self-hosting) and sign in for a bearer token; they open the account's library instead of the device's (copied there first, the device's kept), or sync with it.
+- **Left in the sync:** scoping what each device sees, as the other hubs do; listing and forgetting an account's paired devices; carrying a browser's pairings when its library moves.
+- **Accounts:** a hidden password prompt in the CLI; Android servers under a path (its sync relay, `PeerService.kt`, calls origins only); the apps' token kept in local storage, rather than the system's keychain; resetting a password from the web; deleting an account and its files.
 - **Catalogs:**
   - serves OPDS catalogs;
-  - ports calibre3opds's `index.html` browser client and reader;
-  - publishes catalogs to static hosts, with calibre3opds's Cloudflare search and auth files.
+  - ports calibre3opds's `index.html` browser client and reader.
 - **What needs a server:**
   - API keys for metadata lookups, including ISBN sources beyond Open Library;
   - optional Calibre CLI (`ebook-convert`) for formats with no TS converter;
-  - reaching CrossPoint readers for `https://` clients.
-- **Deployment:** Docker image, config, S3-style storage.
+  - reaching CrossPoint readers for `https://` browser clients (the Android app relays its own calls).
+- **Deployment:** Docker image.
+- **estuary-rpc:** nexlibris links `../estuary-rpc` (`file:`) for fixes made there (endpoint errors with statuses, async authentication, raw transport and path parameters, a fetch client, a safer static server); publish them and depend on the release again.
 
 **Done when:** a browser and the phone each sync with the server, and it serves a catalog.
 
@@ -111,7 +125,7 @@ Library books borrowed through Libby, carried to a CrossPoint reader and taken o
 
 ### M10 — Reader devices
 More of M3, for readers beyond CrossPoint and for changes going both ways.
-- USB mass-storage readers (Kobo, Kindle) through the File System Access API and the apps' folder access.
+- USB mass-storage readers (Kobo, Kindle), as M13's folder connection with their own templates and formats.
 - Two-way changes from the reader: metadata edited there, reading progress.
 - Deleting a device's files from its contents list.
 
@@ -128,13 +142,13 @@ More of M3, for readers beyond CrossPoint and for changes going both ways.
 
 Small things to pick up when they're wanted.
 
-- **Filters:** chips typed straight into the search box; a facet sidebar with counts per tag, author and format.
+- **Facets:** a sidebar with counts per tag, author and format, each adding its term to the search.
 - **Reading Calibre's `metadata.db`** for what a folder import misses: custom columns, read status, books with no file.
 
 ## Open questions
 
 - Where is the source of CrossPoint's account plugin, and can it fulfill `.acsm` files? That decides whether nexlibris ever needs the device's key.
-- How should an `https://`-hosted client reach CrossPoint? Through the server, HTTPS on CrossPoint, or only from `localhost`, the server and the apps.
+- How should an `https://`-hosted browser client reach CrossPoint? Through the server, HTTPS on CrossPoint, or only from `localhost`, the server and the apps (Android relays the calls natively).
 - Where does conversion run on the server? It needs an image backend (e.g. sharp) behind a small image-ops interface, so the optimizer stays shared.
 - How does estuary-rpc fit an in-process backend (OPFS in a worker)? Ideally the same transport over `postMessage`.
 - Should custom metadata fields be typed (user-defined field schemas per library) for better editing?

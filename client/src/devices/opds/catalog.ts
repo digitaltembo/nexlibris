@@ -9,7 +9,9 @@ import type { FileHash, Item, ItemId } from '@nexlibris/common';
  * - `navigation/{authors,tags,series}/index.xml`, each with a paginated feed per entry;
  * - `search/<term>/page-N.xml` for every title, author, tag and series term (a static host
  *   can't run a query), listed in `search.xml` and advertised by `searchDescription.xml`;
- * - `books/<stem>.<format>` and `covers/<id>.<ext>`.
+ * - `books/<stem>.<format>` and `covers/<id>.<ext>`;
+ * - with `searchIndex`, `search-index.json`, which calibre3opds's Cloudflare search routing
+ *   (`cloudflare/`) answers other queries from: each book's terms and its entry.
  *
  * Links are absolute (`/…`), so the catalog is meant to be served from the root of a host.
  */
@@ -50,7 +52,12 @@ export interface CatalogOptions {
   pageSize?: number;
   /** For the feeds' `updated`. */
   now?: string;
+  /** Writes `search-index.json`, for search routing on Cloudflare Pages. */
+  searchIndex?: boolean;
 }
+
+/** Where search routing finds each book's terms and entry (as calibre3opds's `SEARCH_INDEX`). */
+export const SEARCH_INDEX_PATH = 'search-index.json';
 
 /** Lowercase ASCII words joined by dashes, for paths (as calibre3opds's `_slug`). */
 export function slug(value: string): string {
@@ -113,9 +120,10 @@ export function buildCatalog(books: CatalogBook[], options: CatalogOptions): Cat
     });
   };
 
-  const entry = ({ item, formats, cover }: CatalogBook) => {
+  /** A book's entry; `standalone` declares the namespaces it uses, for entries served outside the feeds. */
+  const entry = ({ item, formats, cover }: CatalogBook, standalone = false) => {
     const lines = [
-      '<entry>',
+      standalone ? `<entry xmlns="${ATOM}" xmlns:dc="${DC}" xmlns:calibre="${CALIBRE}">` : '<entry>',
       `<id>urn:uuid:${escapeXml(item.id)}</id>`,
       `<title>${escapeXml(item.title)}</title>`,
       `<updated>${escapeXml(item.updatedAt)}</updated>`,
@@ -169,7 +177,7 @@ export function buildCatalog(books: CatalogBook[], options: CatalogOptions): Cat
         link('navigation/index.xml', 'start'),
         ...opensearch(list.length, start),
         ...pagination(dir, page, count),
-        ...list.slice(start, start + pageSize).map(entry),
+        ...list.slice(start, start + pageSize).map((book) => entry(book)),
       ]);
     }
   };
@@ -255,14 +263,18 @@ export function buildCatalog(books: CatalogBook[], options: CatalogOptions): Cat
     link('navigation/index.xml', 'subsection', NAVIGATION, 'Browse'),
     ...opensearch(recent.length, 0),
     ...pagination('navigation/recent', 0, recentPages),
-    ...recent.slice(0, pageSize).map(entry),
+    ...recent.slice(0, pageSize).map((book) => entry(book)),
   ]);
 
   // Search: a feed per term, since a static host can't run a query.
   const terms = new Map<string, CatalogBook[]>();
-  for (const book of sorted) {
-    const values = [book.item.title, ...book.item.tags, ...authorsOf(book.item), series(book.item)].filter(Boolean);
-    for (const term of new Set(values.map(slug))) terms.set(term, [...(terms.get(term) ?? []), book]);
+  const termsOf = (book: CatalogBook) => [
+    ...new Set([book.item.title, ...book.item.tags, ...authorsOf(book.item), series(book.item)].filter(Boolean).map(slug)),
+  ];
+  for (const book of sorted) for (const term of termsOf(book)) terms.set(term, [...(terms.get(term) ?? []), book]);
+  if (options.searchIndex) {
+    const books = sorted.map((book) => ({ terms: termsOf(book), entry: entry(book, true) }));
+    files.push({ path: SEARCH_INDEX_PATH, text: JSON.stringify({ pageSize, updated: now, books }) });
   }
   const termList = [...terms.keys()].sort();
   navigation('search.xml', 'Search', termList.map((term) => [`Search: ${term}`, `search/${term}/page-1.xml`]));

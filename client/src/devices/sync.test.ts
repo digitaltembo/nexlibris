@@ -13,7 +13,8 @@ import {
 import { describe, expect, it } from 'vitest';
 import { listDevice, planSync, type PlanOptions } from './plan';
 import { runSync } from './run';
-import type { DeviceTarget, DeviceType, RemoteFile } from './types';
+import { addToDevice, catalogAdditions } from './selection';
+import type { DeviceTarget, FilesType, RemoteFile } from './types';
 
 /** A device as a map of path to contents. */
 class FakeDevice implements DeviceTarget {
@@ -52,10 +53,12 @@ class CatalogDevice extends FakeDevice {
   }
 }
 
-const type: DeviceType = {
+const type: FilesType = {
+  access: 'files',
   id: 'test.reader',
   label: 'Reader',
-  formats: ['x4.epub', 'epub'],
+  write: { single: true },
+  formats: () => ['x4.epub', 'epub'],
   settings: [],
   folder: () => '/Books',
   target: () => {
@@ -83,20 +86,15 @@ async function setup() {
   return { backend, dune, emma, notes, deviceId: device.id };
 }
 
-/** Like embedMetadata: writes the title and description into the file sent. */
-const withMetadata: DeviceType = {
-  ...type,
-  prepare: {
-    key: (item) => `${item.title}|${String(item.metadata.description)}`,
-    run: async (item, _file, data) => new Blob([`${await data.text()} titled ${item.title}`]),
-  },
-};
-
+/** As Sync to (and Send to…) does it: what the connection's search matches (or the books sent) added to its catalog, then the plan carried out. */
 async function sync(backend: StoredLibraryBackend, deviceId: string, target: FakeDevice, deviceType = type, options?: PlanOptions) {
+  const before = await backend.getLibrary();
+  const additions = options?.only ? addToDevice(before.devices![deviceId]!, options.only) : catalogAdditions(before, before.devices![deviceId]!);
+  if (additions.length) await backend.apply(additions);
   const library = await backend.getLibrary();
   const device = library.devices![deviceId]!;
   const plan = planSync(library, device, deviceType, await listDevice(device, deviceType, target), options);
-  const result = await runSync(deviceId, plan, target, backend, deviceType.prepare);
+  const result = await runSync(library, device, plan, target, backend);
   await backend.apply(result.operations);
   return { plan, result, device: (await backend.getLibrary()).devices![deviceId]! };
 }
@@ -123,7 +121,7 @@ describe('device sync', () => {
     const { backend, deviceId, dune, emma } = await setup();
     const target = new CatalogDevice();
     await sync(backend, deviceId, target, { ...type, catalog: () => undefined });
-    // Emma is no longer chosen and Dune is renamed: a full sync would remove one and move the other.
+    // Emma is out of the catalog and Dune is renamed: a full sync would move Dune.
     target.files.set('/Books/Ulysses.epub', 'by hand');
     await backend.apply([
       { type: 'removeDeviceItems', id: deviceId, itemIds: [emma.id] },
@@ -156,11 +154,14 @@ describe('device sync', () => {
       '/Books/Kindred - Octavia Butler.epub',
       '/Books/Ulysses.epub',
     ]);
-    // A full sync then takes Emma off.
-    expect((await sync(backend, deviceId, target)).plan.removals).toEqual(['/Books/Emma A Novel - Jane Austen.epub']);
+    // A full sync leaves Emma there: syncs only add.
+    const full = await sync(backend, deviceId, target);
+    expect(full.plan.removals).toEqual([]);
+    expect(full.plan.left).toBe(1);
+    expect(target.files.has('/Books/Emma A Novel - Jane Austen.epub')).toBe(true);
   });
 
-  it('removes what it sent once it is no longer chosen, and resends changed files', async () => {
+  it('leaves what it sent once it is out of the catalog, and replaces changed files', async () => {
     const { backend, deviceId, dune, emma } = await setup();
     const target = new FakeDevice();
     await sync(backend, deviceId, target);
@@ -176,31 +177,20 @@ describe('device sync', () => {
     expect(plan.uploads).toMatchObject([
       { path: '/Books/Dune (Renamed) - Frank Herbert.epub', replaces: true, supersedes: '/Books/Dune - Frank Herbert.epub' },
     ]);
-    expect(Object.fromEntries(target.files)).toEqual({ '/Books/Dune (Renamed) - Frank Herbert.epub': 'dune x4, reconverted' });
-    expect(Object.keys(device.placed)).toEqual(['/Books/Dune (Renamed) - Frank Herbert.epub']);
+    expect(Object.fromEntries(target.files)).toEqual({
+      '/Books/Dune (Renamed) - Frank Herbert.epub': 'dune x4, reconverted',
+      '/Books/Emma A Novel - Jane Austen.epub': 'emma epub',
+    });
+    expect(Object.keys(device.placed).sort()).toEqual(['/Books/Dune (Renamed) - Frank Herbert.epub', '/Books/Emma A Novel - Jane Austen.epub']);
   });
 
-  it('sends books again when their metadata changes, under a new name only if it changes', async () => {
-    const { backend, deviceId, dune, emma } = await setup();
+  it('sends files as they are stored, so changed metadata alone sends nothing', async () => {
+    const { backend, deviceId, dune } = await setup();
     const target = new FakeDevice();
-    await sync(backend, deviceId, target, withMetadata);
-    expect(target.files.get('/Books/Dune - Frank Herbert.epub')).toBe('dune x4 titled Dune');
-    expect((await sync(backend, deviceId, target, withMetadata)).plan.unchanged).toBe(2);
-
-    await backend.apply([
-      { type: 'setMetadata', id: emma.id, key: 'description', value: 'Matchmaking.' },
-      { type: 'updateItem', id: dune.id, patch: { title: 'Dune Messiah' } },
-    ]);
-    const { plan } = await sync(backend, deviceId, target, withMetadata);
-    expect(plan.uploads.map((u) => [u.path, u.replaces])).toEqual([
-      ['/Books/Emma A Novel - Jane Austen.epub', true],
-      ['/Books/Dune Messiah - Frank Herbert.epub', true],
-    ]);
-    expect(Object.fromEntries(target.files)).toEqual({
-      '/Books/Dune Messiah - Frank Herbert.epub': 'dune x4 titled Dune Messiah',
-      '/Books/Emma A Novel - Jane Austen.epub': 'emma epub titled Emma: A Novel',
-    });
-    expect((await sync(backend, deviceId, target, withMetadata)).plan.unchanged).toBe(2);
+    await sync(backend, deviceId, target);
+    expect(target.files.get('/Books/Dune - Frank Herbert.epub')).toBe('dune x4');
+    await backend.apply([{ type: 'setMetadata', id: dune.id, key: 'description', value: 'Spice.' }]);
+    expect((await sync(backend, deviceId, target)).plan).toMatchObject({ uploads: [], moves: [], unchanged: 2 });
   });
 
   it('sends the first of the device’s formats a book has, and its optimized copy once one is made', async () => {
@@ -227,10 +217,10 @@ describe('device sync', () => {
   it('keeps the old copy when the renamed one fails to send', async () => {
     const { backend, deviceId, dune } = await setup();
     const target = new FakeDevice();
-    await sync(backend, deviceId, target, withMetadata);
+    await sync(backend, deviceId, target);
     await backend.apply([{ type: 'updateItem', id: dune.id, patch: { title: 'Dune Messiah' } }]);
     target.failOn = '/Books/Dune Messiah - Frank Herbert.epub';
-    const { result, device } = await sync(backend, deviceId, target, withMetadata);
+    const { result, device } = await sync(backend, deviceId, target);
     expect(result.errors).toHaveLength(1);
     expect(target.files.has('/Books/Dune - Frank Herbert.epub')).toBe(true);
     expect(device.placed['/Books/Dune - Frank Herbert.epub']).toBeDefined();
@@ -261,8 +251,8 @@ describe('device sync', () => {
     expect(target.files.get('/Books/Other.epub')).toBe('someone else');
   });
 
-  it('records what succeeded when a step fails, and forgets files deleted on the device', async () => {
-    const { backend, deviceId } = await setup();
+  it('records what succeeded when a step fails, and takes books deleted on the device out of the catalog', async () => {
+    const { backend, deviceId, dune } = await setup();
     const target = new FakeDevice();
     target.failOn = '/Books/Emma A Novel - Jane Austen.epub';
     const first = await sync(backend, deviceId, target);
@@ -273,8 +263,15 @@ describe('device sync', () => {
     target.files.delete('/Books/Dune - Frank Herbert.epub');
     const second = await sync(backend, deviceId, target);
     expect(second.plan.forget).toEqual(['/Books/Dune - Frank Herbert.epub']);
-    expect(second.result.sent).toBe(2);
-    expect(target.files.size).toBe(2);
+    expect(second.plan.deleted).toEqual([dune.id]);
+    expect(second.result).toMatchObject({ sent: 1, takenOut: 1 });
+    expect([...target.files.keys()]).toEqual(['/Books/Emma A Novel - Jane Austen.epub']);
+    expect(second.device.items).not.toContain(dune.id);
+
+    // It stays off; sent alone, by hand, it goes again.
+    expect((await sync(backend, deviceId, target)).plan.uploads).toEqual([]);
+    const again = await sync(backend, deviceId, target, type, { only: [dune.id] });
+    expect(again.result.sent).toBe(1);
   });
 
   it('numbers books whose names would clash', () => {
@@ -292,7 +289,7 @@ describe('device sync', () => {
 
   it('adds the device’s catalog to the reader’s list once', async () => {
     const { backend, deviceId } = await setup();
-    const withCatalog: DeviceType = { ...type, catalog: (d) => ({ name: d.name, url: 'https://books.example/index.xml' }) };
+    const withCatalog: FilesType = { ...type, catalog: (d) => ({ name: d.name, url: 'https://books.example/index.xml' }) };
     const target = new CatalogDevice();
     const first = await sync(backend, deviceId, target, withCatalog);
     expect(first.plan.catalog).toEqual({ name: 'X4', url: 'https://books.example/index.xml' });
@@ -307,7 +304,7 @@ describe('device sync', () => {
     expect((await sync(backend, deviceId, new FakeDevice(), withCatalog)).plan.catalog).toBeUndefined();
   });
 
-  it('sends what the device’s search matches, as it changes', async () => {
+  it('adds what the device’s search matches to its catalog, where it stays', async () => {
     const backend = new StoredLibraryBackend(new MemoryStorage());
     const add = async (title: string, tags: string[]) => {
       const { hash, size } = await backend.putFile(new Blob([title]));
@@ -329,14 +326,27 @@ describe('device sync', () => {
       '/Books/Notes - Ann Leckie.epub',
     ]);
 
-    // A book that stops matching comes off; one chosen by hand stays whatever its tags.
+    // A book that stops matching stays in the catalog, and on the device.
     await backend.apply([
       { type: 'removeTags', id: sword.id, tags: ['sci-fi'] },
       { type: 'addTags', id: justice.id, tags: ['read'] },
     ]);
-    const { plan } = await sync(backend, device.id, target);
-    expect(plan.removals).toEqual(['/Books/Ancillary Sword - Ann Leckie.epub']);
-    expect([...target.files.keys()].sort()).toEqual(['/Books/Ancillary Justice - Ann Leckie.epub', '/Books/Notes - Ann Leckie.epub']);
+    const { plan, device: after } = await sync(backend, device.id, target);
+    expect(plan).toMatchObject({ uploads: [], removals: [], unchanged: 3 });
+    expect(after.items.sort()).toEqual([justice.id, sword.id, notes.id].sort());
+  });
+
+  it('sends the files chosen for a book, every one of them', async () => {
+    const { backend, deviceId, dune } = await setup();
+    const both = dune.files.map((f) => f.hash);
+    await backend.apply([{ type: 'setDeviceFiles', id: deviceId, itemId: dune.id, hashes: both }]);
+    const target = new FakeDevice();
+    const { plan } = await sync(backend, deviceId, target, { ...type, fullExtension: true });
+    expect(plan.uploads.filter((u) => u.item.id === dune.id).map((u) => u.path).sort()).toEqual([
+      '/Books/Dune - Frank Herbert.epub',
+      '/Books/Dune - Frank Herbert.x4.epub',
+    ]);
+    expect((await sync(backend, deviceId, target, { ...type, fullExtension: true })).plan).toMatchObject({ uploads: [], unchanged: 3 });
   });
 });
 
@@ -358,16 +368,16 @@ class MovingDevice extends FakeDevice {
 }
 
 describe('device sync with path templates', () => {
-  const templated = (folder: string, fileName?: string): DeviceType => ({
+  const templated = (folder: string, fileName?: string): FilesType => ({
     ...type,
     folder: () => folder,
     ...(fileName && { fileName: () => fileName }),
   });
-  const syncWith = async (backend: StoredLibraryBackend, deviceId: string, target: FakeDevice, deviceType: DeviceType) => {
+  const syncWith = async (backend: StoredLibraryBackend, deviceId: string, target: FakeDevice, deviceType: FilesType) => {
     const library = await backend.getLibrary();
     const device = library.devices![deviceId]!;
     const plan = planSync(library, device, deviceType, await listDevice(device, deviceType, target, library));
-    const result = await runSync(deviceId, plan, target, backend, undefined);
+    const result = await runSync(library, device, plan, target, backend);
     await backend.apply(result.operations);
     return { plan, result };
   };
@@ -412,7 +422,7 @@ describe('device sync with path templates', () => {
     const { backend, deviceId, dune } = await setup();
     const target = new MovingDevice();
     target.files.set('/Books/Frank Herbert/Dune - Frank Herbert.pdf', 'a pdf');
-    const typePdf: DeviceType = { ...templated('/Books/<author>'), formats: ['pdf', 'epub'] };
+    const typePdf: FilesType = { ...templated('/Books/<author>'), formats: () => ['pdf', 'epub'] };
     await backend.apply([{ type: 'attachFile', id: dune.id, file: { ...(await backend.putFile(new Blob(['dune pdf']))), format: 'pdf' } }]);
     const library = await backend.getLibrary();
     const device = library.devices![deviceId]!;
@@ -441,7 +451,7 @@ describe('device sync with path templates', () => {
     expect(plan.uploads).toEqual([]);
     expect(plan.moves).toMatchObject([{ from: '/Calibre/Herbert/Dune.epub', to: '/library/Frank Herbert/Dune.epub', found: true }]);
     expect(plan.kept).toMatchObject([{ path: '/library/Jane Austen/Emma A Novel.epub', placed: { itemId: emma.id, found: true } }]);
-    const result = await runSync(deviceId, plan, target, backend, undefined);
+    const result = await runSync(library, device, plan, target, backend);
     await backend.apply(result.operations);
     expect(result).toMatchObject({ sent: 0, moved: 1, kept: 1, errors: [] });
     expect(target.files.get('/library/Frank Herbert/Dune.epub')).toBe('dune from calibre');

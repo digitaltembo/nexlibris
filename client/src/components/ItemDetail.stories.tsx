@@ -3,6 +3,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { fn } from 'storybook/test';
 import { LiveItem } from '../stories/LiveItem';
 import { sampleItems } from '../stories/sampleLibrary';
+import { Button, Muted } from '../styles/ui';
 import { ItemDetail } from './ItemDetail';
 
 const meta = {
@@ -34,4 +35,19 @@ export const AncientWork: Story = {
     }),
   },
   render: (args) => <ItemDetail {...args} />,
+};
+
+/**
+ * A book from a connection or catalog: read-only, no rating, Edit, Send or Delete, with adding it to
+ * the library instead. Not the library's, so it's shown as given rather than from the library.
+ */
+export const FromACatalog: Story = {
+  render: (args) => <ItemDetail {...args} />,
+  args: {
+    item: { ...createItem({ title: 'The Time Machine', creators: [{ name: 'H. G. Wells', role: 'aut' }], tags: ['Science fiction'] }), id: 'catalog:gutenberg:35' },
+    remote: {
+      actions: <Button onClick={fn()}>Add to library</Button>,
+      files: <Muted as="p">EPUB (with images) · 180 KB</Muted>,
+    },
+  },
 };

@@ -1,4 +1,4 @@
-import { correction, itemExtras, positionKey, same, stableJson, tagKey, valueOf, type Side, type Target } from './merge';
+import { correction, deviceCatalog, emptyDevice, itemExtras, positionKey, same, stableJson, tagKey, valueOf, type Side, type Target } from './merge';
 import type { Operation } from './operations';
 import type { Device, Item, ItemId, Library } from './types';
 
@@ -51,7 +51,8 @@ function itemPart(library: Library, item: Item) {
 
 function devicePart(device: Device) {
   const excluded = device.excluded?.length ? [...device.excluded].sort() : undefined;
-  return { name: device.name, query: device.query, settings: device.settings, items: [...device.items].sort(), excluded, placed: device.placed };
+  const files = device.files && Object.fromEntries(Object.entries(device.files).map(([id, hashes]) => [id, [...hashes].sort()]));
+  return { name: device.name, query: device.query, settings: device.settings, items: [...device.items].sort(), files, excluded, placed: device.placed };
 }
 
 const compare = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
@@ -136,6 +137,7 @@ export function planRepair(source: Library, dest: Library, parts?: string[]): Re
       fix(['device', id, 'query']);
       for (const key of new Set([...Object.keys(a.settings), ...Object.keys(b.settings)])) fix(['device', id, 'setting', key]);
       for (const itemId of new Set([...a.items, ...b.items])) fix(['device', id, 'item', itemId]);
+      for (const itemId of new Set([...Object.keys(a.files ?? {}), ...Object.keys(b.files ?? {})])) fix(['device', id, 'files', itemId]);
       for (const itemId of new Set([...(a.excluded ?? []), ...(b.excluded ?? [])])) fix(['device', id, 'excluded', itemId]);
       for (const path of new Set([...Object.keys(a.placed), ...Object.keys(b.placed)])) fix(['device', id, 'placed', path]);
     }
@@ -143,12 +145,9 @@ export function planRepair(source: Library, dest: Library, parts?: string[]): Re
 
   // In the merge's order: whole additions, their parts and the corrections, then removals.
   const operations: Operation[] = [];
-  for (const device of add.devices) operations.push({ type: 'addDevice', device: { ...device, items: [] } });
+  for (const device of add.devices) operations.push({ type: 'addDevice', device: emptyDevice(device) });
   for (const item of add.items) operations.push({ type: 'addItem', item }, ...itemExtras(source, item.id, 'theirs', existsAfter, whole));
-  for (const device of add.devices) {
-    const itemIds = device.items.filter((itemId) => existsAfter('theirs', 'item', itemId));
-    if (itemIds.length) operations.push({ type: 'addDeviceItems', id: device.id, itemIds });
-  }
+  for (const device of add.devices) operations.push(...deviceCatalog(device, (itemId) => existsAfter('theirs', 'item', itemId)));
   operations.push(...corrections);
   for (const id of remove.items) operations.push({ type: 'removeItem', id });
   for (const id of remove.devices) operations.push({ type: 'removeDevice', id });

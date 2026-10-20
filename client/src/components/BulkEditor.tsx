@@ -1,10 +1,9 @@
-import { isSourceConnection } from '../catalogs/sources';
 import { LOCAL_USER, userData, type Device, type Item, type Operation } from '@nexlibris/common';
 import { useMemo, useState } from 'react';
 import styled from 'styled-components';
-import { addToDevice, deviceItems } from '../devices/selection';
-import { isDevice, type DeviceType } from '../devices/types';
-import { connectionType } from '../plugins';
+import { addToDevice, deviceItems, takeOutOfDevice } from '../devices/selection';
+import { isFiles, takesSingle, type FilesType } from '../devices/types';
+import { connectionType } from '../connections';
 import { deleteItems, removeFormat } from '../library/freeFiles';
 import { useLibrary } from '../library/LibraryContext';
 import { addCreatorOps, parseTags, removeCreatorOps, removeTagsOps } from '../library/bulkEdit';
@@ -13,6 +12,8 @@ import { textToMetadata } from '../library/metadataText';
 import { DeleteButton } from './DeleteButton';
 import { formatLabel } from './ItemFiles';
 import { SyncDevice } from './ConnectionsDialog';
+import { writableConnections } from './SendTo';
+import { useConnectionStatus } from '../connections/active';
 import { StarRating } from './StarRating';
 import { CompletionInput } from './CompletionInput';
 import {
@@ -89,11 +90,12 @@ export function BulkEditor({ items, onClose, onDeleted }: Props) {
   const [note, setNote] = useState<{ section: 'tags' | 'creators' | 'files'; text: string }>();
   const [format, setFormat] = useState('');
   /** A reader the selected books are being sent to, alone. */
-  const [sendingTo, setSendingTo] = useState<{ device: Device; type: DeviceType }>();
+  const [sendingTo, setSendingTo] = useState<{ device: Device; type: FilesType }>();
 
   const count = items.length;
-  // Catalogs browsed on a server don't take books.
-  const devices = Object.values(library.devices ?? {}).filter((d) => !isSourceConnection(d));
+  // Only connections with catalogs take books.
+  const devices = writableConnections(library);
+  const { isActive } = useConnectionStatus();
   const tags = tally(items, (i) => i.tags);
   const libraryTags = useMemo(() => tagsIn(Object.values(library.items)), [library.items]);
   const onAll = tags.filter(([, n]) => n === count).map(([tag]) => tag);
@@ -190,14 +192,13 @@ export function BulkEditor({ items, onClose, onDeleted }: Props) {
           <Stack>
             {devices.map((device) => {
               const included = new Set(deviceItems(library, device).map((i) => i.id));
-              const on = items.filter((i) => included.has(i.id)).length;
-              // Remove only takes off books added by hand; ones its search matches stay while they match.
-              const byHand = items.filter((i) => device.items.includes(i.id)).length;
+              const held = items.filter((i) => included.has(i.id));
+              const on = held.length;
               const type = connectionType(device.type);
               return (
                 <Row key={device.id}>
                   <span>
-                    {device.name} <Muted>({on === 0 ? 'none' : of(on)} on it{on > byHand && `, ${on - byHand} by its search`})</Muted>
+                    {device.name} <Muted>({on === 0 ? 'none' : of(on)} in its catalog)</Muted>
                   </span>
                   <Spacer />
                   {on < count && (
@@ -209,21 +210,27 @@ export function BulkEditor({ items, onClose, onDeleted }: Props) {
                       Add
                     </Button>
                   )}
-                  {type && isDevice(type) && (
+                  {type && isFiles(type) && takesSingle(type) && (
                     <Button
                       $variant="secondary"
                       $size="small"
-                      title="Sends these books now, choosing them for it, and leaves the rest of it as it is."
+                      disabled={!isActive(device)}
+                      title={
+                        isActive(device)
+                          ? 'Sends these books now, adding them to its catalog, and leaves the rest of it as it is.'
+                          : `${device.name} is inactive. Activate it under Connections.`
+                      }
                       onClick={() => setSendingTo({ device, type })}
                     >
-                      Send
+                      {isActive(device) ? 'Send' : 'Send (inactive)'}
                     </Button>
                   )}
-                  {byHand > 0 && (
+                  {on > 0 && (
                     <Button
                       $variant="secondary"
                       $size="small"
-                      onClick={() => run([{ type: 'removeDeviceItems', id: device.id, itemIds: items.map((i) => i.id) }])}
+                      title="Takes them out of its catalog (kept out, if its search matches them). What was sent stays there."
+                      onClick={() => run(takeOutOfDevice(library, device, held.map((i) => i.id)))}
                     >
                       Remove
                     </Button>

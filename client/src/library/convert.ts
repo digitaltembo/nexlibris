@@ -1,6 +1,7 @@
 import type { FileRef, Item, LibraryBackend, Operation } from '@nexlibris/common';
 import { convertersFrom, type Converter } from '../formats/convert/converters';
-import { titleFromFilename, type FormatId } from '../formats/formats';
+import { isEpub, titleFromFilename, type FormatId } from '../formats/formats';
+import { fileMetadata, metadataKey } from './fileMetadata';
 
 /** Conversions offered for `file`, leaving out ones whose current output the item already has. */
 export function availableConversions(item: Item, file: FileRef): Converter[] {
@@ -15,7 +16,11 @@ export function availableConversions(item: Item, file: FileRef): Converter[] {
   );
 }
 
-/** Runs a conversion and stores the output, returning the file reference to attach. */
+/**
+ * Runs a conversion and stores the output, returning the file reference to attach. An EPUB made gets
+ * the item's current metadata: one made from another EPUB (a reader's optimized copy) has it written
+ * in, as it would otherwise say what its source did; the rest are made from the item.
+ */
 export async function runConversion(
   backend: LibraryBackend,
   item: Item,
@@ -25,7 +30,9 @@ export async function runConversion(
 ): Promise<FileRef> {
   const coverData = item.cover && (await backend.getFile(item.cover.hash));
   const cover = coverData && item.cover ? { data: coverData, mediaType: item.cover.mediaType } : undefined;
-  const output = await converter.run(data, file.format as FormatId, { item, cover });
+  let output = await converter.run(data, file.format as FormatId, { item, cover });
+  const epub = isEpub(converter.to);
+  if (epub && isEpub(file.format)) output = await (await import('../formats/epubMetadata')).writeEpubMetadata(output, fileMetadata(item));
   const { hash, size } = await backend.putFile(output);
   const base = file.name ? titleFromFilename(file.name) : item.title;
   return {
@@ -34,6 +41,7 @@ export async function runConversion(
     format: converter.to,
     name: `${base}.${converter.to}`,
     derivedFrom: { hash: file.hash, converter: converter.id, converterVersion: converter.version },
+    ...(epub && { metadataKey: metadataKey(item) }),
   };
 }
 

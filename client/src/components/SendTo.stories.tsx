@@ -7,7 +7,7 @@ const meta = { component: SendTo, args: { items: [sampleItems[0]!], onClose: fn(
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** One book, to the sample library's X4 (Send connects to it, so needs it on the network) or its catalog (Add). */
+/** One book, to the sample library's X4 (Send connects to it, so needs it on the network) or its static catalog (added for its next sync). */
 export const OneBook: Story = {};
 
 /** Several books, from Bulk edit. */

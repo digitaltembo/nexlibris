@@ -5,18 +5,18 @@ import { fn } from 'storybook/test';
 import { connectionContents } from '../devices/contents';
 import type { RemoteBook } from '../devices/types';
 import { useLibrary } from '../library/LibraryContext';
-import { connectionType } from '../plugins';
+import { connectionType } from '../connections';
 import { addInstances } from '../sync/instances';
 import { SAMPLE_PLACED_PATH, sampleCatalog, sampleDevice } from '../stories/sampleLibrary';
 import { planSync } from '../devices/plan';
-import { isDevice } from '../devices/types';
+import { isFiles } from '../devices/types';
 import { ConnectionsDialog, ContentsView, PlanSummary } from './ConnectionsDialog';
 
 const meta = { component: ConnectionsDialog, args: { onClose: fn() } } satisfies Meta<typeof ConnectionsDialog>;
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** A reader and an OPDS catalog. Syncing the reader or looking at what's on it needs the reader on the network. */
+/** A reader and an OPDS catalog, each with Sync to (the reader also Sync from). Syncing the reader or looking at what's on it needs the reader on the network. */
 export const Default: Story = {};
 
 /** What the X4's index lists: Dune as a sync sent it, Emma put there by hand, and a book the library hasn't got. */
@@ -37,12 +37,12 @@ function Contents({ device, books, note }: { device: typeof sampleDevice; books:
       {...(note && { note })}
       onLink={fn()}
       onImport={fn()}
-      {...(isDevice(type) && { onRemove: fn() })}
+      {...(isFiles(type) && { onRemove: fn() })}
     />
   );
 }
 
-/** "On it…" for a reader: each kind of book, and a chosen one not there yet (The Left Hand of Darkness). */
+/** "On it…" for a reader: each kind of book, and one in its catalog not there yet (The Left Hand of Darkness). */
 export const ReaderContents: Story = {
   render: () => <Contents device={sampleDevice} books={onTheReader} />,
 };
@@ -65,7 +65,7 @@ function Preview() {
   const device = { ...stored, items: [...stored.items, ...(emma ? [emma.id] : [])] };
   const type = connectionType(device.type)!;
   const [keepFound, setKeepFound] = useState(true);
-  if (!isDevice(type)) return null;
+  if (!isFiles(type)) return null;
   const found = [...onTheReader, { path: '/Calibre/Le Guin/Left Hand.epub', size: 700_000, title: 'The Left Hand of Darkness', author: 'Ursula K. Le Guin' }];
   const files = onTheReader.map(({ path, size }) => ({ path, size }));
   const plan = planSync(library, device, type, { files, found, canMove: true }, { keepFound });

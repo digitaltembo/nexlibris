@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { fn } from 'storybook/test';
-import { xteinkConverter } from '../formats/convert/converters';
-import { OPTIMIZE_FIELDS } from '../formats/convert/xteink/options';
+import { xteinkConverter } from '../plugins/crosspoint/convert';
+import { OPTIMIZE_FIELDS } from '../plugins/crosspoint/xteink/options';
 import { ConvertOptionsDialog } from './ConvertOptions';
 
 /** Asked for before converting a file with a converter that has options. */

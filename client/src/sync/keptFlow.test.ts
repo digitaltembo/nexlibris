@@ -18,7 +18,7 @@ import {
 } from '@nexlibris/common';
 import { describe, expect, it } from 'vitest';
 import { deleteItems } from '../library/freeFiles';
-import { addInstances, instanceScope, keptBy, letGo, pairedConnections } from './instances';
+import { addInstances, instanceScope, keptBy, pairedConnections } from './instances';
 
 const titles = (library: Library) => Object.values(library.items).map((item) => item.title).sort();
 
@@ -49,7 +49,7 @@ async function setup() {
   };
   /** As SyncInstance does. */
   const sync = async (pairing: Awaited<ReturnType<typeof pair>>) => {
-    const preview = await previewSync(android, client(pairing.key), pairing);
+    const preview = await previewSync(android, client(pairing.key), pairing, { expose: instanceScope });
     const result = await runSync(android, client(pairing.key), pairing, preview);
     const library = await android.getLibrary();
     const missing = addInstances(library, [{ origin: library.origin, name: 'Android' }, { origin: pairing.hub.origin, name: 'Desk' }]);
@@ -57,13 +57,14 @@ async function setup() {
     const after = await android.getLibrary();
     const progress: FileProgress[] = [];
     const hubFiles = httpHubFiles('bt://hub', pairing.key, android, fetchOver);
+    const [pulled, pushed, shared] = [new Set(result.pulled), new Set(result.pushed), new Set(result.shared)];
     const files = await transferFiles(android, hubFiles, {
-      keep: keptBy(after, after.origin),
-      send: keptBy(after, pairing.hub.origin),
+      among: (item) => shared.has(item.id),
+      keep: (item) => pulled.has(item.id) || (keptBy(after, after.origin)?.(item) ?? true),
+      send: (item) => pushed.has(item.id) || (keptBy(after, pairing.hub.origin)?.(item) ?? true),
       onProgress: (p) => progress.push(p),
     });
-    const left = await letGo(android, hubFiles, result);
-    return { preview, result, pairing: left?.pairing ?? result.pairing, files, progress, left: left?.left, query: after.devices![after.origin]!.query };
+    return { preview, result, pairing: result.pairing, files, progress, query: after.devices![after.origin]!.query };
   };
   return { desktop, android, storage, hashes, received, pair, sync };
 }
@@ -93,7 +94,7 @@ describe('choosing books for a paired instance', () => {
     expect(first.files.downloaded).toBe(1);
   });
 
-  it('lets go of books, and their files, once a choice made on the hub leaves them out', async () => {
+  it('keeps books a choice made on the hub later leaves out: syncs only add', async () => {
     const { desktop, android, hashes, pair, sync } = await setup();
     const pairing = await pair();
     const first = await sync(pairing);
@@ -104,20 +105,14 @@ describe('choosing books for a paired instance', () => {
     await desktop.apply([{ type: 'updateDevice', id: origin, patch: { query: 'tag:travel' } }]);
     const second = await sync(first.pairing);
     expect(second.query).toBe('tag:travel');
-    expect(titles(await android.getLibrary())).toEqual(['Dune']);
-    expect(second.left).toEqual({ books: 2, files: 2, bytes: 'Emma'.length + 'Ulysses'.length });
-    expect(await android.hasFile(hashes.Emma!)).toBe(false);
-    expect(await android.hasFile(hashes.Dune!)).toBe(true);
-    // Still all on the hub, and the next sync is quiet.
-    expect(titles(await desktop.getLibrary())).toEqual(['Dune', 'Emma', 'Ulysses']);
-    const third = await sync(second.pairing);
-    expect(third.preview.plan).toMatchObject({ ours: [], theirs: [] });
-    expect(third.result.repaired).toEqual([]);
-
-    // Choosing every book again brings them back.
-    await desktop.apply([{ type: 'updateDevice', id: origin, patch: { query: 'has:file' } }]);
-    await sync(third.pairing);
     expect(titles(await android.getLibrary())).toEqual(['Dune', 'Emma', 'Ulysses']);
+    expect(await android.hasFile(hashes.Emma!)).toBe(true);
+    // The books it has still merge: an edit on the hub reaches it.
+    const emma = Object.values((await desktop.getLibrary()).items).find((item) => item.title === 'Emma')!;
+    await desktop.apply([{ type: 'addTags', id: emma.id, tags: ['classic'] }]);
+    const third = await sync(second.pairing);
+    expect(third.result.repaired).toEqual([]);
+    expect((await android.getLibrary()).items[emma.id]!.tags).toEqual(['classic']);
   });
 
   it('keeps a book deleted on the phone on the hub, and off the phone from then on', async () => {
@@ -144,7 +139,7 @@ describe('choosing books for a paired instance', () => {
     expect((await desktop.getLibrary()).items[dune.id]!.tags).toEqual(['travel', 'reread']);
   });
 
-  it('sends the hub a book added on the phone, even one its choice leaves out, then lets go of it', async () => {
+  it('sends the hub a book added on the phone that its catalog for the hub holds, and keeps it', async () => {
     const { desktop, android, pair, sync } = await setup();
     const first = await sync(await pair('tag:travel'));
     const { hash, size } = await android.putFile(new Blob(['Middlemarch']));
@@ -154,7 +149,24 @@ describe('choosing books for a paired instance', () => {
     expect(second.files.uploaded).toBe(1);
     expect(titles(await desktop.getLibrary())).toEqual(['Dune', 'Emma', 'Middlemarch', 'Ulysses']);
     expect(await desktop.hasFile(hash)).toBe(true);
-    expect(second.left?.books).toBe(1);
-    expect(titles(await android.getLibrary())).toEqual(['Dune']);
+    expect(titles(await android.getLibrary())).toEqual(['Dune', 'Middlemarch']);
+  });
+
+  it('sends the hub only what the phone exposes to it', async () => {
+    const { desktop, android, pair, sync } = await setup();
+    const pairing = await pair('tag:travel');
+    await sync(pairing);
+    // The phone shows the desk only its "shared" books.
+    const hubOrigin = pairing.hub.origin;
+    await android.apply([{ type: 'updateDevice', id: hubOrigin, patch: { query: 'tag:shared' } }]);
+    const add = async (title: string, tags: string[]) => {
+      const { hash, size } = await android.putFile(new Blob([title]));
+      await android.apply([{ type: 'addItem', item: createItem({ title, tags, files: [{ hash, size, format: 'epub' }] }) }]);
+    };
+    await add('Diary', []);
+    await add('Recipes', ['shared']);
+    const second = await sync(pairing);
+    expect(second.preview.pushed).toHaveLength(1);
+    expect(titles(await desktop.getLibrary())).toEqual(['Dune', 'Emma', 'Recipes', 'Ulysses']);
   });
 });

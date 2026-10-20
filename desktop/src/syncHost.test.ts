@@ -110,6 +110,25 @@ describe('sync host', () => {
     expect(asked).toEqual([(await phone.getLibrary()).origin]);
   });
 
+  it('sends a phone only the files of books it is shown', async () => {
+    const h = await hub(undefined, undefined, () => (item) => item.title === 'Dune');
+    const file = (hash: string) => ({ hash, size: 1, format: 'epub' });
+    const [dune, emma] = ['d'.repeat(64), 'e'.repeat(64)];
+    await h.backend.apply([
+      { type: 'addItem', item: createItem({ title: 'Dune', files: [file(dune)] }) },
+      { type: 'addItem', item: createItem({ title: 'Emma', files: [file(emma)] }) },
+    ]);
+    const phone = new StoredLibraryBackend(new MemoryStorage(), 'Phone');
+    const pairing = await pairWithHub(phone, client(h.address), h.address, (await h.host.newCode(null)).code, 'Pixel');
+    const get = async (hash: string) => {
+      const response = await fetch(`${h.address}/api/sync/files/${hash}`, { headers: { Authorization: `Bearer ${pairing.key}` } });
+      return { status: response.status, text: await response.text() };
+    };
+    // Dune's is shown but not stored here; Emma's isn't shown at all.
+    expect(await get(dune)).toMatchObject({ status: 404, text: expect.not.stringContaining('isn’t shared') });
+    expect(await get(emma)).toMatchObject({ status: 404, text: expect.stringContaining('isn’t shared') });
+  });
+
   it('refuses calls without a valid key, and withdraws a code after too many wrong guesses', async () => {
     const h = await hub();
     await expect(client(h.address).hello(null)).rejects.toThrow(/isn’t paired/);

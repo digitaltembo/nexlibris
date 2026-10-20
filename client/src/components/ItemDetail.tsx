@@ -1,5 +1,6 @@
 import { LOCAL_USER, userData, type FileRef, type Item, type MetadataValue } from '@nexlibris/common';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import styled from 'styled-components';
 import { BOOK_FIELDS, bookSize, fieldLabel, fieldText, isFixedField, type BookField } from '../library/bookFields';
 import { coverOperations, type NewCover } from '../library/editCover';
@@ -17,7 +18,9 @@ import { DeleteButton } from './DeleteButton';
 import { EditableFiles, formatSize, ItemFiles } from './ItemFiles';
 import { KeyValueEditor } from './KeyValueEditor';
 import { Prose, RichText } from './RichText';
-import { SendTo, sendableConnections } from './SendTo';
+import { AddTo } from './AddTo';
+import { ItemCatalogs } from './ItemCatalogs';
+import { SendTo, writableConnections } from './SendTo';
 import { StarRating } from './StarRating';
 import { TagEditor } from './TagEditor';
 import {
@@ -26,16 +29,43 @@ import {
   PanelFooter,
   PanelSection,
   SectionHeading,
+  Badge,
+  Tag,
   TagButton,
+  TagLabel,
   TagList,
 } from '../styles/ui';
+
+/**
+ * A book that isn't the library's (on a connection that reads, or in a catalog on a server), shown
+ * read-only: no rating, editing, reading or sending, and no catalogs; what it offers instead.
+ */
+export interface RemoteDetail {
+  /** Adding it to the library: shown where a library book's actions are. */
+  actions: ReactNode;
+  /** The library's copy, if it has one. */
+  owned?: Item;
+  /** In place of the Files section (a catalog's downloads, each to add). */
+  files?: ReactNode;
+  /** After the details: a catalog's links on to other pages, how adding went. */
+  footer?: ReactNode;
+}
 
 interface Props {
   item: Item;
   onClose(): void;
-  onSelectTag(tag: string): void;
-  onRead(file: FileRef): void;
+  onSelectTag?(tag: string): void;
+  onRead?(file: FileRef): void;
+  /** Read-only, for a book that isn't the library's. */
+  remote?: RemoteDetail;
+  /** In a modal rather than the right-hand pane (a connection's "On it…"). */
+  embedded?: boolean;
 }
+
+/** The pane, laid out in place rather than fixed at the right, in a modal. */
+const EmbeddedPanel = styled.div`
+  padding: 0;
+`;
 
 const Header = styled.header`
   display: grid;
@@ -159,12 +189,20 @@ export function seriesLabel(item: Item): string | undefined {
   return seriesIndex !== undefined && seriesIndex !== null ? `${series} #${metadataToText(seriesIndex as MetadataValue)}` : series;
 }
 
-/** The right-hand panel: read-only, except rating and file actions, until "Edit" is chosen. */
-export function ItemDetail({ item, onClose, onSelectTag, onRead }: Props) {
+/**
+ * The right-hand panel: read-only, except rating and file actions, until "Edit" is chosen. With
+ * `remote`, a book from a connection or catalog, read-only throughout, with its own actions.
+ */
+export function ItemDetail({ remote, embedded, ...props }: Props) {
+  return remote ? <RemoteItemDetail item={props.item} remote={remote} onClose={props.onClose} embedded={!!embedded} /> : <LibraryItemDetail {...props} />;
+}
+
+function LibraryItemDetail({ item, onClose, onSelectTag, onRead = () => undefined }: Omit<Props, 'remote' | 'embedded'>) {
   const { library, apply, backend } = useLibrary();
   const { ratings, reviews } = userData(library);
   const [draft, setDraft] = useState<ItemDraft>();
   const [sending, setSending] = useState(false);
+  const [adding, setAdding] = useState(false);
   // A new cover chosen while editing, shown in the header and saved with the rest.
   const [cover, setCover] = useState<NewCover>();
   const position = savedPosition(library, item.id);
@@ -203,10 +241,15 @@ export function ItemDetail({ item, onClose, onSelectTag, onRead }: Props) {
               <Button $variant="secondary" onClick={() => setDraft(draftFromItem(item, review))}>
                 Edit
               </Button>
-              {sendableConnections(library.devices).length > 0 && (
-                <Button $variant="secondary" onClick={() => setSending(true)}>
-                  Send to…
-                </Button>
+              {writableConnections(library).length > 0 && (
+                <>
+                  <Button $variant="secondary" onClick={() => setSending(true)}>
+                    Send to…
+                  </Button>
+                  <Button $variant="secondary" onClick={() => setAdding(true)}>
+                    Add to…
+                  </Button>
+                </>
               )}
               <DeleteButton onDelete={() => void deleteItems(backend, apply, [item])} />
             </Actions>
@@ -230,14 +273,51 @@ export function ItemDetail({ item, onClose, onSelectTag, onRead }: Props) {
           }}
         />
       ) : (
-        <ItemView item={item} review={review} onSelectTag={onSelectTag} onRead={onRead} />
+        <ItemView item={item} review={review} {...(onSelectTag && { onSelectTag })} onRead={onRead} />
       )}
       {sending && <SendTo items={[item]} onClose={() => setSending(false)} />}
+      {adding && <AddTo items={[item]} onClose={() => setAdding(false)} />}
     </Panel>
   );
 }
 
-function ItemView({ item, review, onSelectTag, onRead }: Omit<Props, 'onClose'> & { review: string | undefined }) {
+/** A book from a connection or catalog: what's known of it, read-only, with adding it to the library. */
+function RemoteItemDetail({ item, remote, onClose, embedded }: { item: Item; remote: RemoteDetail; onClose(): void; embedded: boolean }) {
+  const Box = embedded ? EmbeddedPanel : Panel;
+  const pane = (
+    <Box aria-label={`Details for ${item.title}`}>
+      <Header>
+        <Cover item={item} />
+        <div>
+          <Title>{item.title}</Title>
+          {item.metadata.subtitle && <MutedLine>{item.metadata.subtitle}</MutedLine>}
+          {item.creators.length > 0 && <Line>{byline(item)}</Line>}
+          {seriesLabel(item) && <MutedLine>{seriesLabel(item)}</MutedLine>}
+          {remote.owned && <Badge>In library{remote.owned.title !== item.title ? ` as “${remote.owned.title}”` : ''}</Badge>}
+          <Actions>{remote.actions}</Actions>
+        </div>
+        {!embedded && (
+          <Button $variant="icon" aria-label="Close" onClick={onClose}>
+            ×
+          </Button>
+        )}
+      </Header>
+      <ItemDetails item={item} />
+      {remote.files && (
+        <PanelSection>
+          <SectionHeading>Files</SectionHeading>
+          {remote.files}
+        </PanelSection>
+      )}
+      {remote.footer}
+    </Box>
+  );
+  // Over the page as the library's pane is: its browser is inside the books' stacking, below the top bar.
+  return embedded ? pane : createPortal(pane, document.body);
+}
+
+/** Tags (each a search, where `onSelectTag` is given), the description and the details' fields. */
+function ItemDetails({ item, review, onSelectTag }: { item: Item; review?: string | undefined; onSelectTag?(tag: string): void }) {
   const description = typeof item.metadata.description === 'string' ? item.metadata.description : undefined;
   const fields = detailFields(item);
   const identifiers = Object.entries(item.identifiers);
@@ -247,11 +327,17 @@ function ItemView({ item, review, onSelectTag, onRead }: Omit<Props, 'onClose'> 
       {item.tags.length > 0 && (
         <PanelSection>
           <TagList>
-            {item.tags.map((tag) => (
-              <TagButton key={tag} onClick={() => onSelectTag(tag)} title={`Search for “${tag}”`}>
-                {tag}
-              </TagButton>
-            ))}
+            {item.tags.map((tag) =>
+              onSelectTag ? (
+                <TagButton key={tag} onClick={() => onSelectTag(tag)} title={`Search for “${tag}”`}>
+                  {tag}
+                </TagButton>
+              ) : (
+                <Tag key={tag}>
+                  <TagLabel>{tag}</TagLabel>
+                </Tag>
+              ),
+            )}
           </TagList>
         </PanelSection>
       )}
@@ -292,11 +378,20 @@ function ItemView({ item, review, onSelectTag, onRead }: Omit<Props, 'onClose'> 
           </Fields>
         </PanelSection>
       )}
+    </>
+  );
+}
 
+function ItemView({ item, review, onSelectTag, onRead }: { item: Item; review: string | undefined; onSelectTag?(tag: string): void; onRead(file: FileRef): void }) {
+  return (
+    <>
+      <ItemDetails item={item} review={review} {...(onSelectTag && { onSelectTag })} />
       <PanelSection>
         <SectionHeading>Files</SectionHeading>
         <ItemFiles item={item} onRead={onRead} />
       </PanelSection>
+
+      <ItemCatalogs item={item} />
 
       <Timestamps>
         {item.files.length > 0 && `Size ${formatSize(bookSize(item))} · `}

@@ -17,7 +17,7 @@ common/    the library model, operations, storage interface, sync      (shared b
 client/    React + Vite web app: UI, formats, conversion, devices, search
 desktop/   Electron shell: serves client/dist, native files, LAN sync hub
 android/   Kotlin WebView shell: serves client/dist, native files, Bluetooth/USB sync
-server/    placeholder for a Node backend (M4)
+server/    Node server: the web app, accounts, a library per account, sync (M4)
 ```
 
 ### The library
@@ -46,16 +46,16 @@ server/    placeholder for a Node backend (M4)
 
 - **Formats** (`client/src/formats/`): metadata extraction for EPUB, MOBI/AZW3, PDF, TXT/RTF and CBZ/CBR. In-browser conversion, including the CrossPoint X4/X3 optimizer, a TS port of the Calibre plugin.
 - **Import** (`library/importFiles.ts`): files, folders and whole Calibre libraries. It groups formats of one book together and matches books already in the library.
-- **Search** (`library/search.ts`): a Gmail-style syntax (`tag:fantasy rating:4+ -has:file`). Filters, device selections and browse categories are all stored as search text. Full-text search inside books (`fulltext/`) indexes in the background into local state.
+- **Search** (`library/search.ts`): a Gmail-style syntax (`tag:fantasy rating:4+ -has:file`). It's the one way of choosing books: the search box, connections' catalogs and browse categories all take search text, with no separate filters. Full-text search inside books (`fulltext/`) indexes in the background into local state.
 - **Browsing** (`library/browse.ts`): calibre3opds's navigation (authors, series, tags, the user's categories). Books show as a grid, a list, or a view a plugin adds, such as the built-in 3D bookshelf (`plugins/bookshelf/`) and force graph (`plugins/graph/`, books drawn together by the authors, tags and series they share).
 - **Reading** (`reader/`): EPUB (through epubier, a wrapper around epub.js), PDF (pdf.js), comics and text.
-- **Connections** (`devices/`, `plugins/`): plugins declare connection types (and views). A device type can add tools for what else is on the device; CrossPoint's manage its sleep images, StarDict dictionaries and fonts. A reader that books are copied to, such as a CrossPoint X4 over its web API, gets a planner that compares the wanted books with what's on the device. Where books go is a path template (`/library/<author>/<title>/`), and books move when it changes. Copies of chosen books already on the device (from Calibre, say) are kept, or moved into place, rather than sent again. An OPDS catalog, in calibre3opds's layout, is written to a folder or a zip.
+- **Connections** (`devices/`, `connections/`, `plugins/`): a connection reads (lists a place's books and brings them into the library), writes (holds a catalog of books it's given), or both. OPDS servers, the static OPDS export, other instances and folders are built in; plugins add more, with formats, converters and views. A write connection's catalog is the books (or particular files) added to it by hand (Add to…, Send to…, Bulk edit) plus what its search matches; a book's details list the catalogs holding it. Syncs only add: books in the catalog are sent as stored, changed files replaced, and nothing is removed, except by the user. Before sending, books without a format the connection prefers can be converted, and files behind their book's details updated (`devices/send.ts`). A device type can add tools for what else is on the device; CrossPoint's manage its sleep images, StarDict dictionaries and fonts. Where books go on a reader or folder is a path template (`/library/<author>/<title>/`), and books move when it changes. Copies of chosen books already on the device (from Calibre, say) are kept, or moved into place, rather than sent again. A folder gets a manifest, `.nexlibris-library.json`, so another library reads its books back with their details. The static export writes an OPDS catalog in calibre3opds's layout, with its Cloudflare Pages files for search and sign-in.
 
 ### Sync between instances
 
-Another instance of nexlibris is a connection, like a reader. It's stored in the library and synced, so every instance knows the others. Its chosen books and rules are the books that instance gets. How this instance reaches it (the pairing's address and key, the source of truth, where they last agreed) stays local.
+Another instance of nexlibris is a connection, like a reader. It's stored in the library and synced, so every instance knows the others. Its catalog is the books that instance gets. How this instance reaches it (the pairing's address and key, the source of truth, where they last agreed) stays local.
 
-A hub shows each instance only the books its connection picks, plus the ones it already has (`common/src/scope.ts`). Everything else that names a book is cut down to match: ratings, devices' records, the changes it sends. Books deleted on that instance stay on the hub and are kept off the instance (`Device.excluded`). Books its rules stop picking are let go of, with their files, once the hub has them.
+A hub shows each instance only the books in its connection's catalog, plus the ones it already has (`common/src/scope.ts`), and serves only their files. Everything else that names a book is cut down to match: ratings, devices' records, the changes it sends. The other way round too: the driving instance sends the hub only its catalog for the hub, and offers it the rest, which the hub can ask for. Books one side lacks move only as asked (Sync from, Sync to, or chosen books); deletions never cross, and a book deleted on one side is kept off it.
 
 Two instances of a library sync by exchanging state, not by replaying logs:
 
@@ -102,6 +102,27 @@ npm run android:install  # build and install on a connected device
 Stories sit next to their components (`client/src/**/*.stories.tsx`). Each one renders with the app's theme and a fresh in-memory sample library (`client/src/stories/sampleLibrary.ts`), so components that read or edit the library work and nothing is stored.
 
 The Android build needs the Android SDK and JDK 17+ (e.g. `export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"`). Native unit tests: `cd android && ./gradlew testDebugUnitTest`.
+
+## Server
+
+`server/` serves the web app with accounts (M4). Signed out, a visitor gets the app as ever, with the library in their browser. Signed in, they can move the library into their account (Library folder…), where every device they sign in on opens the same one, or keep it in the browser and keep a copy in the account that it syncs with (Connections…, "Your account on …"), as with another device.
+
+The desktop and Android apps do the same with a server at an address the user gives (Account…), for a server they run themselves. They sign in for a token, sent as a bearer token, rather than a cookie; the desktop app calls the server through its main process (`app://nexlibris/server/…`, `desktop/src/serverProxy.ts`), and the Android app through its relay on the local network (plain http) or directly elsewhere (https only). Using the account's library, an app copies the device's library there first and keeps it, to open again.
+
+- **API:** `common/src/serverApi.ts`, defined with estuary-rpc and served by estuary-rpc-server's `createApiServer` (`server/src/app.ts`: sessions and sync keys checked by its `authenticate` and middlewares, the web app by its static files) by its REST conventions: 200 with JSON, 204 for nothing, an error as `{ status: 'error', message }` with its status (401 signed out, 409 the library moved on). The client calls it with estuary-rpc-client over `fetch` (`common/src/rest.ts`); the sync API over HTTP uses the same conventions everywhere. Books' files stream through raw endpoints, at `api/library/files/<hash>`.
+- **Accounts:** scrypt-hashed passwords; sessions in an HttpOnly, SameSite=Strict cookie, stored only as hashes; calls that change anything with the cookie must be same-origin JSON; the apps' bearer tokens are sessions too, and the API answers other origins (CORS) without credentials; sign-in attempts are rate-limited.
+- **Storage:** each account's library JSON and change log in the data folder (`<data>/accounts/<id>/`), its books' files in the data folder or a bucket. Files are served only to their account, with a sandboxing CSP.
+
+```
+npm run server -- --port 8080 --data ./data                    # builds the client and server, then serves
+node server/dist/main.js add-account ada                        # NEXLIBRIS_PASSWORD, else asked
+node server/dist/main.js --storage s3 --bucket books --region eu-west-1
+node server/dist/main.js --storage gcs --bucket books           # HMAC keys
+node server/dist/main.js --storage b2 --bucket books --region us-west-004
+node server/dist/main.js --storage s3 --endpoint http://localhost:9000 --path-style --bucket books   # MinIO
+```
+
+Bucket keys come only from the environment (`NEXLIBRIS_ACCESS_KEY_ID`/`NEXLIBRIS_SECRET_ACCESS_KEY`, else `AWS_*`). `--signup open|first|closed` (default: the first account only), `--tls-cert`/`--tls-key`, `--trust-proxy` behind a proxy that sets `X-Forwarded-*`; `node server/dist/main.js help` lists the rest. For development, `NEXLIBRIS_SERVER=http://localhost:8080 npm run dev` passes Vite's `/api` on to a running server.
 
 ## Desktop app (Electron)
 

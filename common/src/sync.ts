@@ -5,7 +5,7 @@ import { planRepair, stateDigest } from './repair';
 import type { MessageClient, MessageImpl } from './rpc';
 import { scopeChanges, scopeLibrary, scopeOf, type ScopeRule } from './scope';
 import type { PeerInfo, SyncApi } from './syncApi';
-import type { ItemId, Library } from './types';
+import type { Item, ItemId, Library } from './types';
 
 /**
  * Running a sync (M6) from the instance that drives it, against a hub serving the sync API, and
@@ -18,10 +18,11 @@ import type { ItemId, Library } from './types';
  * from the source of truth. Every step is made of ordinary operations worked out from current
  * state, so a sync that's interrupted anywhere can just be run again.
  *
- * A hub that keeps an instance to the books its connection picks (`scope.ts`) shows it only those
- * and the ones it has. Then the sync also brings in the picked books it lacks, books deleted here
- * aren't deleted on the hub but kept off this instance (its connection excludes them), and books the
- * connection no longer picks are let go of once their files have been sent (`leaveOutside`).
+ * Each side exposes to the other only the books in its connection's catalog for it (M13): a hub
+ * that scopes an instance (`scope.ts`) shows it only those and the ones it has, and the instance
+ * sends the hub only its own catalog's books (`SyncOptions.expose`), offering the rest of them for
+ * the hub to ask for (`SyncPreview.offer`). Books only one side has move by the sync's `pull` and
+ * `push`, so Sync from and Sync to are the same sync; books both have merge. Deletions never cross.
  */
 
 export type SyncClient = MessageClient<SyncApi>['sync'];
@@ -53,6 +54,26 @@ export const SYNC_STATE_KEY = 'sync';
 /** How a first sync, with no shared history, brings the libraries together. */
 export type FirstSyncMode = 'combine' | 'replace';
 
+/**
+ * Which books a sync moves where neither side has them yet: every one the other side exposes
+ * (`all`), none (`none`, a sync that only merges the books both have), or just these.
+ */
+export type SyncChoice = 'all' | 'none' | ItemId[];
+
+export interface SyncOptions {
+  truth?: Side;
+  first?: FirstSyncMode;
+  /** The hub's books this instance lacks to bring here: all it exposes by default (Sync from), none for Sync to. */
+  pull?: SyncChoice;
+  /** This instance's books the hub lacks to send it: all it exposes by default (Sync to), none for Sync from. */
+  push?: SyncChoice;
+  /**
+   * What this instance exposes to the hub, its connection's catalog for it (as `createSyncService`'s
+   * `scope` is for the hub); every book without it. Only exposed books are sent, or offered.
+   */
+  expose?: ScopeRule;
+}
+
 export interface SyncPreview {
   hub: PeerInfo;
   truth: Side;
@@ -64,10 +85,19 @@ export interface SyncPreview {
   revisions: { ours: number; theirs: number };
   /** Both libraries as they were then (the hub's as this instance sees it), e.g. to name the items in conflicts. */
   libraries: { ours: Library; theirs: Library };
-  /** Set when the hub keeps this instance to its connection's books: the items it had then. */
-  have?: ItemId[];
-  /** When scoped: books deleted here that stay on the hub, now kept off this instance. */
+  /** The items this instance had then, which the hub shows it whatever its catalog. */
+  have: ItemId[];
+  /** Books brought here, and sent there. */
+  pulled: ItemId[];
+  pushed: ItemId[];
+  /** The books both sides hold once it's applied, whose state the check after it compares. */
+  shared: ItemId[];
+  /** Books this instance exposes that the hub lacks and that aren't sent, offered to it to browse and ask for. */
+  offer: Item[];
+  /** Books deleted here that the hub still has: kept there, and kept off this instance (its connection there excludes them). */
   keptOff?: ItemId[];
+  /** Books the hub deleted that this instance still has: kept here, and not sent there again by a sync. */
+  keptHere?: ItemId[];
 }
 
 export interface SyncResult {
@@ -77,17 +107,22 @@ export interface SyncResult {
   /** Parts (`item:<id>`, `device:<id>`) the check after the merge found different, and copied from the source of truth. */
   repaired: string[];
   pairing: Pairing;
-  /** Items here that this instance's connection no longer picks, to let go of once their files are sent (`leaveOutside`). */
-  outside: ItemId[];
+  /** As in the preview: books brought here and sent there, and those both sides hold, whose files may move. */
+  pulled: ItemId[];
+  pushed: ItemId[];
+  shared: ItemId[];
 }
 
-/** Works out what a sync would do, without changing anything. */
-export async function previewSync(
-  local: LibraryBackend,
-  hub: SyncClient,
-  pairing: Pairing,
-  options: { truth?: Side; first?: FirstSyncMode } = {},
-): Promise<SyncPreview> {
+const chosen = (choice: SyncChoice, all: Iterable<ItemId>): Set<ItemId> =>
+  choice === 'none' ? new Set() : choice === 'all' ? new Set(all) : new Set(choice);
+
+/**
+ * Works out what a sync would do, without changing anything. Books both sides have merge as M6
+ * merges them; books only one side has move by `pull` and `push`, and only those the side that has
+ * them exposes. Deletions never cross: a book deleted on one side stays on the other, and is kept
+ * off the side that deleted it (its connection there excludes it), so syncs don't bring it back.
+ */
+export async function previewSync(local: LibraryBackend, hub: SyncClient, pairing: Pairing, options: SyncOptions = {}): Promise<SyncPreview> {
   const truth = options.truth ?? pairing.truth;
   const info = await hub.hello(null);
   if (info.origin !== pairing.hub.origin) {
@@ -104,50 +139,88 @@ export async function previewSync(
   const remote = await hub.state({ since: base?.theirs ?? 0, have, peer: library.origin, ...(keeps !== undefined && { keeps }) });
   const revisions = { ours: library.revision, theirs: remote.library.revision };
   const libraries = { ours: library, theirs: remote.library };
-  const scoped = remote.scoped ? { have } : {};
+  const hubIds = Object.keys(remote.library.items);
+  const own = library.origin;
+  const hubOrigin = info.origin;
 
   if (!base && (options.first ?? 'combine') === 'replace') {
     // Joining: this instance becomes a copy of the hub's library (as it sees it).
     const { operations } = planRepair(remote.library, library);
     const plan = { ours: operations, theirs: [], conflicts: [] };
-    return { hub: info, truth: 'theirs', first: 'replace', plan, revisions, libraries, ...scoped };
+    return { hub: info, truth: 'theirs', first: 'replace', plan, revisions, libraries, have, pulled: hubIds, pushed: [], shared: hubIds, offer: [] };
   }
   // Since the base, or on a first sync everything either side ever did: then it all counts as additions.
-  let ours = (await local.getChanges(base?.ours ?? 0)).map((change) => change.op);
-  // Books deleted here stay on a hub that scopes this instance: they're kept off it instead.
-  const deleted = remote.scoped ? ours.filter((op) => op.type === 'removeItem' && !library.items[op.id]).map((op) => (op as { id: ItemId }).id) : [];
-  if (remote.scoped) ours = ours.filter((op) => op.type !== 'removeItem');
-  const plan = planMerge({ library, changes: ours }, { library: remote.library, changes: remote.changes }, truth);
-  let keptOff: ItemId[] | undefined;
-  if (remote.scoped) {
-    keptOff = [...new Set(deleted)].filter((id) => remote.library.items[id]);
-    const own = library.origin;
-    if (keptOff.length && library.devices?.[own] && remote.library.devices?.[own]) {
-      const exclude: Operation = { type: 'excludeDeviceItems', id: own, itemIds: keptOff };
-      plan.ours.push(exclude);
-      plan.theirs.push(exclude);
-    }
-    plan.ours.push(...missingBooks(library, remote.library, plan, new Set(keptOff)));
-  }
-  return { hub: info, truth, ...(!base && { first: 'combine' as const }), plan, revisions, libraries, ...scoped, ...(keptOff && { keptOff }) };
+  const ours = (await local.getChanges(base?.ours ?? 0)).map((change) => change.op);
+  // Deletions stay where they were made.
+  const deletedHere = new Set(ours.filter((op) => op.type === 'removeItem' && !library.items[op.id]).map((op) => (op as { id: ItemId }).id));
+  const deletedThere = new Set(remote.changes.filter((op) => op.type === 'removeItem' && !remote.library.items[op.id]).map((op) => (op as { id: ItemId }).id));
+  const notRemoving = (op: Operation) => op.type !== 'removeItem';
+  const plan = planMerge({ library, changes: ours.filter(notRemoving) }, { library: remote.library, changes: remote.changes.filter(notRemoving) }, truth);
+  const keptOff = [...deletedHere].filter((id) => remote.library.items[id]);
+  const keptHere = [...deletedThere].filter((id) => library.items[id]);
+  const keepOff = (device: string, itemIds: ItemId[]) => {
+    if (!itemIds.length || !library.devices?.[device] || !remote.library.devices?.[device]) return;
+    const exclude: Operation = { type: 'excludeDeviceItems', id: device, itemIds };
+    plan.ours.push(exclude);
+    plan.theirs.push(exclude);
+  };
+  keepOff(own, keptOff);
+  keepOff(hubOrigin, keptHere);
+
+  // What moves where only one side has it.
+  const exposedRule = options.expose?.(library, hubOrigin);
+  const exposed = (id: ItemId) => !exposedRule || (!!library.items[id] && exposedRule(library.items[id]!));
+  const kept = new Set(keptHere);
+  const hubHas = new Set(hubIds);
+  const explicitPush = Array.isArray(options.push);
+  const pushed = [...chosen(options.push ?? 'all', have), ...(remote.requested ?? [])].filter(
+    (id) => library.items[id] && !hubHas.has(id) && exposed(id) && (explicitPush || !kept.has(id)),
+  );
+  const pulled = [...chosen(options.pull ?? 'all', hubIds)].filter((id) => remote.library.items[id] && !library.items[id] && !deletedHere.has(id));
+  const ourScope = new Set([...have, ...pulled]);
+  const theirScope = new Set([...hubIds, ...pushed]);
+  plan.ours = [...scopeChanges(plan.ours, ourScope), ...missingBooks(library, remote.library, plan.ours, 'ours', pulled)];
+  plan.theirs = [...scopeChanges(plan.theirs, theirScope), ...missingBooks(remote.library, library, plan.theirs, 'theirs', pushed)];
+  const shared = [...ourScope].filter((id) => theirScope.has(id));
+  const offered = new Set(pushed);
+  const offer = have.filter((id) => !hubHas.has(id) && !offered.has(id) && !kept.has(id) && exposed(id)).map((id) => library.items[id]!);
+  return {
+    hub: info,
+    truth,
+    ...(!base && { first: 'combine' as const }),
+    plan,
+    revisions,
+    libraries,
+    have,
+    pulled: [...new Set(pulled)],
+    pushed: [...new Set(pushed)],
+    shared,
+    offer,
+    ...(keptOff.length && { keptOff }),
+    ...(keptHere.length && { keptHere }),
+  };
 }
 
 /**
- * Books the hub shows this instance that it lacks and the merge doesn't bring (they were there all
- * along, and only now picked for it, say), with what goes with them; not ones deleted here.
+ * The books one side takes from the other that the merge doesn't bring (they were there all along,
+ * say, and only now chosen), with what goes with them. `to` is the side taking them, `ops` what the
+ * merge already gives it.
  */
-function missingBooks(library: Library, hubLibrary: Library, plan: MergePlan, deleted: Set<ItemId>): Operation[] {
-  const added = new Set(plan.ours.flatMap((op) => (op.type === 'addItem' ? [op.item.id] : [])));
-  const removedDevices = new Set(plan.ours.flatMap((op) => (op.type === 'removeDevice' ? [op.id] : [])));
-  const addedDevices = new Set(plan.ours.flatMap((op) => (op.type === 'addDevice' ? [op.device.id] : [])));
-  const missing = Object.values(hubLibrary.items).filter((item) => !library.items[item.id] && !added.has(item.id) && !deleted.has(item.id));
-  const ids = new Set(missing.map((item) => item.id));
+function missingBooks(to: Library, from: Library, ops: Operation[], side: Side, ids: ItemId[]): Operation[] {
+  const added = new Set(ops.flatMap((op) => (op.type === 'addItem' ? [op.item.id] : [])));
+  const removedDevices = new Set(ops.flatMap((op) => (op.type === 'removeDevice' ? [op.id] : [])));
+  const addedDevices = new Set(ops.flatMap((op) => (op.type === 'addDevice' ? [op.device.id] : [])));
+  const missing = ids.map((id) => from.items[id]!).filter((item) => item && !to.items[item.id] && !added.has(item.id));
+  const taking = new Set(missing.map((item) => item.id));
   const existsAfter = (_side: Side, kind: 'item' | 'device', id: string) =>
     kind === 'item'
-      ? !!library.items[id] || added.has(id) || ids.has(id)
-      : !removedDevices.has(id) && (!!library.devices?.[id] || addedDevices.has(id));
-  return missing.flatMap((item) => [{ type: 'addItem' as const, item }, ...itemExtras(hubLibrary, item.id, 'ours', existsAfter, new Set())]);
+      ? !!to.items[id] || added.has(id) || taking.has(id)
+      : !removedDevices.has(id) && (!!to.devices?.[id] || addedDevices.has(id));
+  return missing.flatMap((item) => [{ type: 'addItem' as const, item }, ...itemExtras(from, item.id, side, existsAfter, new Set())]);
 }
+
+/** The library cut down to `ids`, for comparing the books both sides hold. */
+const sharedPart = (library: Library, ids: ItemId[]) => scopeLibrary(library, new Set(ids.filter((id) => library.items[id])));
 
 /** Applies a preview: the hub's side, this side, then the check and any repair. Returns the updated pairing too, already saved. */
 export async function runSync(
@@ -157,28 +230,30 @@ export async function runSync(
   preview: SyncPreview,
   now: () => string = () => new Date().toISOString(),
 ): Promise<SyncResult> {
-  const { plan, truth } = preview;
+  const { plan, truth, shared } = preview;
   const own = await local.getLibrary();
   const keeps = own.devices?.[own.origin]?.query;
-  const scope = preview.have ? { have: preview.have, peer: own.origin, ...(keeps !== undefined && { keeps }) } : {};
-  let remote = await hub.apply({ ops: plan.theirs, expectRevision: preview.revisions.theirs, ...scope });
+  const scope = { have: preview.have, peer: own.origin, ...(keeps !== undefined && { keeps }) };
+  let remote = await hub.apply({ ops: plan.theirs, expectRevision: preview.revisions.theirs, compare: shared, offer: preview.offer, ...scope });
   let library = await local.apply(plan.ours, preview.revisions.ours);
 
   let repaired: string[] = [];
-  if (stateDigest(library).hash !== remote.hash) {
-    const { library: hubLibrary } = await hub.state({ since: remote.revision, ...scope });
+  if (stateDigest(sharedPart(library, shared)).hash !== remote.hash) {
+    const { library: hubView } = await hub.state({ since: remote.revision, ...scope, have: shared });
+    const ours = sharedPart(library, shared);
+    const theirs = sharedPart(hubView, shared);
+    // Only the books both hold are compared, so a repair never removes one (deletions don't cross).
+    const notRemoving = (op: Operation) => op.type !== 'removeItem';
     if (truth === 'ours') {
-      const repair = planRepair(library, hubLibrary);
+      const repair = planRepair(ours, theirs);
       repaired = repair.parts;
-      // A hub that scopes this instance keeps books deleted here (and refuses to delete them).
-      const ops = preview.have ? repair.operations.filter((op) => op.type !== 'removeItem') : repair.operations;
-      remote = await hub.apply({ ops, expectRevision: remote.revision, ...scope });
+      remote = await hub.apply({ ops: repair.operations.filter(notRemoving), expectRevision: remote.revision, compare: shared, ...scope });
     } else {
-      const repair = planRepair(hubLibrary, library);
+      const repair = planRepair(theirs, ours);
       repaired = repair.parts;
-      library = await local.apply(repair.operations, library.revision);
+      library = await local.apply(repair.operations.filter(notRemoving), library.revision);
     }
-    if (stateDigest(library).hash !== remote.hash) {
+    if (stateDigest(sharedPart(library, shared)).hash !== remote.hash) {
       throw new Error(`This library and ${preview.hub.name}'s still differ after repairing them. Try syncing again.`);
     }
   }
@@ -187,25 +262,16 @@ export async function runSync(
   const updated: Pairing = { ...pairing, base: { ours: library.revision, theirs: remote.revision }, lastSyncedAt: at };
   await savePairing(local, updated);
   await hub.done({ origin: library.origin, at });
-  const outside = (remote.outside ?? []).filter((id) => library.items[id]);
-  return { received: plan.ours.length, sent: plan.theirs.length, conflicts: plan.conflicts, repaired, pairing: updated, outside };
-}
-
-/**
- * Lets go of books this instance's connection no longer picks (`SyncResult.outside`), once the hub
- * has their files. Their removal isn't sent back: the hub keeps them. Moves the sync base past it
- * when nothing else changed since the sync, so the next sync needn't look at it, and returns the
- * pairing as saved.
- */
-export async function leaveOutside(local: LibraryBackend, pairing: Pairing, outside: ItemId[]): Promise<Pairing> {
-  const before = await local.getLibrary();
-  const ids = outside.filter((id) => before.items[id]);
-  if (!ids.length) return pairing;
-  const library = await local.apply(ids.map((id) => ({ type: 'removeItem', id })));
-  if (!pairing.base || pairing.base.ours !== before.revision) return pairing;
-  const updated = { ...pairing, base: { ...pairing.base, ours: library.revision } };
-  await savePairing(local, updated);
-  return updated;
+  return {
+    received: plan.ours.length,
+    sent: plan.theirs.length,
+    conflicts: plan.conflicts,
+    repaired,
+    pairing: updated,
+    pulled: preview.pulled,
+    pushed: preview.pushed,
+    shared,
+  };
 }
 
 /** A pairing just made, with the books whose files the hub chose for this instance (not saved with it: they go in its connection). */
@@ -246,9 +312,35 @@ export async function removePairing(local: LibraryBackend, hubOrigin: string): P
 }
 
 /**
- * The hub's side of the sync API, over its library backend: `hello`, `state` and `apply`. Pairing,
- * recording finished syncs and files belong to whatever hosts it (the desktop's main process),
- * which holds the keys and the files.
+ * What instances that sync with this one as their hub offer it (`SyncPreview.offer`): the books
+ * each exposes to it that it lacks, as of its last sync, and which of them were asked for here, to
+ * come with its next sync. Kept in local state, not the library.
+ */
+export interface OfferState {
+  peers: Record<string, { items: Item[]; requested: ItemId[]; at: string }>;
+}
+
+export const SYNC_OFFERS_KEY = 'sync-offers';
+
+const readOffers = async (backend: LibraryBackend) => (await backend.readLocalState<OfferState>(SYNC_OFFERS_KEY)) ?? { peers: {} };
+
+/** The books an instance that syncs with this one offers it, and which were asked for. */
+export async function peerOffer(backend: LibraryBackend, peer: string): Promise<{ items: Item[]; requested: ItemId[]; at?: string }> {
+  return (await readOffers(backend)).peers[peer] ?? { items: [], requested: [] };
+}
+
+/** Asks for books an instance offers (or stops asking, with `ask` false): they come with its next sync. */
+export async function requestFromPeer(backend: LibraryBackend, peer: string, ids: ItemId[], ask = true): Promise<void> {
+  const state = await readOffers(backend);
+  const offer = state.peers[peer] ?? { items: [], requested: [], at: new Date(0).toISOString() };
+  const requested = ask ? [...new Set([...offer.requested, ...ids])] : offer.requested.filter((id) => !ids.includes(id));
+  await backend.writeLocalState(SYNC_OFFERS_KEY, { peers: { ...state.peers, [peer]: { ...offer, requested } } } satisfies OfferState);
+}
+
+/**
+ * The hub's side of the sync API, over its library backend: `hello`, `state`, `apply` and `allows`.
+ * Pairing, recording finished syncs and files belong to whatever hosts it (the desktop's main
+ * process), which holds the keys and the files.
  */
 export function createSyncService(
   backend: LibraryBackend,
@@ -258,12 +350,16 @@ export function createSyncService(
     /** Called after operations from a peer are applied, e.g. to show the changes. */
     onApplied?: (library: Library) => void;
     /**
-     * Keeps each instance to the books its connection picks (`scope.ts`): it sees only those and
-     * the ones it has, and can't delete books here. Without it, every instance sees everything.
+     * Keeps each instance to the books its connection's catalog holds (`scope.ts`): it sees only
+     * those and the ones it has, and fetches only their files. Without it, every instance sees everything.
      */
     scope?: ScopeRule;
   },
 ): Omit<MessageImpl<SyncApi>['sync'], 'pair' | 'done' | 'missing'> {
+  /** The items each instance said it had when it last asked for the state, which it may fetch the files of. */
+  const had = new Map<string, ItemId[]>();
+  const viewOf = (library: Library, peer: string | undefined, have: ItemId[] | undefined, keeps?: string) =>
+    options.scope && peer ? scopeOf(library, options.scope(library, peer, keeps), have) : undefined;
   return {
     async hello() {
       const library = await backend.getLibrary();
@@ -280,22 +376,39 @@ export function createSyncService(
       const library = await backend.getLibrary();
       // Up to the library's revision: anything applied after it was read isn't in it either.
       const changes = (await backend.getChanges(since)).filter((change) => change.revision <= library.revision).map((change) => change.op);
-      if (!options.scope || !peer) return { library, changes };
-      const scope = scopeOf(library, options.scope(library, peer, keeps), have);
-      if (!scope) return { library, changes, scoped: true };
-      return { library: scopeLibrary(library, scope), changes: scopeChanges(changes, scope), scoped: true };
+      if (peer && have) had.set(peer, have);
+      const requested = peer ? (await peerOffer(backend, peer)).requested.filter((id) => !library.items[id]) : [];
+      const asked = requested.length ? { requested } : {};
+      if (!options.scope || !peer) return { library, changes, ...asked };
+      const scope = viewOf(library, peer, have, keeps);
+      if (!scope) return { library, changes, scoped: true, ...asked };
+      // Deletions of books it has are among the changes it sees, though the books aren't in the library.
+      const changed = new Set([...scope, ...(have ?? [])]);
+      return { library: scopeLibrary(library, scope), changes: scopeChanges(changes, changed), scoped: true, ...asked };
     },
-    async apply({ ops, expectRevision, peer, have, keeps }) {
-      const scoping = options.scope && peer ? options.scope : undefined;
-      // An instance the hub scopes deletes books only for itself.
-      if (scoping) ops = ops.filter((op) => op.type !== 'removeItem');
+    async apply({ ops, expectRevision, peer, have, keeps, compare, offer }) {
+      // Deletions don't cross: an instance deletes books only for itself.
+      if (peer) ops = ops.filter((op) => op.type !== 'removeItem');
       const library = await backend.apply(ops, expectRevision);
       if (ops.length) options.onApplied?.(library);
-      if (!scoping) return { revision: library.revision, hash: stateDigest(library).hash };
-      const keep = scoping(library, peer!, keeps);
-      const scope = scopeOf(library, keep, have);
-      const outside = keep ? (have ?? []).filter((id) => library.items[id] && !keep(library.items[id]!)) : [];
-      return { revision: library.revision, hash: stateDigest(scope ? scopeLibrary(library, scope) : library).hash, outside };
+      if (peer && offer) {
+        const state = await readOffers(backend);
+        const before = state.peers[peer];
+        const items = offer.filter((item) => !library.items[item.id]);
+        const requested = (before?.requested ?? []).filter((id) => !library.items[id] && items.some((item) => item.id === id));
+        await backend.writeLocalState(SYNC_OFFERS_KEY, { peers: { ...state.peers, [peer]: { items, requested, at: new Date().toISOString() } } } satisfies OfferState);
+      }
+      const scope = viewOf(library, peer, have, keeps);
+      const view = scope ? scopeLibrary(library, scope) : library;
+      const compared = compare ? scopeLibrary(view, new Set(compare.filter((id) => view.items[id]))) : view;
+      return { revision: library.revision, hash: stateDigest(compared).hash };
+    },
+    async allows({ hash, peer }) {
+      if (!options.scope || !peer) return true;
+      const library = await backend.getLibrary();
+      const scope = viewOf(library, peer, had.get(peer));
+      const items = scope ? [...scope].map((id) => library.items[id]!) : Object.values(library.items);
+      return items.some((item) => item.cover?.hash === hash || item.files.some((file) => file.hash === hash));
     },
   };
 }

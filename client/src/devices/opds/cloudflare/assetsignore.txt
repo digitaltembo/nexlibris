@@ -1,0 +1,7 @@
+_worker.js
+.wrangler
+.git
+.dev.vars
+README.md
+functions
+[[searchTerm]].js

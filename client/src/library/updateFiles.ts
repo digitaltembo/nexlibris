@@ -7,10 +7,9 @@ import {
   type LibraryBackend,
   type Operation,
 } from '@nexlibris/common';
-import { EPUB_FORMATS } from '../devices/embedMetadata';
-import { bookFromItem } from '../formats/convert/bookFromItem';
+import { canWriteMetadata, fileMetadata, metadataKey } from './fileMetadata';
 import { epubDrm, parseEpub } from '../formats/epub';
-import { epubMetadataChanges, writeEpubMetadata, type EpubMetadata } from '../formats/epubMetadata';
+import { epubMetadataChanges, writeEpubMetadata } from '../formats/epubMetadata';
 import type { ParsedItem } from '../formats/formats';
 
 /**
@@ -50,6 +49,8 @@ export interface FindResult {
   drm: { title: string; kind: string }[];
   failed: { title: string; message: string }[];
   stopped?: boolean;
+  /** Records the fingerprints of files found in step that didn't have them (`fileMetadata.ts`), so they're known to be current. */
+  fingerprints: Operation[];
 }
 
 export interface UpdateResult {
@@ -74,21 +75,15 @@ const readMetadata = (data: Blob, name: string) => parseEpub(data, name, { cover
 /** Changes are applied this many books at a time, so stopping partway keeps what was done. */
 const APPLY_EVERY = 25;
 
-const writable = (file: FileRef) => EPUB_FORMATS.includes(file.format);
+const writable = canWriteMetadata;
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 const nameOf = (item: Item, file: FileRef) => file.name ?? `${item.title}.${file.format}`;
-
-/** What the item's files should say. */
-export function fileMetadata(item: Item): EpubMetadata {
-  const { identifiers: _identifiers, cover: _cover, ...metadata } = bookFromItem({ item });
-  return metadata;
-}
 
 /** Reads every EPUB stored here and lists those whose metadata differs from the library's. */
 export async function findStaleFiles(backend: LibraryBackend, library: Library, options: Options = {}): Promise<FindResult> {
   const parse = options.parse ?? readMetadata;
   const items = Object.values(library.items).filter((item) => item.files.some(writable));
-  const result: FindResult = { stale: [], current: 0, notHere: 0, drm: [], failed: [] };
+  const result: FindResult = { stale: [], current: 0, notHere: 0, drm: [], failed: [], fingerprints: [] };
   for (const [done, item] of items.entries()) {
     if (options.signal?.aborted) {
       result.stopped = true;
@@ -96,6 +91,7 @@ export async function findStaleFiles(backend: LibraryBackend, library: Library, 
     }
     options.onProgress?.({ done, total: items.length, current: item.title });
     const wanted = fileMetadata(item);
+    const key = metadataKey(item);
     let stored = false;
     for (const file of item.files.filter(writable)) {
       try {
@@ -110,7 +106,10 @@ export async function findStaleFiles(backend: LibraryBackend, library: Library, 
         }
         const changes = epubMetadataChanges(await parse(data, nameOf(item, file)), wanted);
         if (changes.length) result.stale.push({ item, file, changes });
-        else result.current++;
+        else {
+          result.current++;
+          if (file.metadataKey !== key) result.fingerprints.push({ type: 'setFileMetadataKey', id: item.id, hash: file.hash, metadataKey: key });
+        }
       } catch (e) {
         result.failed.push({ title: item.title, message: message(e) });
       }
@@ -197,10 +196,14 @@ export async function updateFiles(
         const left = epubMetadataChanges(await parse(written, nameOf(item, file)), wanted);
         if (left.length) throw new Error(`It didn’t take: ${left.join(', ')}`);
         const { hash, size } = await backend.putFile(written);
-        if (hash === file.hash) continue;
+        if (hash === file.hash) {
+          // It said what the library says after all (it only differed in what isn't compared).
+          if (file.metadataKey !== metadataKey(item)) pending.push({ type: 'setFileMetadataKey', id: item.id, hash, metadataKey: metadataKey(item) });
+          continue;
+        }
         // Without it, the book is only indexed again.
         await options.carryText?.(file.hash, hash).catch(() => undefined);
-        replaced.set(file.hash, { ...file, hash, size });
+        replaced.set(file.hash, { ...file, hash, size, metadataKey: metadataKey(item) });
         old.add(file.hash);
         result.updated++;
       } catch (e) {

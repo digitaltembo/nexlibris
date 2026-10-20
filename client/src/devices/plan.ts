@@ -1,17 +1,15 @@
 import type { Device, FileRef, Item, ItemId, Library, PlacedFile } from '@nexlibris/common';
 import { matchItem } from './match';
-import type { Catalog, ConnectionType, DeviceTarget, DeviceType, RemoteBook, RemoteFile } from './types';
+import type { Catalog, ConnectionType, DeviceTarget, FilesType, RemoteBook, RemoteFile } from './types';
 import { DEFAULT_FILE_NAME, expandPath, hasPlaceholders, templateRoot } from './pathTemplate';
-import { deviceItems } from './selection';
+import { catalogFiles, deviceItems, itemFiles } from './selection';
 
 /** A file to put on the device. */
 export interface Upload {
   path: string;
   item: Item;
   file: FileRef;
-  /** From the device type's preparation, recorded so the next sync can tell whether the file is current. */
-  key?: string;
-  /** Replacing a file a sync put there before, e.g. after the book's metadata changed. */
+  /** Replacing a file a sync put there before, e.g. the book's newer file. */
   replaces: boolean;
   /** The book's old copy under another name, removed once this one is sent. */
   supersedes?: string;
@@ -40,21 +38,32 @@ export interface Conflict {
   reason: string;
 }
 
+/**
+ * What a sync will do. It only ever adds: books in the catalog that aren't there are sent, files it
+ * sent that the library has newer versions of are replaced (the old copy removed if the new one has
+ * another name), and books moved where the templates now put them. Nothing else on the device is
+ * touched: books no longer in the catalog stay, and a book deleted on the device is taken out of the
+ * catalog rather than sent again.
+ */
 export interface SyncPlan {
   uploads: Upload[];
   /** Books moved to their new paths rather than sent again (when the device can move files). */
   moves: Move[];
   /** Copies found where their books go, recorded as the books' own. */
   kept: Kept[];
-  /** Files a sync put there that are no longer wanted, or that were sent again under a new name. */
+  /** Old copies of books sent again under a new name. */
   removals: string[];
   /** Records of files that are gone from the device, or were changed on it, so are no longer the sync's. */
   forget: string[];
+  /** Books in the catalog whose files were deleted on the device: taken out of the catalog, not sent again. */
+  deleted: ItemId[];
   conflicts: Conflict[];
   /** Items with no file in a format the device takes. */
   unsendable: ItemId[];
   /** Files already on the device as they should be. */
   unchanged: number;
+  /** Files a sync put there whose books are no longer in the catalog: left as they are. */
+  left: number;
   /** The device's catalog, to add to its list of catalogs. */
   catalog?: Catalog;
   /** Folders the sync may leave empty, deepest first, removed if they are (the device refuses ones that aren't). */
@@ -78,8 +87,8 @@ export interface PlanOptions {
   /** Take copies of chosen books already on the device (put there by hand, or by other software) as theirs, rather than sending them again. */
   keepFound?: boolean;
   /**
-   * Send only these books (each must be chosen for the device), leaving the rest of the device as it is: no
-   * other book is sent, moved or removed, and the catalog isn't added.
+   * Send only these books (each must be in the catalog), leaving the rest of the device as it is: no
+   * other book is sent or moved, and the catalog isn't added. These are sent even if they were deleted there.
    */
   only?: ItemId[];
 }
@@ -88,50 +97,54 @@ export interface PlanOptions {
 export interface Wanted {
   item: Item;
   file: FileRef;
-  key?: string;
 }
 
-/** Whether a file on the device is as the plan wants it: the library's file it was sent (or taken) as, with the same key. */
-export const isCurrent = (placed: PlacedFile, wanted: Wanted) => placed.hash === wanted.file.hash && placed.key === wanted.key;
+/** Whether a file on the device is as the plan wants it: the library's file it was sent (or taken) as. */
+export const isCurrent = (placed: PlacedFile, wanted: Wanted) => placed.hash === wanted.file.hash;
 
-/** What to send for an item: its file in the first of the type's formats it has. */
-export function chooseFile(item: Item, type: ConnectionType): { file: FileRef } | undefined {
-  for (const format of type.formats) {
-    const file = item.files.find((f) => f.format === format);
-    if (file) return { file };
-  }
-  return undefined;
+/** What to send for an item: its file in the first of the type's formats it has, or the one chosen for it. */
+export function chooseFile(item: Item, device: Device, type: ConnectionType): { file: FileRef } | undefined {
+  const file = itemFiles(item, device, type)[0];
+  return file && { file };
 }
 
-/** What should be on the device: a path for each chosen item that has a file in a format it takes. */
-export function desiredFiles(library: Library, device: Device, type: DeviceType) {
+/** What should be on the device: a path for each file of each item in the catalog that goes there. */
+export function desiredFiles(library: Library, device: Device, type: FilesType) {
   const files = new Map<string, Wanted>();
   const unsendable: ItemId[] = [];
   const pathOf = bookPaths(device, type);
-  const placedPath = new Map(Object.entries(device.placed).map(([path, p]) => [p.itemId, path]));
   const chosen: Wanted[] = [];
-  for (const item of deviceItems(library, device)) {
-    const choice = chooseFile(item, type);
-    if (choice) chosen.push({ item, ...choice, key: type.prepare?.key(item, choice.file) });
+  for (const { item, files: its } of catalogFiles(library, device, type, !!type.everyFormat)) {
+    if (its.length) chosen.push(...its.map((file) => ({ item, file })));
     else unsendable.push(item.id);
   }
-  // A book already on the device keeps its path while that's still its path (numbered as it was, if it was), or,
+  // A file already on the device keeps its path while that's still its path (numbered as it was, if it was), or,
   // linked by hand, while it's current; one whose path has changed, by a new title or author or new templates,
-  // goes to its new one. The rest are named around them.
-  const named = new Set<ItemId>();
+  // goes to its new one. The rest are named around them. A book's newer file takes its old one's path.
+  const placed = Object.entries(device.placed);
+  const claimed = new Set<string>();
+  const placedPath = (wanted: Wanted) => {
+    const extension = extensionOf(type, wanted.file);
+    const match =
+      placed.find(([path, p]) => !claimed.has(path) && p.itemId === wanted.item.id && p.hash === wanted.file.hash) ??
+      placed.find(([path, p]) => !claimed.has(path) && p.itemId === wanted.item.id && path.endsWith(`.${extension}`) && !chosen.some((w) => w.file.hash === p.hash && w.item.id === p.itemId));
+    if (match) claimed.add(match[0]);
+    return match?.[0];
+  };
+  const named = new Set<Wanted>();
   for (const wanted of chosen) {
-    const path = placedPath.get(wanted.item.id);
+    const path = placedPath(wanted);
     if (!path || files.has(path)) continue;
-    const n = Number(/ \((\d+)\)\.[^./]+$/.exec(path)?.[1] ?? 1);
+    const n = Number(/ \((\d+)\)(\.[a-z0-9]+)+$/i.exec(path)?.[1] ?? 1);
     // A file linked by hand stays where it was put while it's current.
     const linked = device.placed[path]!.linked && isCurrent(device.placed[path]!, wanted);
     if (linked || path === pathOf(wanted.item, wanted.file, n)) {
       files.set(path, wanted);
-      named.add(wanted.item.id);
+      named.add(wanted);
     }
   }
   for (const wanted of chosen) {
-    if (named.has(wanted.item.id)) continue;
+    if (named.has(wanted)) continue;
     for (let n = 1; ; n++) {
       const path = pathOf(wanted.item, wanted.file, n);
       if (!files.has(path)) {
@@ -144,15 +157,28 @@ export function desiredFiles(library: Library, device: Device, type: DeviceType)
 }
 
 /** Compares what should be on the device with what a sync placed there before and what's there now. */
-export function planSync(library: Library, device: Device, type: DeviceType, listing: DeviceListing, options: PlanOptions = {}): SyncPlan {
+export function planSync(library: Library, device: Device, type: FilesType, listing: DeviceListing, options: PlanOptions = {}): SyncPlan {
   const { files: all, unsendable: allUnsendable } = desiredFiles(library, device, type);
   const only = options.only && new Set(options.only);
   const inScope = (itemId: ItemId) => !only || only.has(itemId);
-  // Out of scope, a book's files are left as they are: neither wanted (which would send them) nor unwanted (removing them).
+  // Out of scope, a book's files are left as they are: neither wanted (which would send them) nor replaced.
   const files = only ? new Map([...all].filter(([, wanted]) => only.has(wanted.item.id))) : all;
   const unsendable = allUnsendable.filter(inScope);
+  const inCatalog = new Set([...all.values()].map((w) => w.item.id));
   const sizes = new Map(listing.files.map((f) => [f.path, f.size]));
-  const plan: SyncPlan = { uploads: [], moves: [], kept: [], removals: [], forget: [], conflicts: [], unsendable, unchanged: 0, emptied: [] };
+  const plan: SyncPlan = {
+    uploads: [],
+    moves: [],
+    kept: [],
+    removals: [],
+    forget: [],
+    deleted: [],
+    conflicts: [],
+    unsendable,
+    unchanged: 0,
+    left: 0,
+    emptied: [],
+  };
   const found = options.keepFound === false ? new Map<ItemId, RemoteBook[]>() : foundCopies(library, device, listing, all);
   /** A found copy of the wanted book that can be its file at `path`: there already, or (if the device can move files) anywhere. */
   const foundFor = (path: string, wanted: Wanted) => {
@@ -161,34 +187,41 @@ export function planSync(library: Library, device: Device, type: DeviceType, lis
     const copy = copies.find((book) => book.path === path) ?? (listing.canMove ? copies.find((book) => !all.has(book.path)) : undefined);
     if (!copy) return undefined;
     found.delete(wanted.item.id);
-    const placed: PlacedFile = { itemId: wanted.item.id, hash: wanted.file.hash, size: copy.size, found: true, ...(wanted.key !== undefined && { key: wanted.key }) };
+    const placed: PlacedFile = { itemId: wanted.item.id, hash: wanted.file.hash, size: copy.size, found: true };
     if (copy.path === path) plan.kept.push({ path, placed });
     else plan.moves.push({ from: copy.path, to: path, placed, found: true });
     return copy;
   };
   const upload = (path: string, wanted: Wanted, replaces: boolean) => plan.uploads.push({ path, ...wanted, replaces });
+  /** Files a sync put there that nothing wants at their paths, but whose books are still in the catalog: old copies, replaced if a newer one is sent. */
+  const stale: string[] = [];
+  const deleted = new Set<ItemId>();
 
   for (const [path, placed] of Object.entries(device.placed)) {
     if (!inScope(placed.itemId)) continue;
     const size = sizes.get(path);
     const wanted = files.get(path);
     if (size === undefined) {
-      // Deleted on the device: send it again if it's still wanted.
+      // Deleted on the device. Sent alone, it's sent again; otherwise it's taken out of the catalog, for good.
       plan.forget.push(path);
-      if (wanted) upload(path, wanted, false);
+      if (wanted && only) upload(path, wanted, false);
+      else if (inCatalog.has(placed.itemId)) deleted.add(placed.itemId);
     } else if (size !== placed.size) {
       // Someone replaced it on the device; it's theirs now.
       plan.forget.push(path);
       if (wanted) plan.conflicts.push({ path, itemId: wanted.item.id, reason: 'It was changed on the device since it was sent.' });
     } else if (!wanted) {
-      plan.removals.push(path);
+      if (inCatalog.has(placed.itemId)) stale.push(path);
+      else plan.left++;
     } else if (isCurrent(placed, wanted)) {
       plan.unchanged++;
     } else {
       upload(path, wanted, true);
     }
   }
+  plan.deleted = [...deleted];
   for (const [path, wanted] of files) {
+    if (deleted.has(wanted.item.id) && !only) continue;
     const there = device.placed[path];
     if (there && !inScope(there.itemId)) {
       // Another book's, which only a full sync moves out of the way.
@@ -202,20 +235,22 @@ export function planSync(library: Library, device: Device, type: DeviceType, lis
       upload(path, wanted, false);
     }
   }
-  // A book sent under a new name replaces its old copy, which is in the removals; if the copy is as it should
-  // be, and the device can, it's moved instead.
+  // A book's file sent under a new name replaces its old copy; if the copy is as it should be, and the device can,
+  // it's moved instead. Old copies nothing replaces stay.
   for (const u of [...plan.uploads]) {
-    const old = plan.removals.find((path) => device.placed[path]!.itemId === u.item.id);
+    const old = stale.find((path) => device.placed[path]!.itemId === u.item.id);
     if (!old) continue;
+    stale.splice(stale.indexOf(old), 1);
     const placed = device.placed[old]!;
     if (listing.canMove && isCurrent(placed, u)) {
       plan.moves.push({ from: old, to: u.path, placed });
       plan.uploads.splice(plan.uploads.indexOf(u), 1);
-      plan.removals.splice(plan.removals.indexOf(old), 1);
     } else {
+      plan.removals.push(old);
       Object.assign(u, { replaces: true, supersedes: old });
     }
   }
+  plan.left += stale.length;
   plan.emptied = emptiedFolders(device, type, [...plan.removals, ...plan.moves.map((m) => m.from)], all);
   const catalog = only ? undefined : type.catalog?.(device);
   if (catalog && listing.catalogs && !listing.catalogs.some((c) => sameUrl(c.url, catalog.url))) plan.catalog = catalog;
@@ -226,7 +261,7 @@ export function planSync(library: Library, device: Device, type: DeviceType, lis
  * Lists the folders a sync touches (where books go, by the library's books when it's given, and wherever
  * earlier syncs put files), and the catalogs.
  */
-export async function listDevice(device: Device, type: DeviceType, target: DeviceTarget, library?: Library): Promise<DeviceListing> {
+export async function listDevice(device: Device, type: FilesType, target: DeviceTarget, library?: Library): Promise<DeviceListing> {
   const folders = [...syncFolders(device, type, library)];
   const files = (await Promise.all(folders.map((folder) => target.list(folder)))).flat();
   const catalogs = type.catalog?.(device) && target.listCatalogs ? await target.listCatalogs() : undefined;
@@ -259,7 +294,7 @@ export const parentOf = (path: string) => path.slice(0, path.lastIndexOf('/')) |
  * The folders a sync lists: the fixed part of the type's folder template, each folder it has put a
  * book in, and (given the library) each folder the device's books now go in.
  */
-export function syncFolders(device: Device, type: DeviceType, library?: Library): Set<string> {
+export function syncFolders(device: Device, type: FilesType, library?: Library): Set<string> {
   const folders = new Set([templateRoot(type.folder(device)), ...Object.keys(device.placed).map(parentOf)]);
   if (library && hasPlaceholders(type.folder(device))) {
     for (const path of desiredFiles(library, device, type).files.keys()) folders.add(parentOf(path));
@@ -269,19 +304,23 @@ export function syncFolders(device: Device, type: DeviceType, library?: Library)
 
 /**
  * A device's book paths: the item's path by the type's templates, numbered ` (n)` as the nth book with
- * that path. A device takes x4.epub as a plain EPUB, so the name doesn't say it's optimized.
+ * that path. A reader takes x4.epub as a plain EPUB, so the name doesn't say it's optimized, unless the
+ * type keeps whole extensions (`fullExtension`).
  */
-export function bookPaths(device: Device, type: DeviceType) {
+export function bookPaths(device: Device, type: FilesType) {
   const folder = type.folder(device);
   const fileName = type.fileName?.(device) ?? DEFAULT_FILE_NAME;
-  return (item: Item, file: FileRef, n = 1) => expandPath(folder, fileName, item, file.format.split('.').pop()!, n);
+  return (item: Item, file: FileRef, n = 1) => expandPath(folder, fileName, item, extensionOf(type, file), n);
 }
+
+/** The extension a file gets on a device (see `FilesType.fullExtension`). */
+export const extensionOf = (type: FilesType, file: FileRef) => (type.fullExtension ? file.format : file.format.split('.').pop()!);
 
 /**
  * Folders that files are leaving (and their parents), below the template's fixed part and not
  * where wanted books go, deepest first: removed after a sync if empty.
  */
-function emptiedFolders(device: Device, type: DeviceType, leaving: string[], wanted: Map<string, unknown>): string[] {
+function emptiedFolders(device: Device, type: FilesType, leaving: string[], wanted: Map<string, unknown>): string[] {
   const root = templateRoot(type.folder(device));
   const keep = new Set<string>();
   for (const path of wanted.keys()) for (let f = parentOf(path); f !== '/'; f = parentOf(f)) keep.add(f);

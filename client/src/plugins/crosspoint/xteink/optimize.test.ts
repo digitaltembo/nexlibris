@@ -1,6 +1,6 @@
 import JSZip from 'jszip';
 import { describe, expect, it } from 'vitest';
-import { parseEpub } from '../../epub';
+import { parseEpub } from '../../../formats/epub';
 import { findCropBox, fitSize, flattenPixels, PROFILES } from './image';
 import { DEFENSIVE_STYLE, fixOpf, optimizeEpub, stripImgDimensions, unwrapSvgImages } from './optimize';
 

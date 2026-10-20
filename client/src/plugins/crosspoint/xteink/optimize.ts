@@ -1,5 +1,5 @@
 import JSZip from 'jszip';
-import { parseXml } from '../../xml';
+import { parseXml } from '../../../formats/xml';
 import { processImage, type Profile } from './image';
 import { DEFAULT_OPTIMIZE_OPTIONS, type OptimizeOptions } from './options';
 import { basename, splitEpubText, type EpubEntries } from './textsplit';

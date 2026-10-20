@@ -1,13 +1,10 @@
 import { parseEpub } from './epub';
-import type { FormatId, ParsedItem } from './formats';
+import { isEpub, type FormatId, type ParsedItem } from './formats';
 
 /** Reads library metadata out of a file. Heavy format libraries load on first use. */
 export async function parseFile(format: FormatId, data: Blob, filename: string): Promise<ParsedItem> {
+  if (isEpub(format)) return parseEpub(data, filename);
   switch (format) {
-    case 'epub':
-    case 'x4.epub':
-    case 'x3.epub':
-      return parseEpub(data, filename);
     case 'pdf':
       return (await import('./pdf')).parsePdf(data, filename);
     case 'cbz':
@@ -21,5 +18,7 @@ export async function parseFile(format: FormatId, data: Blob, filename: string):
     case 'azw3':
     case 'azw':
       return (await import('./kindle')).parseKindle(data, filename);
+    default:
+      throw new Error(`nexlibris can’t read ${format} files.`);
   }
 }

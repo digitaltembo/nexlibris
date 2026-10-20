@@ -60,11 +60,12 @@ export interface FileTransferResult {
   unavailable: number;
 }
 
-/** Every file a library refers to: covers, and the files of each item. */
-export function referencedFiles(library: Library): { covers: Set<FileHash>; books: Map<FileHash, Item[]> } {
+/** Every file a library refers to (or its items `among` picks): covers, and the files of each item. */
+export function referencedFiles(library: Library, among?: (item: Item) => boolean): { covers: Set<FileHash>; books: Map<FileHash, Item[]> } {
   const covers = new Set<FileHash>();
   const books = new Map<FileHash, Item[]>();
   for (const item of Object.values(library.items)) {
+    if (among && !among(item)) continue;
     if (item.cover) covers.add(item.cover.hash);
     for (const file of item.files) books.set(file.hash, [...(books.get(file.hash) ?? []), item]);
   }
@@ -73,7 +74,8 @@ export function referencedFiles(library: Library): { covers: Set<FileHash>; book
 
 /**
  * After a sync: sends the hub what it lacks of covers and the files of items `send` picks, then
- * fetches covers and the files of items `keep` picks.
+ * fetches covers and the files of items `keep` picks; of the items `among` picks, if given (those
+ * both sides hold after the sync), as the hub has no others' and shouldn't get them.
  */
 export async function transferFiles(
   local: LibraryBackend,
@@ -81,10 +83,11 @@ export async function transferFiles(
   options: {
     keep?: (item: Item) => boolean;
     send?: (item: Item) => boolean;
+    among?: (item: Item) => boolean;
     onProgress?: (progress: FileProgress) => void;
   } = {},
 ): Promise<FileTransferResult> {
-  const { covers, books } = referencedFiles(await local.getLibrary());
+  const { covers, books } = referencedFiles(await local.getLibrary(), options.among);
   const all = [...new Set([...covers, ...books.keys()])];
   const here = new Set<FileHash>();
   for (const hash of all) if (await local.hasFile(hash)) here.add(hash);

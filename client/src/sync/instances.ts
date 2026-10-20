@@ -1,30 +1,26 @@
 import {
   createDevice,
-  leaveOutside,
   readPairings,
   savePairing,
   type Device,
-  type HubFiles,
   type Item,
   type KeepRule,
   type Library,
   type LibraryBackend,
   type NewPairing,
-  type Pairing,
-  type SyncResult,
   type Operation,
   type ScopeRule,
 } from '@nexlibris/common';
 import { deviceItems } from '../devices/selection';
-import { freeFiles, itemFiles, type Freed } from '../library/freeFiles';
 import { keepRule } from './files';
 
 /**
  * Other instances of nexlibris as connections. Each instance the library syncs with is a
  * connection of the `nexlibris.instance` type whose id is that instance's origin, so two
- * instances that add one for the same third instance add the same connection. Its books are the
- * ones whose files that instance keeps (covers and every book's details always sync), chosen as
- * a reader's are. How this instance reaches another (the pairing) stays in its local state.
+ * instances that add one for the same third instance add the same connection. Its catalog is
+ * what that instance is shown: what it can browse, download and be sent, both by the hub
+ * (`createSyncService`'s scope) and by an instance syncing with a hub (`SyncOptions.expose`), as
+ * `instanceScope` says. How this instance reaches another (the pairing) stays in its local state.
  */
 
 export const INSTANCE_TYPE = 'nexlibris.instance';
@@ -115,24 +111,4 @@ export async function carryOverPairings(backend: LibraryBackend, name: string): 
     await savePairing(backend, rest);
   }
   return updated;
-}
-
-/** Books let go of after a sync, as this instance's connection no longer picks them, and the space their files took. */
-export interface LeftBooks extends Freed {
-  books: number;
-}
-
-/**
- * After a sync and its files: lets go of the books this instance's connection no longer picks
- * (`SyncResult.outside`), those whose files and cover the hub has, and deletes their files here.
- */
-export async function letGo(backend: LibraryBackend, files: HubFiles, result: SyncResult): Promise<{ pairing: Pairing; left: LeftBooks } | undefined> {
-  const library = await backend.getLibrary();
-  const outside = result.outside.map((id) => library.items[id]).filter((item): item is Item => !!item);
-  if (!outside.length) return undefined;
-  const lacking = new Set(await files.missing([...new Set(outside.flatMap(itemFiles))]));
-  const gone = outside.filter((item) => !itemFiles(item).some((hash) => lacking.has(hash)));
-  if (!gone.length) return undefined;
-  const pairing = await leaveOutside(backend, result.pairing, gone.map((item) => item.id));
-  return { pairing, left: { books: gone.length, ...(await freeFiles(backend, gone)) } };
 }

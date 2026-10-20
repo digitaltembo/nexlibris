@@ -2,6 +2,7 @@ import type { Item } from '@nexlibris/common';
 import { useState } from 'react';
 import styled from 'styled-components';
 import type { FormatId } from '../formats/formats';
+import { CONVERSION_TARGETS } from '../formats/convert/converters';
 import { conversionSource, convertItemFile } from '../library/convert';
 import { useLibrary } from '../library/LibraryContext';
 import { Button, Muted, Row, Spacer, Stack } from '../styles/ui';
@@ -20,7 +21,6 @@ const OptionsBox = styled.fieldset`
   border-radius: var(--radius);
 `;
 
-const CONVERSION_TARGETS: FormatId[] = ['epub', 'x4.epub', 'x3.epub', 'cbz', 'txt'];
 
 interface Props {
   items: Item[];

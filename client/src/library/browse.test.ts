@@ -127,3 +127,16 @@ it('browses the catalogs the library has, by the pages opened in them', () => {
     { label: '“dune”', path: ['source', 'gutenberg', popular, 'search:dune'] },
   ]);
 });
+
+it('browses the other connections that read, after the catalogs', () => {
+  const sources = [{ id: 'gutenberg', name: 'Project Gutenberg' }];
+  const connections = [{ id: 'x4', name: 'X4', label: 'CrossPoint Reader' }];
+  const root = browse(items, [], categories, {}, { sources, connections });
+  expect(root.kind === 'entries' && root.entries.slice(-2).map((e) => e.path)).toEqual([['source', 'gutenberg'], ['connection', 'x4']]);
+  expect(browse(items, ['connection', 'x4'], categories, {}, { connections })).toEqual({ kind: 'connection', id: 'x4' });
+  expect(browse(items, ['connection', 'gone'], categories, {}, { connections })).toEqual({ kind: 'missing' });
+  expect(crumbs(items, ['connection', 'x4'], categories, sources, connections)).toEqual([
+    { label: 'Library', path: [] },
+    { label: 'X4', path: ['connection', 'x4'] },
+  ]);
+});

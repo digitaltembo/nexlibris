@@ -209,6 +209,27 @@ describe('migrateLibrary', () => {
     expect(positionKey(aside.userData[LOCAL_USER]!.positions![item.id])).not.toEqual(positionKey(library.userData[LOCAL_USER]!.positions![item.id]));
   });
 
+  it('takes a schema 8 library to schema 9: CrossPoint connections retyped, placed files unkeyed', () => {
+    const item = createItem({ title: 'Emma' });
+    const placed = { '/Books/Emma.epub': { itemId: item.id, hash: 'h', size: 10, key: 'meta' } };
+    const x4 = { ...createDevice({ name: 'X4', type: 'crosspoint.x4', settings: { address: 'http://x4' } }), items: [item.id], placed };
+    const catalog = { ...createDevice({ name: 'Site', type: 'crosspoint.x3-catalog', settings: { url: 'https://books' } }), placed };
+    const instance = createDevice({ name: 'Phone', type: 'nexlibris.instance', query: 'has:file' });
+    const v8 = { ...createLibrary('Mine'), schemaVersion: 8, items: { [item.id]: item }, devices: { [x4.id]: x4, [catalog.id]: catalog, [instance.id]: instance } };
+    const library = migrateLibrary(JSON.parse(JSON.stringify(v8)));
+    const unkeyed = { '/Books/Emma.epub': { itemId: item.id, hash: 'h', size: 10 } };
+    expect(library.devices![x4.id]).toEqual({ ...x4, type: 'crosspoint.reader', settings: { address: 'http://x4', model: 'X4' }, placed: unkeyed });
+    expect(library.devices![catalog.id]).toEqual({ ...catalog, type: 'opds.catalog', settings: { url: 'https://books', formats: 'x3.epub,epub' }, placed: unkeyed });
+    expect(library.devices![instance.id]).toEqual(instance);
+    expect(migrateOperation({ type: 'addDevice', device: x4 } as never, 8)).toEqual({ type: 'addDevice', device: library.devices![x4.id] });
+    expect(migrateOperation({ type: 'recordDeviceSync', id: x4.id, placed, removed: [] } as never, 8)).toEqual({
+      type: 'recordDeviceSync',
+      id: x4.id,
+      placed: unkeyed,
+      removed: [],
+    });
+  });
+
   it('runs each step from the stored version up', () => {
     const migrations = {
       1: { library: (l: Record<string, unknown>) => ({ ...l, shelves: [] }) },

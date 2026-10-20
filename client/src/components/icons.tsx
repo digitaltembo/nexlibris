@@ -22,12 +22,6 @@ export const MenuIcon = () => (
   </Icon>
 );
 
-export const FilterIcon = () => (
-  <Icon>
-    <path d="M3 5h18l-7 8.5V19l-4 2v-7.5z" />
-  </Icon>
-);
-
 export const SearchIcon = () => (
   <Icon>
     <circle cx="11" cy="11" r="7" />

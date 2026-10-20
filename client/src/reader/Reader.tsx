@@ -1,7 +1,7 @@
 import type { FileRef, Item, WindowColors } from '@nexlibris/common';
 import { lazy, Suspense, useCallback, useEffect, useState, type ComponentType } from 'react';
 import styled from 'styled-components';
-import { FORMATS, isFormatId, READ_PREFERENCE, type FormatId } from '../formats/formats';
+import { EPUB_FORMATS, FORMATS, isEpub, isFormatId, READ_PREFERENCE, type FormatId } from '../formats/formats';
 import { useLibrary } from '../library/LibraryContext';
 import { useReadingPosition } from '../library/useReadingPosition';
 import { LockScroll } from '../styles/GlobalStyle';
@@ -72,9 +72,7 @@ const PlainTextViewer = lazy(() => import('./TextViewer').then((m) => ({ default
 const RtfViewer = lazy(() => import('./TextViewer').then((m) => ({ default: m.RtfViewer })));
 
 const VIEWERS: Partial<Record<FormatId, ComponentType<ViewerProps>>> = {
-  epub: EpubViewer,
-  'x4.epub': EpubViewer,
-  'x3.epub': EpubViewer,
+  ...Object.fromEntries(EPUB_FORMATS.map((format) => [format, EpubViewer])),
   pdf: PdfViewer,
   cbz: ComicViewer,
   cbr: ComicViewer,
@@ -141,7 +139,7 @@ export function BookReader({ title, file, load, position, onPosition, onClose }:
   const [colors, setColors] = useState<WindowColors>();
   const format = isFormatId(file.format) ? file.format : undefined;
   // epubier has its own toolbar and uses Escape for its menus.
-  const ownChrome = format === 'epub' || format === 'x4.epub' || format === 'x3.epub';
+  const ownChrome = !!format && isEpub(format);
 
   useEffect(() => {
     let cancelled = false;

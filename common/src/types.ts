@@ -5,7 +5,7 @@ export type UserId = string;
 /** Hex-encoded SHA-256 of a file's contents. */
 export type FileHash = string;
 
-export const SCHEMA_VERSION = 8;
+export const SCHEMA_VERSION = 9;
 
 /** The implicit user until multi-user support exists. */
 export const LOCAL_USER: UserId = 'local';
@@ -29,6 +29,13 @@ export interface FileRef {
   /** The filename it was imported under, for display and export. */
   name?: string;
   derivedFrom?: { hash: FileHash; converter: string; converterVersion: string };
+  /**
+   * The fingerprint (`metadataKey` in `client/src/library/fileMetadata.ts`) of the item's metadata as
+   * written into this file: set when it's imported saying what the item says, made by a converter, or
+   * rewritten by Clean up. A file whose key differs from its item's is behind its metadata. Unset when
+   * not known (files from before schema 9, formats nexlibris can't write metadata into).
+   */
+  metadataKey?: string;
 }
 
 export interface Cover {
@@ -123,45 +130,49 @@ export interface PlacedFile {
   itemId: ItemId;
   /** The library file it was made from. */
   hash: FileHash;
-  /** Of the file as sent, which can differ from the library's (see `key`). */
+  /** Of the file as sent. Since schema 9 files are sent as stored, so it's the library file's; earlier syncs wrote metadata into them. */
   size: number;
-  /**
-   * How the device type prepared the file from the library's, e.g. a fingerprint
-   * of the metadata written into it. The file is sent again when this changes.
-   */
-  key?: string;
   /**
    * Put there by hand and linked to the item, rather than sent by a sync: it stays at its own path
    * while it's current, where a sent file moves when the device's path templates change.
    */
   linked?: boolean;
   /**
-   * A copy nexlibris didn't make (linked, or found on the device by a sync): it stands for the library file
-   * in `hash` as is, so it's current while that file and `key` are unchanged, without the converted file a
-   * sync would make.
+   * A copy nexlibris didn't send (linked, or found on the device by a sync): it stands for the library file
+   * in `hash` as is, so it's current while that file is unchanged.
    */
   found?: boolean;
 }
 
 /**
- * A reader the library sends books to, e.g. a CrossPoint X4. What the device
- * is and how it's reached come from a plugin's device type.
+ * A connection: somewhere the library goes or reads from (a reader, a folder, an OPDS catalog,
+ * another instance of nexlibris). What it is and how it's reached come from its connection type
+ * (`client/src/devices/types.ts`). The model still calls connections devices.
+ *
+ * A connection that's written to has a catalog: the books it holds, chosen by hand (`items`, or
+ * particular files of them, `files`) and added by its search (`query`) as they match, which stay
+ * once added. Syncs only ever add to what's there; removing is the user's.
  */
 export interface Device {
   id: DeviceId;
   name: string;
-  /** A plugin's device type, e.g. 'crosspoint.x4'. */
+  /** A connection type, e.g. 'crosspoint.reader'. */
   type: string;
-  /** The items chosen to be on the device, in the order they were added. */
+  /** The connection's catalog: the items in it, in the order they were added. */
   items: ItemId[];
-  /** A search (the library search box's syntax) whose matches also go on the device, as they change. */
+  /**
+   * Items in the catalog by particular files (added with "Add to…" on a file): only these files of
+   * theirs go there, rather than the one the type's formats pick. Added in schema 9.
+   */
+  files?: Record<ItemId, FileHash[]>;
+  /** A search (the library search box's syntax) whose matches are added to the catalog. */
   query?: string;
   /**
-   * Items kept off the device even though they're chosen or match `query`: for another instance,
-   * books deleted there, which stay in this library.
+   * Items taken out of the catalog that its search would add again, so it doesn't; for another
+   * instance, also books deleted there, which stay in this library.
    */
   excluded?: ItemId[];
-  /** Settings for the device type, e.g. its address. Their meaning is up to the plugin. */
+  /** Settings for the connection type, e.g. its address. Their meaning is up to the type. */
   settings: Record<string, MetadataValue>;
   /** What syncs have put on the device, by path on the device. */
   placed: Record<string, PlacedFile>;

@@ -2,9 +2,9 @@ import { hashBlob, type Device, type Item, type Library, type LibraryBackend, ty
 import { importFiles } from '../library/importFiles';
 import { matchItem } from './match';
 import { chooseFile, desiredFiles, isCurrent, type Wanted } from './plan';
-import { addToDevice, deviceItems } from './selection';
+import { addToDevice, deviceItems, itemFiles, takeOutOfDevice } from './selection';
 export { matchItem } from './match';
-import { isDevice, type ConnectionType, type DeviceTarget, type RemoteBook } from './types';
+import { isFiles, type ConnectionType, type DeviceTarget, type RemoteBook } from './types';
 
 /**
  * What's on a connection, set against the library: the books a sync put there and how they stand,
@@ -20,32 +20,29 @@ export type ContentEntry =
       item?: Item;
       /**
        * `current`: as the next sync would send it; `update`: it would send a newer copy (under the
-       * book's own name, if this one's named otherwise); `remove`: no longer chosen; `changed`:
-       * replaced on the device, so no longer the sync's.
+       * book's own name, if this one's named otherwise); `left`: no longer in the catalog, so left
+       * there as it is; `changed`: replaced on the device, so no longer the sync's.
        */
-      status: 'current' | 'update' | 'remove' | 'changed';
+      status: 'current' | 'update' | 'left' | 'changed';
     }
   | {
       kind: 'match';
       book: RemoteBook;
       item: Item;
-      /**
-       * Whether the item has a file the connection takes, so it can be linked. Linking one without
-       * would leave the next sync nothing to keep there, so it would remove the file.
-       */
+      /** Whether the item has a file the connection takes, so it can be linked: the next sync then keeps it in step. */
       linkable: boolean;
     }
   | { kind: 'unknown'; book: RemoteBook };
 
 export interface Contents {
   entries: ContentEntry[];
-  /** Chosen for the connection but not on it: the next sync sends them. */
+  /** In the connection's catalog but not on it: the next sync sends them. */
   pending: Item[];
 }
 
 /** Sorts what's on a connection (`books`, as its inventory lists them) against the library and the connection's choice. */
 export function connectionContents(library: Library, device: Device, type: ConnectionType, books: RemoteBook[]): Contents {
-  const wanted = isDevice(type) ? desiredFiles(library, device, type).files : undefined;
+  const wanted = isFiles(type) ? desiredFiles(library, device, type).files : undefined;
   const chosen = new Set(deviceItems(library, device).map((item) => item.id));
   const on = new Set<string>();
   const entries = books.map((book): ContentEntry => {
@@ -58,7 +55,7 @@ export function connectionContents(library: Library, device: Device, type: Conne
     const item = matchItem(library, book);
     if (item) {
       on.add(item.id);
-      return { kind: 'match', book, item, linkable: !!chooseFile(item, type) };
+      return { kind: 'match', book, item, linkable: !!chooseFile(item, device, type) };
     }
     return { kind: 'unknown', book };
   });
@@ -75,7 +72,7 @@ function placedStatus(
   wanted: Wanted | undefined,
 ): Extract<ContentEntry, { kind: 'placed' }>['status'] {
   if (book.size !== placed.size) return 'changed';
-  if (!item || !chosen.has(item.id)) return 'remove';
+  if (!item || !chosen.has(item.id)) return 'left';
   // A catalog has no plan to compare with: what it wrote is current until the next export.
   if (!plan) return 'current';
   // Not wanted at this path: the sync sends it again under its own name, replacing this copy.
@@ -85,36 +82,34 @@ function placedStatus(
 
 /**
  * Makes a file on a device the connection's copy of `item`: the item joins the connection's
- * choice if it isn't in it, and the file is recorded as current, so the next sync leaves it be
+ * catalog if it isn't in it, and the file is recorded as current, so the next sync leaves it be
  * until the library's copy changes, then replaces it.
  */
 export function linkOperations(library: Library, device: Device, type: ConnectionType, book: RemoteBook, item: Item): Operation[] {
-  const choice = chooseFile(item, type);
-  if (!choice) throw new Error(`${item.title} has no file this connection takes, so a sync would remove it.`);
+  // The file in the format its name says, if the item has one (the longest such format: x4.epub over epub), else the one a sync would send.
+  const named = itemFiles(item, device, type, true)
+    .filter((file) => book.path.toLowerCase().endsWith(`.${file.format}`))
+    .sort((a, b) => b.format.length - a.format.length)[0];
+  const choice = named ? { file: named } : chooseFile(item, device, type);
+  if (!choice) throw new Error(`${item.title} has no file this connection takes.`);
   const ops: Operation[] = [];
   if (!deviceItems(library, device).some((i) => i.id === item.id)) ops.push(...addToDevice(device, [item.id]));
   const placed: PlacedFile = { itemId: item.id, hash: choice.file.hash, size: book.size, linked: true, found: true };
-  const key = type.prepare?.key(item, choice.file);
-  if (key !== undefined) placed.key = key;
   ops.push({ type: 'recordDeviceSync', id: device.id, placed: { [book.path]: placed }, removed: [] });
   return ops;
 }
 
 /**
- * Taking a book off a device by hand, once its file there is deleted: the connection stops choosing
- * the book (kept off it, if its search picks it), so the next sync doesn't send it again, and
- * forgets the file if a sync put it there. A book the library doesn't have needs nothing.
+ * Taking a book off a device by hand, once its file there is deleted: the book is taken out of the
+ * connection's catalog (kept out, if its search would add it), so the next sync doesn't send it
+ * again, and the file is forgotten if a sync put it there. A book the library doesn't have needs nothing.
  */
 export function removeOperations(library: Library, device: Device, entry: ContentEntry): Operation[] {
-  const ops: Operation[] = [];
   const item = entry.kind === 'unknown' ? undefined : entry.item;
-  if (item && device.items.includes(item.id)) ops.push({ type: 'removeDeviceItems', id: device.id, itemIds: [item.id] });
-  const unpicked = item && { ...device, items: device.items.filter((id) => id !== item.id) };
-  if (item && unpicked && deviceItems(library, unpicked).some((i) => i.id === item.id)) {
-    ops.push({ type: 'excludeDeviceItems', id: device.id, itemIds: [item.id] });
-  }
-  if (device.placed[entry.book.path]) ops.push({ type: 'recordDeviceSync', id: device.id, placed: {}, removed: [entry.book.path] });
-  return ops;
+  return [
+    ...(item ? takeOutOfDevice(library, device, [item.id]) : []),
+    ...(device.placed[entry.book.path] ? [{ type: 'recordDeviceSync' as const, id: device.id, placed: {}, removed: [entry.book.path] }] : []),
+  ];
 }
 
 /**
@@ -130,6 +125,15 @@ export async function importFromConnection(
   book: RemoteBook,
 ): Promise<{ item: Item; linked: boolean }> {
   if (!target.download) throw new Error('This device can’t send files back.');
+  // A connection that knows its books' details (a folder's manifest) brings them in as it has them.
+  const described = isFiles(type) && type.download ? await type.download(device, target, book, backend) : undefined;
+  if (described) {
+    const library = await backend.getLibrary();
+    const current = library.devices?.[device.id] ?? device;
+    if (!chooseFile(described, current, type)) return { item: described, linked: false };
+    await backend.apply(linkOperations(library, current, type, book, described));
+    return { item: described, linked: true };
+  }
   const name = book.path.slice(book.path.lastIndexOf('/') + 1);
   const data = await target.download(book.path);
   const result = await importFiles(backend, [new File([data], name)]);
@@ -141,7 +145,7 @@ export async function importFromConnection(
   const item = id ? library.items[id] : Object.values(library.items).find((i) => i.files.some((f) => f.hash === hash));
   if (!item) throw new Error(skipped ? `${name}: ${skipped.reason}` : `${name} couldn’t be imported.`);
   const current = library.devices?.[device.id] ?? device;
-  if (!chooseFile(item, type)) return { item, linked: false };
+  if (!chooseFile(item, current, type)) return { item, linked: false };
   await backend.apply(linkOperations(library, current, type, book, item));
   return { item, linked: true };
 }

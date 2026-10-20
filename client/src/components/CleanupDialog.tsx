@@ -4,6 +4,7 @@ import styled from 'styled-components';
 import { findDuplicates, mergeItems, type DuplicateGroup } from '../library/dedupe';
 import { useLibrary } from '../library/LibraryContext';
 import { rereadMetadata, type RereadProgress, type RereadResult } from '../library/reread';
+import { filesBehind } from '../library/fileMetadata';
 import { findStaleFiles, updateFiles, type FindResult, type Progress as FileProgress, type UpdateResult } from '../library/updateFiles';
 import { Badge, Button, Muted, Spacer } from '../styles/ui';
 import { Cover, PlaceholderTitle } from './Cover';
@@ -217,8 +218,11 @@ export function CleanupDialog({
   pauseIndexing?: () => () => void;
   carryText?: CarryText;
 }) {
+  const { library } = useLibrary();
   const [view, setView] = useState<View>('menu');
   const back = () => setView('menu');
+  // Known without reading any file: those whose book's details changed since they were written.
+  const behind = Object.values(library.items).reduce((n, item) => n + filesBehind(item).length, 0);
   const indexing = { ...(pauseIndexing && { pauseIndexing }), ...(carryText && { carryText }) };
   if (view === 'duplicates') return <Duplicates onBack={back} onClose={onClose} />;
   if (view === 'reread') return <Reread onBack={back} onClose={onClose} {...(pauseIndexing && { pauseIndexing })} />;
@@ -253,6 +257,7 @@ export function CleanupDialog({
             <Muted>
               Write the library’s details (title, authors, tags, series, description and the like) into EPUBs that say
               otherwise, so the files match wherever they go. Details the library lacks are left as the file has them.
+              {behind > 0 && ` ${plural(behind, 'file')} ${behind === 1 ? 'is' : 'are'} behind edits made since.`}
             </Muted>
           </div>
           <Button $variant="secondary" onClick={() => setView('files')}>
@@ -495,6 +500,8 @@ export function UpdateFiles({
       run(async (signal) => {
         const onProgress = (progress: FileProgress) => !signal.aborted && setState({ kind: 'finding', progress });
         const found = await findStaleFiles(backend, await backend.getLibrary(), { signal, onProgress });
+        // Files found in step are known to be current from now on, until the book is edited.
+        if (found.fingerprints.length) await latest.current.apply(found.fingerprints);
         if (!signal.aborted) setState({ kind: 'found', found });
       }),
     [backend],

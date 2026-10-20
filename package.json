@@ -5,14 +5,16 @@
   "workspaces": [
     "common",
     "client",
-    "desktop"
+    "desktop",
+    "server"
   ],
   "scripts": {
     "dev": "npm run dev -w client --",
-    "build": "npm run build -w client -- && npm run build -w desktop",
+    "build": "npm run build -w client -- && npm run build -w desktop && npm run build -w server",
     "test": "npm test --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "lint": "oxlint client/src client/.storybook common/src desktop/src desktop/scripts scripts",
+    "lint": "oxlint client/src client/.storybook common/src desktop/src desktop/scripts server/src scripts",
+    "server": "npm run build -w client && npm run build -w server && npm start -w server --",
     "android": "npm run build -w client && cd android && ./gradlew assembleDebug",
     "android:install": "npm run build -w client && cd android && ./gradlew installDebug",
     "desktop": "npm run build && npm start -w desktop"

@@ -4,7 +4,7 @@ import { describeConflict } from './describe';
 
 function libraries() {
   const dune = createItem({ title: 'Dune', creators: [{ name: 'Frank Herbert', role: 'aut' }] });
-  const x4 = createDevice({ name: 'X4', type: 'crosspoint.x4' });
+  const x4 = createDevice({ name: 'X4', type: 'crosspoint.reader' });
   const ours = applyOperations(createLibrary('A'), [
     { type: 'addItem', item: dune },
     { type: 'addDevice', device: x4 },

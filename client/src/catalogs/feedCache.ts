@@ -1,5 +1,5 @@
 import { hashBlob, type LibraryBackend } from '@nexlibris/common';
-import { fillTemplate, parseOpdsFeed, parseOpenSearch, type OpdsFeed } from './opdsFeed';
+import { fillTemplate, PARSER_VERSION, parseOpdsFeed, parseOpenSearch, type OpdsFeed } from './opdsFeed';
 import type { TextFetcher } from './remote';
 
 /**
@@ -27,7 +27,12 @@ export interface CachedFeed {
   pages?: number;
   /** For a catalog's first page: the search template its OpenSearch description gives, once read. */
   searchTemplate?: string;
+  /** The `PARSER_VERSION` that parsed it; none before versions were kept. */
+  parser?: number;
 }
+
+/** Whether a cached page was parsed as pages are now: else it's read again, whatever the server says of it. */
+const parsedNow = (cached: CachedFeed | undefined): cached is CachedFeed => cached?.parser === PARSER_VERSION;
 
 export interface Loaded {
   cached: CachedFeed;
@@ -71,7 +76,9 @@ export class FeedError extends Error {
 const failure = (status: number) => new FeedError(status);
 
 /** Reads a page from the server, or finds the cached one unchanged, and caches the result. */
-async function refetch(backend: LibraryBackend, url: string, fetcher: TextFetcher, cached: CachedFeed | undefined, now: Date) {
+async function refetch(backend: LibraryBackend, url: string, fetcher: TextFetcher, previous: CachedFeed | undefined, now: Date) {
+  // Only a page parsed as pages are now can be kept as unchanged; an older parse is replaced.
+  const cached = parsedNow(previous) ? previous : undefined;
   const headers: Record<string, string> = {};
   if (cached?.etag) headers['If-None-Match'] = cached.etag;
   if (cached?.lastModified) headers['If-Modified-Since'] = cached.lastModified;
@@ -90,8 +97,9 @@ async function refetch(backend: LibraryBackend, url: string, fetcher: TextFetche
     ...(response.lastModified && { lastModified: response.lastModified }),
     fetchedAt: checkedAt,
     checkedAt,
-    ...(cached?.pages && { pages: cached.pages }),
-    ...(cached?.searchTemplate && { searchTemplate: cached.searchTemplate }),
+    parser: PARSER_VERSION,
+    ...(previous?.pages && { pages: previous.pages }),
+    ...(previous?.searchTemplate && { searchTemplate: previous.searchTemplate }),
   };
 }
 
@@ -106,7 +114,7 @@ export async function loadFeed(
   { now = new Date(), check = false }: { now?: Date; check?: boolean } = {},
 ): Promise<Loaded> {
   const cached = await readCachedFeed(backend, url);
-  if (cached && !check && isFresh(cached, now)) return { cached };
+  if (parsedNow(cached) && !check && isFresh(cached, now)) return { cached };
   try {
     const next = await refetch(backend, url, fetcher, cached, now);
     await writeCachedFeed(backend, next);

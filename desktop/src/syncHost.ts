@@ -31,7 +31,8 @@ import { storeStream } from './importService';
  * code too), and a device that sends it back gets a key, kept here as a hash. Calls with a valid
  * key are passed on to `relay` (the page, where the library and its backend are), except `done`,
  * which only updates the peer's last sync time, and files, which are served from and stored in
- * the library folder here (`GET`/`PUT api/sync/files/<hash>`, and `missing`).
+ * the library folder here (`GET`/`PUT api/sync/files/<hash>`, and `missing`), a file sent only once
+ * the page `allows` it, as one of a book that device is shown.
  *
  * Every response allows any origin (CORS), since a call is authorized by its key alone and never
  * by cookies: a browser instance of nexlibris on another computer can sync with the hub too.
@@ -188,13 +189,18 @@ export function createSyncHost(options: SyncHostOptions) {
     if (req.method === 'OPTIONS') return void res.writeHead(204).end();
     const fileHash = /^\/api\/sync\/files\/([0-9a-f]{64})$/.exec(req.url ?? '')?.[1];
     if (fileHash && (req.method === 'GET' || req.method === 'PUT')) {
-      if (!(await authorize(req))) {
+      const peer = await authorize(req);
+      if (!peer) {
         req.resume();
         return reply(401, { ok: false, message: 'This device isn’t paired with this computer. Pair it again.' });
       }
-      return req.method === 'GET' ? sendFile(fileHash, res, reply) : receiveFile(fileHash, req, reply);
+      if (req.method === 'PUT') return receiveFile(fileHash, req, reply);
+      // Only files of books the page shows that device (its connection's catalog, and the books it has).
+      const allowed = await options.relay({ method: 'POST', url: 'api/sync/allows', body: { hash: fileHash, peer: peer.origin } });
+      if (!allowed.ok || allowed.value !== true) return reply(404, { ok: false, message: 'That file isn’t shared with this device.' });
+      return sendFile(fileHash, res, reply);
     }
-    const endpoint = /^\/api\/sync\/(pair|hello|state|apply|done|missing)$/.exec(req.url ?? '')?.[1];
+    const endpoint = /^\/api\/sync\/(pair|hello|state|apply|done|missing|allows)$/.exec(req.url ?? '')?.[1];
     if (req.method !== 'POST' || !endpoint) return reply(404, { ok: false, message: 'Not found' });
     let body: unknown;
     try {

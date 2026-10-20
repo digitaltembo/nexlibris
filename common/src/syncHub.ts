@@ -105,10 +105,12 @@ export function createSyncHub(
   async function handle(request: HubRequest): Promise<HubResponse> {
     const fileHash = /^api\/sync\/files\/([0-9a-f]{64})$/.exec(request.path)?.[1];
     if (fileHash && (request.method === 'GET' || request.method === 'PUT')) {
-      if (!(await authorize(request.key))) return fail(401, NOT_PAIRED);
+      const peer = await authorize(request.key);
+      if (!peer) return fail(401, NOT_PAIRED);
       if (request.method === 'GET') {
-        // Only files stored here: the backend may otherwise go and fetch one from a hub of its own.
-        const blob = (await backend.hasFile(fileHash)) ? await backend.getFile(fileHash) : undefined;
+        // Only files of books the device is shown, and stored here: the backend may otherwise go and fetch one from a hub of its own.
+        const allowed = await service.allows({ hash: fileHash, peer: peer.origin });
+        const blob = allowed && (await backend.hasFile(fileHash)) ? await backend.getFile(fileHash) : undefined;
         if (!blob) return fail(404, `That file isn’t on ${options.name()}.`);
         return { status: 200, body: new Uint8Array(await blob.arrayBuffer()) };
       }
@@ -117,7 +119,7 @@ export function createSyncHub(
       const { size } = await backend.putFile(data);
       return answer({ ok: true, value: { size } });
     }
-    const endpoint = /^api\/sync\/(pair|hello|state|apply|done|missing)$/.exec(request.path)?.[1];
+    const endpoint = /^api\/sync\/(pair|hello|state|apply|done|missing|allows)$/.exec(request.path)?.[1];
     if (request.method !== 'POST' || !endpoint) return fail(404, 'Not found');
     let body: unknown;
     try {

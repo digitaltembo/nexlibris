@@ -1,7 +1,7 @@
 import { userData, type Device, type FileRef, type Item, type Library, type LibraryBackend, type PlacedFile } from '@nexlibris/common';
 import { FORMATS, isFormatId } from '../../formats/formats';
 import { filterItems } from '../../library/search';
-import { deviceItems } from '../selection';
+import { catalogFiles } from '../selection';
 import type { ConnectionType } from '../types';
 import { buildCatalog, type CatalogBook, type CatalogFile } from './catalog';
 
@@ -33,16 +33,52 @@ export interface ExportResult {
   books: number;
   written: number;
   unchanged: number;
+  /** Feeds, covers and Cloudflare files an earlier export wrote that this one doesn't need. Book files are never removed. */
   removed: number;
-  /** Items left out, with no file in a format the device takes. */
+  /** Items left out, with no file in a format the connection takes. */
   skipped: string[];
-  /** Each book file in the catalog, by path, for recording what the connection holds. */
+  /** Each book file in the catalog, by path, for recording what the connection holds: those written and those kept from before. */
   placed: Record<string, PlacedFile>;
 }
 
+/** Options for hosting on Cloudflare Pages, as calibre3opds offers them (`cloudflare/README.md`). */
+export interface CloudflareOptions {
+  /** Answers OPDS searches as they're typed (`functions/search/[[searchTerm]].js`, or inside `_worker.js`). */
+  searchRouting?: boolean;
+  /** HTTP Basic Auth in front of the whole site (`_worker.js`), checked against the `BASIC_USER` and `BASIC_PASS` secrets. */
+  basicAuth?: boolean;
+}
+
+const WORKER_PATH = '_worker.js';
+const SEARCH_FUNCTION_PATH = 'functions/search/[[searchTerm]].js';
+/** The switch calibre3opds's exporter turns on in `_worker.js` for search routing. */
+const WORKER_SEARCH_OFF = 'const ROUTE_SEARCH = false;';
+
+/** The Cloudflare Pages files for these options, by path (as calibre3opds's `_write_web_files`). */
+export async function cloudflareFiles(options: CloudflareOptions): Promise<Record<string, string>> {
+  if (!options.basicAuth && !options.searchRouting) return {};
+  const [worker, search, ignore, readme] = await Promise.all([
+    import('./cloudflare/_worker.js?raw'),
+    import('./cloudflare/searchFunction.js?raw'),
+    import('./cloudflare/assetsignore.txt?raw'),
+    import('./cloudflare/README.md?raw'),
+  ]);
+  const files: Record<string, string> = { '.assetsignore': ignore.default, 'README.md': readme.default };
+  if (options.basicAuth) {
+    // Pages ignores functions/ while _worker.js exists, so the worker routes searches too.
+    if (!worker.default.includes(WORKER_SEARCH_OFF)) throw new Error('_worker.js has no search routing switch.');
+    files[WORKER_PATH] = options.searchRouting ? worker.default.replace(WORKER_SEARCH_OFF, 'const ROUTE_SEARCH = true;') : worker.default;
+  } else {
+    files[SEARCH_FUNCTION_PATH] = search.default;
+  }
+  return files;
+}
+
 /**
- * Writes an OPDS catalog of a connection's items: every format of each item that
- * its type takes, with the item's current metadata written in.
+ * Writes an OPDS catalog of a connection's catalog: every file of each book in the formats its
+ * type takes (or the files chosen for it), as they're stored, organized as the Library is, with
+ * the Cloudflare files `cloudflare` asks for. Book files are only ever added (or replaced, by a
+ * book's newer file): ones an earlier export wrote stay, though the feeds no longer list them.
  */
 export async function exportCatalog(
   library: Library,
@@ -51,14 +87,13 @@ export async function exportCatalog(
   backend: LibraryBackend,
   sink: CatalogSink,
   onProgress?: (progress: ExportProgress) => void,
+  cloudflare: CloudflareOptions = {},
 ): Promise<ExportResult> {
   const result: ExportResult = { books: 0, written: 0, unchanged: 0, removed: 0, skipped: [], placed: {} };
-  const items = deviceItems(library, device);
 
-  // Each item's files in the device's formats.
+  // Each item's files: those chosen for it, or those in the connection's formats.
   const chosen = new Map<string, { item: Item; files: FileRef[] }>();
-  for (const item of items) {
-    const files = type.formats.flatMap((format) => item.files.filter((f) => f.format === format));
+  for (const { item, files } of catalogFiles(library, device, type)) {
     if (files.length) chosen.set(item.id, { item, files });
     else result.skipped.push(item.title);
   }
@@ -78,7 +113,7 @@ export async function exportCatalog(
       itemIds: filterItems(books.map((b) => b.item), entry.query, { ratings }).map((i) => i.id),
     })),
   }));
-  const catalog = buildCatalog(books, { title: device.name, categories });
+  const catalog = buildCatalog(books, { title: device.name, categories, searchIndex: !!cloudflare.searchRouting });
 
   const previous = (await sink.readManifest?.())?.files ?? {};
   const manifest: CatalogManifest = { version: 1, files: {} };
@@ -98,39 +133,48 @@ export async function exportCatalog(
     } else {
       const { item, files } = chosen.get(file.book.itemId)!;
       const ref = files.find((f) => f.format === file.book.format)!;
-      const prepareKey = type.prepare?.key(item, ref);
-      key = prepareKey === undefined ? ref.hash : `${ref.hash}:${prepareKey}`;
-      book = { itemId: item.id, hash: ref.hash, size: ref.size, ...(prepareKey !== undefined && { key: prepareKey }) };
+      key = ref.hash;
+      book = { itemId: item.id, hash: ref.hash, size: ref.size };
       read = async () => {
         const stored = await backend.getFile(ref.hash);
         if (!stored) throw new Error(`${item.title}: the file is missing from the library.`);
-        return prepareKey !== undefined && type.prepare ? type.prepare.run(item, ref, stored) : stored;
+        return stored;
       };
     }
     manifest.files[file.path] = key;
     onProgress?.({ done: done++, total: copies.length, current: `Writing ${file.path}` });
     if (previous[file.path] === key) {
       result.unchanged++;
-      if (book) result.placed[file.path] = { ...book, size: device.placed[file.path]?.size ?? book.size };
+      if (book) result.placed[file.path] = book;
       continue;
     }
     const data = await read();
     await sink.write(file.path, data);
     result.written++;
-    if (book) result.placed[file.path] = { ...book, size: data.size };
+    if (book) result.placed[file.path] = book;
   }
   for (const file of catalog) {
     if (!('text' in file)) continue;
     await sink.write(file.path, file.text);
     manifest.files[file.path] = 'feed';
   }
-  // Feeds and books an earlier export wrote that this one doesn't, e.g. for a removed tag or book.
-  if (sink.remove) {
-    for (const path of Object.keys(previous)) {
-      if (manifest.files[path] !== undefined) continue;
-      await sink.remove(path);
-      result.removed++;
+  const hosting = await cloudflareFiles(cloudflare);
+  for (const [path, text] of Object.entries(hosting)) {
+    await sink.write(path, text);
+    manifest.files[path] = 'hosting';
+  }
+  // Book files an earlier export wrote stay, recorded as before; feeds, covers and hosting files it doesn't write any more go.
+  for (const [path, key] of Object.entries(previous)) {
+    if (manifest.files[path] !== undefined) continue;
+    if (path.startsWith('books/')) {
+      manifest.files[path] = key;
+      const placed = device.placed[path];
+      if (placed) result.placed[path] = placed;
+      continue;
     }
+    if (!sink.remove) continue;
+    await sink.remove(path);
+    result.removed++;
   }
   await sink.write(MANIFEST_PATH, JSON.stringify(manifest));
   await sink.finish?.();

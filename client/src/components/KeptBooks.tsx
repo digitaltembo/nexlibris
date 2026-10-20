@@ -1,12 +1,9 @@
-import { userData } from '@nexlibris/common';
 import { useState } from 'react';
 import styled from 'styled-components';
 import { useLibrary } from '../library/LibraryContext';
-import { describeRule, filterFields, parseFilters } from '../library/filters';
-import { filterItems } from '../library/search';
 import { addInstances, EVERY_BOOK } from '../sync/instances';
 import { Button, Muted } from '../styles/ui';
-import { FiltersDialog } from './FiltersDialog';
+import { QueryInput, useMatchCount } from './QueryInput';
 
 const Line = styled.span`
   display: inline-flex;
@@ -15,13 +12,18 @@ const Line = styled.span`
   gap: 4px 8px;
 `;
 
-const lowerFirst = (text: string) => text.charAt(0).toLowerCase() + text.slice(1);
+const Editing = styled.span`
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+`;
 
-/** Whether a search means every book with a file (no rules, or the default rule). */
+/** Whether a search means every book with a file (none, or the default one). */
 const everyBook = (query: string) => !query.trim() || query.trim() === EVERY_BOOK;
 
 /**
- * Which books another instance gets, as its connection's rules, with a button to choose: it sees
+ * Which books another instance gets, as its connection's search, with a button to choose: it sees
  * only those (their details, covers and files), and books deleted there stay here, kept off it
  * (`excluded`), which `onBringBack` undoes.
  */
@@ -39,43 +41,48 @@ export function KeptBooks({
   excluded?: number;
   onBringBack?(): void;
 }) {
-  const { library } = useLibrary();
-  const [editing, setEditing] = useState(false);
-  const items = Object.values(library.items);
-  const count = (q: string) => (q.trim() ? filterItems(items, q, { ratings: userData(library).ratings }).length : items.length);
-  const fields = filterFields(items);
-  const rules = everyBook(query) ? undefined : parseFilters(query, fields);
-  const described = rules?.rules.map((rule) => describeRule(rule, fields)) ?? [];
-  const summary = everyBook(query)
-    ? 'every book'
-    : described.length
-      ? `books where ${lowerFirst(described.join(rules!.any ? ' or ' : ', '))}`
-      : `books matching “${query}”`;
+  /** The search being typed, applied by Done (a pairing code is made again for each). */
+  const [draft, setDraft] = useState<string>();
+  const count = useMatchCount(everyBook(query) ? '' : query);
+  if (draft !== undefined) {
+    return (
+      <Editing>
+        <Muted>
+          Only books matching this search go to {name} (their details, covers and files), along with any added to it by hand.
+          Empty for every book.
+        </Muted>
+        <QueryInput value={draft} onChange={setDraft} aria-label={`Books ${name} gets`} />
+        <Line>
+          <Button
+            $size="small"
+            onClick={() => {
+              onChange(draft.trim() || EVERY_BOOK);
+              setDraft(undefined);
+            }}
+          >
+            Done
+          </Button>
+          <Button $variant="secondary" $size="small" onClick={() => setDraft(undefined)}>
+            Cancel
+          </Button>
+        </Line>
+      </Editing>
+    );
+  }
   return (
     <Line>
       <Muted>
-        Gets {summary}
-        {!everyBook(query) && ` (${count(query)} now)`}
+        Gets {everyBook(query) ? 'every book' : `books matching “${query}”`}
+        {count !== undefined && ` (${count} now)`}
         {excluded > 0 && `, less ${excluded} deleted there`}.
       </Muted>
-      <Button $variant="secondary" $size="small" onClick={() => setEditing(true)}>
+      <Button $variant="secondary" $size="small" onClick={() => setDraft(everyBook(query) ? '' : query)}>
         Choose books…
       </Button>
       {excluded > 0 && onBringBack && (
         <Button $variant="secondary" $size="small" onClick={onBringBack}>
           Bring back deleted
         </Button>
-      )}
-      {editing && (
-        <FiltersDialog
-          title={`Books ${name} gets`}
-          intro={`Only these books go to ${name}: their details, covers and files, along with any added to it by hand. ${name} doesn’t see the others, and books deleted there stay here.`}
-          query={everyBook(query) ? '' : query}
-          onChange={(q) => onChange(q.trim() || EVERY_BOOK)}
-          onClose={() => setEditing(false)}
-          items={items}
-          count={count}
-        />
       )}
     </Line>
   );

@@ -1,7 +1,7 @@
 import type { SettingField } from '../../devices/types';
-import type { FormatId } from '../formats';
+import { EPUB_FORMATS, type FormatId } from '../formats';
+import { PLUGIN_CONVERTERS } from '../../plugins/formats';
 import type { ConvertContext } from './bookFromItem';
-import { DEFAULT_OPTIMIZE_OPTIONS, OPTIMIZE_FIELDS, optimizeOptionsFrom, optimizerVersion, type OptimizeOptions } from './xteink/options';
 
 export type { ConvertContext } from './bookFromItem';
 
@@ -19,7 +19,7 @@ export interface Converter {
   run(data: Blob, from: FormatId, ctx: ConvertContext): Promise<Blob>;
 }
 
-/** Conversions that run entirely in the browser. Their libraries load on first use. */
+/** Conversions that run entirely in the browser, nexlibris's own and plugins'. Their libraries load on first use. */
 export const CONVERTERS: Converter[] = [
   {
     id: 'kindle-epub',
@@ -56,33 +56,19 @@ export const CONVERTERS: Converter[] = [
     version: '1',
     run: async (data, _from, ctx) => (await import('./comics')).cbrToCbz(data, ctx),
   },
-  xteinkConverter('X4'),
-  xteinkConverter('X3'),
   {
     id: 'epub-txt',
-    from: ['epub', 'x4.epub', 'x3.epub'],
+    from: EPUB_FORMATS,
     to: 'txt',
     version: '1',
     run: async (data, _from, ctx) => (await import('./text')).epubToTxt(data, ctx),
   },
+  ...PLUGIN_CONVERTERS,
 ];
+
+/** The formats conversions make, in the order they're first listed. */
+export const CONVERSION_TARGETS: FormatId[] = [...new Set(CONVERTERS.map((c) => c.to))];
 
 export function convertersFrom(format: string): Converter[] {
   return CONVERTERS.filter((c) => (c.from as string[]).includes(format));
-}
-
-/** The CrossPoint optimizer for a reader's screen, with its options recorded in its version. */
-export function xteinkConverter(profile: 'X4' | 'X3', options: OptimizeOptions = DEFAULT_OPTIMIZE_OPTIONS): Converter {
-  return {
-    id: profile === 'X4' ? 'xteink-x4' : 'xteink-x3',
-    from: ['epub'],
-    to: profile === 'X4' ? 'x4.epub' : 'x3.epub',
-    version: optimizerVersion(options),
-    options: OPTIMIZE_FIELDS,
-    withOptions: (values) => xteinkConverter(profile, optimizeOptionsFrom(values)),
-    run: async (data) => {
-      const [{ optimizeEpub }, { PROFILES }] = await Promise.all([import('./xteink/optimize'), import('./xteink/image')]);
-      return optimizeEpub(data, PROFILES[profile], options);
-    },
-  };
 }

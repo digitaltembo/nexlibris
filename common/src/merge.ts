@@ -42,6 +42,7 @@ export type Target =
   | ['device', DeviceId, 'name' | 'query']
   | ['device', DeviceId, 'setting', string]
   | ['device', DeviceId, 'item', ItemId]
+  | ['device', DeviceId, 'files', ItemId]
   | ['device', DeviceId, 'excluded', ItemId]
   | ['device', DeviceId, 'placed', string]
   /** A browse category, compared whole. */
@@ -81,6 +82,7 @@ export function operationTargets(op: Operation): Target[] {
     case 'attachFile':
       return [['item', op.id, 'file', op.file.hash]];
     case 'detachFile':
+    case 'setFileMetadataKey':
       return [['item', op.id, 'file', op.hash]];
     case 'setRating':
       return [['rating', op.userId, op.itemId]];
@@ -100,11 +102,18 @@ export function operationTargets(op: Operation): Target[] {
       return targets;
     }
     case 'addDeviceItems':
-    case 'removeDeviceItems':
       return op.itemIds.map((itemId) => ['device', op.id, 'item', itemId]);
+    case 'removeDeviceItems':
+      // Taking an item out takes its particular files with it.
+      return op.itemIds.flatMap((itemId): Target[] => [
+        ['device', op.id, 'item', itemId],
+        ['device', op.id, 'files', itemId],
+      ]);
     case 'excludeDeviceItems':
     case 'unexcludeDeviceItems':
       return op.itemIds.map((itemId) => ['device', op.id, 'excluded', itemId]);
+    case 'setDeviceFiles':
+      return [['device', op.id, 'files', op.itemId], ...(op.hashes?.length ? [['device', op.id, 'item', op.itemId] as Target] : [])];
     case 'recordDeviceSync':
       return [...Object.keys(op.placed), ...op.removed].map((path) => ['device', op.id, 'placed', path]);
     case 'setCategory':
@@ -139,6 +148,10 @@ export function valueOf(library: Library, target: Target): unknown {
         return device.settings[target[3]];
       case 'item':
         return device.items.includes(target[3]);
+      case 'files': {
+        const files = device.files?.[target[3]];
+        return files && [...files].sort();
+      }
       case 'excluded':
         return !!device.excluded?.includes(target[3]);
       case 'placed':
@@ -270,14 +283,11 @@ export function planMerge(ours: MergeSide, theirs: MergeSide, truth: Side): Merg
   // 3. In order: whole additions, then their parts and the rest, then removals (which take their parts with them).
   for (const side of ['ours', 'theirs'] as const) {
     const source = sides[other(side)].library;
-    for (const device of restoreDevices[side]) plan[side].push({ type: 'addDevice', device: { ...device, items: [] } });
+    for (const device of restoreDevices[side]) plan[side].push({ type: 'addDevice', device: emptyDevice(device) });
     for (const item of restore[side]) {
       plan[side].push({ type: 'addItem', item }, ...itemExtras(source, item.id, side, existsAfter, wholeOn[side]));
     }
-    for (const device of restoreDevices[side]) {
-      const itemIds = device.items.filter((id) => existsAfter(side, 'item', id));
-      if (itemIds.length) plan[side].push({ type: 'addDeviceItems', id: device.id, itemIds });
-    }
+    for (const device of restoreDevices[side]) plan[side].push(...deviceCatalog(device, (id) => existsAfter(side, 'item', id)));
     plan[side].push(...corrections[side]);
     for (const id of remove[side]) plan[side].push({ type: 'removeItem', id });
     for (const id of removeDevices[side]) plan[side].push({ type: 'removeDevice', id });
@@ -346,6 +356,9 @@ function correctionOp(
         return value
           ? { type: 'addDeviceItems', id, itemIds: [target[3]!] }
           : { type: 'removeDeviceItems', id, itemIds: [target[3]!] };
+      case 'files':
+        if (!existsAfter(to, 'item', target[3]!) || whole.has(`item:${target[3]}`) || !source.items[target[3]!]) return undefined;
+        return { type: 'setDeviceFiles', id, itemId: target[3]!, hashes: value as string[] | undefined };
       case 'excluded':
         // Kept off whether or not the item exists anywhere.
         return { type: value ? 'excludeDeviceItems' : 'unexcludeDeviceItems', id, itemIds: [target[3]!] };
@@ -385,6 +398,23 @@ function userOp(kind: 'rating' | 'review' | 'position', userId: UserId, itemId: 
   };
 }
 
+/** A device added whole, before its items exist: its catalog is added once they do (`deviceCatalog`). */
+export function emptyDevice(device: Device): Device {
+  const { files: _files, ...rest } = device;
+  return { ...rest, items: [] };
+}
+
+/** The operations giving a device added whole (`emptyDevice`) its catalog, for the items that exist. */
+export function deviceCatalog(device: Device, exists: (itemId: ItemId) => boolean): Operation[] {
+  const itemIds = device.items.filter(exists);
+  if (!itemIds.length) return [];
+  const files = Object.entries(device.files ?? {}).filter(([itemId]) => itemIds.includes(itemId));
+  return [
+    { type: 'addDeviceItems', id: device.id, itemIds },
+    ...files.map(([itemId, hashes]): Operation => ({ type: 'setDeviceFiles', id: device.id, itemId, hashes })),
+  ];
+}
+
 /** What goes with an item transferred whole: its ratings, reviews and positions, and the devices it's on. */
 export function itemExtras(
   source: Library,
@@ -403,6 +433,8 @@ export function itemExtras(
     // Devices transferred whole get their items once the items exist.
     if (device.items.includes(itemId) && existsAfter(to, 'device', device.id) && !whole.has(`device:${device.id}`)) {
       ops.push({ type: 'addDeviceItems', id: device.id, itemIds: [itemId] });
+      const files = device.files?.[itemId];
+      if (files) ops.push({ type: 'setDeviceFiles', id: device.id, itemId, hashes: files });
     }
   }
   return ops;

@@ -1,5 +1,5 @@
 import styled from 'styled-components';
-import { FilterIcon, SearchIcon } from './icons';
+import { SearchIcon } from './icons';
 
 const Box = styled.div`
   position: relative;
@@ -82,11 +82,6 @@ const InnerButton = styled.button.attrs({ type: 'button' })`
   }
 `;
 
-const Count = styled.span`
-  font-size: 0.8em;
-  font-weight: 600;
-`;
-
 interface Props {
   value: string;
   /** The search is of the text inside books. */
@@ -95,17 +90,14 @@ interface Props {
   /** Opens the search dialog. */
   onOpen(): void;
   onClear(): void;
-  /** How many filters are on; any shows the button pressed. */
-  filterCount: number;
-  onFilters(): void;
 }
 
-/** The search in the top bar: what's searched for, opening the search dialog, with buttons to clear it and for the filters. */
-export function SearchBox({ value, inText, placeholder, onOpen, onClear, filterCount, onFilters }: Props) {
+/** The search in the top bar: what's searched for, opening the search dialog, with a button to clear it. */
+export function SearchBox({ value, inText, placeholder, onOpen, onClear }: Props) {
   const label = value ? `${inText ? 'Search inside books' : 'Search'}: ${value}` : 'Search';
   return (
     <Box>
-      <Trigger $actions={value ? 2 : 1} aria-label={label} aria-haspopup="dialog" onClick={onOpen}>
+      <Trigger $actions={value ? 1 : 0} aria-label={label} aria-haspopup="dialog" onClick={onOpen}>
         <SearchIcon />
         {value && inText && <ModeLabel>Inside books</ModeLabel>}
         {value ? <span>{value}</span> : <Placeholder>{placeholder}</Placeholder>}
@@ -116,15 +108,6 @@ export function SearchBox({ value, inText, placeholder, onOpen, onClear, filterC
             ×
           </InnerButton>
         )}
-        <InnerButton
-          aria-pressed={filterCount > 0}
-          aria-label={filterCount > 0 ? `Filters (${filterCount} on)` : 'Filters'}
-          title="Filters"
-          onClick={onFilters}
-        >
-          <FilterIcon />
-          {filterCount > 0 && <Count>{filterCount}</Count>}
-        </InnerButton>
       </Actions>
     </Box>
   );

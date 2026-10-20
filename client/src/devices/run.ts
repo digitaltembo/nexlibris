@@ -1,6 +1,7 @@
-import type { LibraryBackend, Operation, PlacedFile } from '@nexlibris/common';
+import type { Device, Library, LibraryBackend, Operation, PlacedFile } from '@nexlibris/common';
 import { parentOf, type SyncPlan } from './plan';
-import type { DeviceTarget, Preparation } from './types';
+import { takeOutOfDevice } from './selection';
+import type { DeviceTarget } from './types';
 
 export interface SyncProgress {
   done: number;
@@ -10,27 +11,30 @@ export interface SyncProgress {
 }
 
 export interface SyncResult {
-  /** To apply to the library even if some steps failed: the record of what was done. */
+  /** To apply to the library even if some steps failed: the record of what was done, and books deleted on the device taken out of its catalog. */
   operations: Operation[];
   sent: number;
   moved: number;
   /** Copies found on the device and taken as the books', where they were. */
   kept: number;
+  /** Old copies of books sent again under a new name. */
   removed: number;
+  /** Books deleted on the device, taken out of its catalog. */
+  takenOut: number;
   catalogAdded: boolean;
   errors: { path: string; message: string }[];
 }
 
 /**
  * Carries out a plan. A failed step is reported and the rest carry on; the
- * record covers what succeeded.
+ * record covers what succeeded. Files are sent as the library stores them.
  */
 export async function runSync(
-  deviceId: string,
+  library: Library,
+  device: Device,
   plan: SyncPlan,
   target: DeviceTarget,
   backend: LibraryBackend,
-  prepare: Preparation | undefined,
   onProgress?: (progress: SyncProgress) => void,
 ): Promise<SyncResult> {
   const placed: Record<string, PlacedFile> = Object.fromEntries((plan.kept ?? []).map((k) => [k.path, k.placed]));
@@ -77,16 +81,10 @@ export async function runSync(
       try {
         await ensureFolder(parentOf(upload.path));
         const file = upload.file;
-        const stored = await backend.getFile(file.hash);
-        if (!stored) throw new Error('The file is missing from the library.');
-        const data = upload.key !== undefined && prepare ? await prepare.run(upload.item, file, stored) : stored;
+        const data = await backend.getFile(file.hash);
+        if (!data) throw new Error('The file is missing from the library.');
         await target.upload(upload.path, data);
-        placed[upload.path] = {
-          itemId: upload.item.id,
-          hash: file.hash,
-          size: data.size,
-          ...(upload.key !== undefined && { key: upload.key }),
-        };
+        placed[upload.path] = { itemId: upload.item.id, hash: file.hash, size: data.size };
       } catch (e) {
         if (upload.supersedes) failed.add(upload.supersedes);
         throw e;
@@ -112,9 +110,11 @@ export async function runSync(
       catalogAdded = true;
     });
   }
+  const takenOut = takeOutOfDevice(library, device, plan.deleted ?? []);
   return {
     catalogAdded,
-    operations: [{ type: 'recordDeviceSync', id: deviceId, placed, removed }],
+    operations: [{ type: 'recordDeviceSync', id: device.id, placed, removed }, ...takenOut],
+    takenOut: plan.deleted?.length ?? 0,
     sent: Object.keys(placed).length - moved - kept,
     moved,
     kept,

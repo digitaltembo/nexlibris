@@ -1,11 +1,11 @@
 import type { Device, Library } from '@nexlibris/common';
 import { DEFAULT_FILE_NAME, expandPath, PLACEHOLDERS, templateProblems } from '../../devices/pathTemplate';
 import { useMemo } from 'react';
-import type { CatalogType, DeviceTarget, DeviceTool, DeviceType, Inventory, Plugin, RemoteBook, RemoteFile, SettingField } from '../../devices/types';
-import { embedMetadata } from '../../devices/embedMetadata';
+import { settingOf, type DeviceTarget, type DeviceTool, type FilesType, type Inventory, type Plugin, type RemoteBook, type RemoteFile, type SettingField } from '../../devices/types';
 import { listDevice, parentOf, syncFolders } from '../../devices/plan';
-import { HOSTED_AT } from '../opds';
 import { CrossPointTarget } from './client';
+import { CROSSPOINT_CONVERTERS } from './convert';
+import { CROSSPOINT_FORMATS } from './formats';
 import { Dictionaries } from './tools/Dictionaries';
 import { Fonts } from './tools/Fonts';
 import { SleepImages } from './tools/SleepImages';
@@ -23,7 +23,23 @@ function checkTemplates(folder: string, fileName: string, library: Library) {
   return { problems, ...(sample && !problems.length && { example: expandPath(folder, fileName, sample, 'epub') }) };
 }
 
+/** Which reader it is: the X4 and X3 have different screens, so each has its own optimized EPUB. */
+const MODEL: SettingField = {
+  key: 'model',
+  label: 'Model',
+  default: 'X4',
+  choices: [
+    { value: 'X4', label: 'Xteink X4' },
+    { value: 'X3', label: 'Xteink X3' },
+  ],
+  help: 'Books are sent as this reader’s optimized EPUB where they have one (Convert makes it), else as their EPUB.',
+};
+
+const modelOf = (device: Device): 'X4' | 'X3' => (settingOf(device, MODEL) === 'X3' ? 'X3' : 'X4');
+const optimizedFor = (device: Device) => (modelOf(device) === 'X3' ? 'x3.epub' : 'x4.epub');
+
 const settings: SettingField[] = [
+  MODEL,
   {
     key: 'address',
     label: 'Address',
@@ -65,7 +81,7 @@ const isBookName = (path: string) => {
  */
 export async function readerInventory(
   device: Device,
-  type: DeviceType,
+  type: FilesType,
   target: DeviceTarget,
   library?: Library,
   listing?: RemoteFile[],
@@ -99,65 +115,49 @@ export async function readerInventory(
   return { books: [...fresh, ...books], ...(note && { note }) };
 }
 
-function deviceType(id: string, label: string, profile: 'X4' | 'X3'): DeviceType {
-  const optimized = profile === 'X4' ? 'x4.epub' : 'x3.epub';
-  const type: DeviceType = {
-    id,
-    label,
-    // The copy optimized for the device where the book has one (made by Convert), else its EPUB.
-    formats: [optimized, 'epub'],
-    settings,
-    folder: (device) => `/${setting(device, 'folder').replace(/^\/+|\/+$/g, '')}`,
-    fileName: (device) => setting(device, 'fileName'),
-    prepare: embedMetadata,
-    target: (device) => new CrossPointTarget(setting(device, 'address')),
-    inventory: (device, target, library, listing) => readerInventory(device, type, target, library, listing),
-    tools: readerTools(profile),
-  };
-  return type;
-}
-
 /** The reader at its connection's address, kept while the address is the same. */
 function useReader(device: Device) {
   const address = setting(device, 'address');
   return useMemo(() => new CrossPointTarget(address), [address]);
 }
 
-const SleepTool = ({ device, profile }: { device: Device; profile: 'X4' | 'X3' }) => (
-  <SleepImages reader={useReader(device)} profile={profile} />
-);
+const SleepTool = ({ device }: { device: Device }) => <SleepImages reader={useReader(device)} profile={modelOf(device)} />;
 const DictionariesTool = ({ device }: { device: Device }) => <Dictionaries reader={useReader(device)} />;
 const FontsTool = ({ device }: { device: Device }) => <Fonts reader={useReader(device)} />;
 
 /** What else the reader keeps on its card, managed beside its books. */
-function readerTools(profile: 'X4' | 'X3'): DeviceTool[] {
+function readerTools(): DeviceTool[] {
   return [
-    { id: 'sleep', label: 'Sleep images', component: ({ device }) => <SleepTool device={device} profile={profile} /> },
+    { id: 'sleep', label: 'Sleep images', component: SleepTool },
     { id: 'dictionaries', label: 'Dictionaries', component: DictionariesTool },
     { id: 'fonts', label: 'Fonts', component: FontsTool },
   ];
 }
 
-/** A static OPDS catalog for the reader to browse: each book's optimized copy, where it has one, and its EPUB. */
-function catalogType(id: string, label: string, profile: 'X4' | 'X3'): CatalogType {
-  return {
-    kind: 'catalog',
-    id,
-    label,
-    formats: [profile === 'X4' ? 'x4.epub' : 'x3.epub', 'epub'],
-    settings: [HOSTED_AT],
-    prepare: embedMetadata,
-  };
-}
+/** A CrossPoint reader: its books read from its own index, sent as they're stored, its optimized EPUBs preferred. */
+export const readerType: FilesType = {
+  access: 'files',
+  id: 'crosspoint.reader',
+  label: 'CrossPoint Reader',
+  activation: 'manual',
+  read: true,
+  write: { single: true },
+  // The copy optimized for the reader where the book has one (made by Convert), else its EPUB.
+  formats: (device) => [optimizedFor(device), 'epub'],
+  preferred: (device) => [optimizedFor(device)],
+  settings,
+  folder: (device) => `/${setting(device, 'folder').replace(/^\/+|\/+$/g, '')}`,
+  fileName: (device) => setting(device, 'fileName'),
+  target: (device) => new CrossPointTarget(setting(device, 'address')),
+  inventory: (device, target, library, listing) => readerInventory(device, readerType, target, library, listing),
+  tools: readerTools(),
+};
 
-/** Xteink X4 and X3 readers running CrossPoint firmware, and OPDS catalogs made for them. */
+/** Xteink X4 and X3 readers running CrossPoint firmware, and the optimized EPUBs made for them. */
 export const crosspoint: Plugin = {
   id: 'crosspoint',
   name: 'CrossPoint',
-  connectionTypes: [
-    deviceType('crosspoint.x4', 'Xteink X4 (CrossPoint)', 'X4'),
-    deviceType('crosspoint.x3', 'Xteink X3 (CrossPoint)', 'X3'),
-    catalogType('crosspoint.x4-catalog', 'OPDS catalog for X4', 'X4'),
-    catalogType('crosspoint.x3-catalog', 'OPDS catalog for X3', 'X3'),
-  ],
+  connectionTypes: [readerType],
+  formats: CROSSPOINT_FORMATS,
+  converters: CROSSPOINT_CONVERTERS,
 };

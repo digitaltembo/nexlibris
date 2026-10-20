@@ -58,8 +58,8 @@ export const DEFAULT_DESC: Record<SortKey, boolean> = { title: false, author: fa
  * pages) or dates (added, published: "2026-09" is September 2026); "last N days" (weeks, months,
  * years) is relative to now. Any metadata field can be named (`language:fr`, a custom
  * `mood:cosy`); a `word:` that names no field is searched for as words, so "Dune: Messiah" still
- * finds Dune Messiah. The filters UI (`library/filters.ts`) writes and reads this syntax, so
- * nobody has to type it.
+ * finds Dune Messiah. It's how everything searches: the search box (whose dialog completes field
+ * names and values, `suggest.ts`), connections' catalogs, the books another instance keeps, categories.
  */
 
 /** Context for a search: the reader's ratings (per user, so not on the item), and the time "last 30 days" counts from. */

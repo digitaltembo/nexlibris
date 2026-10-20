@@ -1,6 +1,6 @@
 import { createItem } from '@nexlibris/common';
 import { describe, expect, it } from 'vitest';
-import { filterFields } from './filters';
+import { searchFields } from './suggest';
 import { suggest, wordAt } from './suggest';
 
 const items = [
@@ -8,7 +8,7 @@ const items = [
   createItem({ title: 'Emma', creators: [{ name: 'Jane Austen', role: 'aut' }], tags: ['Classic', 'Romance'] }),
   createItem({ title: 'Frankenstein', creators: [{ name: 'Mary Shelley', role: 'aut' }], tags: ['Classic', 'Horror'] }),
 ];
-const fields = filterFields(items);
+const fields = searchFields(items);
 const at = (query: string) => suggest(query, query.length, items, fields);
 
 describe('wordAt', () => {

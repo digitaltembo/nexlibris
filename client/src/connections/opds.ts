@@ -1,5 +1,5 @@
-import type { CatalogType, Plugin, SettingField, SourceType } from '../../devices/types';
-import { embedMetadata } from '../../devices/embedMetadata';
+import { pickedChoices, type ExportType, type FeedType, type SettingField } from '../devices/types';
+import { FORMATS, type FormatId } from '../formats/formats';
 
 /** Where a catalog is hosted, for showing it; nothing is uploaded there. */
 export const HOSTED_AT: SettingField = {
@@ -9,14 +9,44 @@ export const HOSTED_AT: SettingField = {
   help: 'The address the catalog is served from, if you host it. Sync writes the files; putting them online is up to you.',
 };
 
-/** A static OPDS catalog with every format each book has, the item's current metadata written into EPUBs. */
-export const opdsCatalog: CatalogType = {
-  kind: 'catalog',
+/** Which formats of each book the catalog offers. */
+export const EXPORT_FORMATS: SettingField = {
+  key: 'formats',
+  label: 'Formats',
+  kind: 'some',
+  default: '',
+  choices: (Object.keys(FORMATS) as FormatId[]).map((format) => ({ value: format, label: FORMATS[format].label })),
+  help: 'Each book is offered in every format it has, or, if you pick some, in every one of those it has; a book with none of them is left out.',
+};
+
+/** calibre3opds's Cloudflare Pages options (`devices/opds/cloudflare/`). */
+export const SEARCH_ROUTING: SettingField = {
+  key: 'searchRouting',
+  label: 'Cloudflare search routing',
+  kind: 'checkbox',
+  default: 'no',
+  help: 'Lets OPDS readers search as they type when the catalog is hosted on Cloudflare Pages: writes a Pages Function and a search index.',
+};
+
+export const BASIC_AUTH: SettingField = {
+  key: 'basicAuth',
+  label: 'Cloudflare Basic Auth',
+  kind: 'checkbox',
+  default: 'no',
+  help: 'Puts a user name and password in front of the whole catalog on Cloudflare Pages: writes _worker.js. Set them as the BASIC_USER and BASIC_PASS secrets of the Pages project (see README.md in the catalog).',
+};
+
+/**
+ * A static OPDS catalog of the connection's catalog, in calibre3opds's layout, written to a folder or a zip
+ * for any web host. Only ever synced whole; each book in every one of its formats, as stored.
+ */
+export const opdsExport: ExportType = {
+  access: 'export',
   id: 'opds.catalog',
   label: 'OPDS Static Export',
-  formats: ['epub', 'pdf', 'cbz', 'cbr', 'azw3', 'mobi', 'azw', 'rtf', 'txt'],
-  settings: [HOSTED_AT],
-  prepare: embedMetadata,
+  write: { single: false },
+  formats: (device) => pickedChoices(device, EXPORT_FORMATS) as FormatId[],
+  settings: [HOSTED_AT, EXPORT_FORMATS, SEARCH_ROUTING, BASIC_AUTH],
 };
 
 /** Where a catalog to browse starts. */
@@ -54,20 +84,14 @@ const SEARCH_TEMPLATE: SettingField = {
   },
 };
 
-/** An OPDS catalog on a server, browsed and searched, with books added to the library from it; nothing is sent there. */
-export const opdsServer: SourceType = {
-  kind: 'source',
+/** An OPDS catalog on a server, browsed and searched, with books downloaded into the library from it; nothing is sent there. */
+export const opdsServer: FeedType = {
+  access: 'feed',
   id: 'opds.server',
   label: 'OPDS server',
-  formats: [],
+  read: true,
+  formats: () => [],
   settings: [CATALOG_URL, SEARCH_TEMPLATE],
   url: (device) => String(device.settings?.url ?? '').trim(),
   searchTemplate: (device) => String(device.settings?.search ?? '').trim() || undefined,
-};
-
-/** OPDS catalogs: written as static files for any web host (calibre3opds's layout), or browsed on a server. */
-export const opds: Plugin = {
-  id: 'opds',
-  name: 'OPDS',
-  connectionTypes: [opdsCatalog, opdsServer],
 };

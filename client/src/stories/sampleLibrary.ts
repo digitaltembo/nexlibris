@@ -130,7 +130,7 @@ export const sampleItems: Item[] = books.map((book, i) =>
   ),
 );
 
-export const sampleDevice = createDevice({ name: 'X4', type: 'crosspoint.x4', settings: { address: 'http://192.168.0.42' } }, ADDED);
+export const sampleDevice = createDevice({ name: 'X4', type: 'crosspoint.reader', settings: { model: 'X4', address: 'http://192.168.0.42' } }, ADDED);
 
 /** An OPDS catalog connection, written once, with Piranesi in it. */
 export const sampleCatalog = createDevice({ name: 'Shelf', type: 'opds.catalog', settings: { url: 'https://books.example' } }, ADDED);

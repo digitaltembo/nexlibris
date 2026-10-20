@@ -1,17 +1,11 @@
-import type { ConnectionType, Plugin } from '../devices/types';
+import type { Plugin } from '../devices/types';
 import type { LibraryViewType } from '../views/types';
 import { bookshelf } from './bookshelf';
 import { crosspoint } from './crosspoint';
 import { graph } from './graph';
-import { nexlibris } from './nexlibris';
-import { opds } from './opds';
 
-/** The plugins built into nexlibris. */
-export const PLUGINS: Plugin[] = [crosspoint, opds, nexlibris, bookshelf, graph];
-
-export const CONNECTION_TYPES: ConnectionType[] = PLUGINS.flatMap((p) => p.connectionTypes);
-
-export const connectionType = (id: string) => CONNECTION_TYPES.find((t) => t.id === id);
+/** The plugins built into nexlibris. Connection types built in rather than plugged in are in `connections/`. */
+export const PLUGINS: Plugin[] = [crosspoint, bookshelf, graph];
 
 export const VIEW_TYPES: LibraryViewType[] = PLUGINS.flatMap((p) => p.views ?? []);
 

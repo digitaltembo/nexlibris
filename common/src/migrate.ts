@@ -50,7 +50,48 @@ export const MIGRATIONS: Record<number, Migration> = {
   // Positions set aside from Currently Reading (`ReadingPosition.setAside`). Nothing to change: none were before, and the
   // version keeps an older nexlibris, whose merge would drop the mark, from syncing with one that has them.
   7: { library: (library) => library },
+  // Connections that read, write or both (M13). CrossPoint readers are one type with a Model setting, and its catalogs
+  // are the OPDS static export with the formats they took. Files are sent as stored, so placed files lose the key of the
+  // metadata written into them as they were sent, and the copies there count as current. Catalogs of particular files
+  // (`Device.files`), files' metadata fingerprints (`FileRef.metadataKey`) and the operations setting them are new.
+  8: {
+    library: (library) => {
+      const devices = library.devices as Record<string, StoredDevice> | undefined;
+      if (!devices) return library;
+      return { ...library, devices: Object.fromEntries(Object.entries(devices).map(([id, device]) => [id, connection9(device)])) };
+    },
+    operation: (op) => {
+      if (op.type === 'addDevice') return { ...op, device: connection9(op.device as StoredDevice) };
+      if (op.type === 'recordDeviceSync') return { ...op, placed: unkeyed(op.placed as Record<string, Record<string, unknown>>) };
+      return op;
+    },
+  },
 };
+
+type StoredDevice = { type: string; settings: Record<string, MetadataValue>; placed?: Record<string, Record<string, unknown>> } & Record<string, unknown>;
+
+/** Connection types before schema 9 that are another type's now, with the settings that say what they were. */
+const RETYPED: Record<string, { type: string; settings: Record<string, string> }> = {
+  'crosspoint.x4': { type: 'crosspoint.reader', settings: { model: 'X4' } },
+  'crosspoint.x3': { type: 'crosspoint.reader', settings: { model: 'X3' } },
+  'crosspoint.x4-catalog': { type: 'opds.catalog', settings: { formats: 'x4.epub,epub' } },
+  'crosspoint.x3-catalog': { type: 'opds.catalog', settings: { formats: 'x3.epub,epub' } },
+};
+
+function connection9(device: StoredDevice): StoredDevice {
+  const retyped = RETYPED[device.type];
+  const settings = retyped ? { ...device.settings, ...retyped.settings } : device.settings;
+  return { ...device, type: retyped?.type ?? device.type, settings, ...(device.placed && { placed: unkeyed(device.placed) }) };
+}
+
+function unkeyed(placed: Record<string, Record<string, unknown>>): Record<string, Record<string, unknown>> {
+  return Object.fromEntries(
+    Object.entries(placed).map(([path, file]) => {
+      const { key: _key, ...rest } = file;
+      return [path, rest];
+    }),
+  );
+}
 
 type StoredItem = { metadata: Record<string, MetadataValue> } & Record<string, unknown>;
 

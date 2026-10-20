@@ -1,7 +1,7 @@
 import { MemoryStorage, StoredLibraryBackend, type RemoteText } from '@nexlibris/common';
 import { describe, expect, it } from 'vitest';
 import { canSearch, CHECK_AFTER_MS, loadFeed, loadSearch, rememberPages, readCachedFeed } from './feedCache';
-import { fillTemplate, parseOpdsFeed, parseOpenSearch } from './opdsFeed';
+import { fillTemplate, PARSER_VERSION, parseOpdsFeed, parseOpenSearch, withDetails, type OpdsBook } from './opdsFeed';
 import type { TextFetcher } from './remote';
 
 /** A static catalog as nexlibris (calibre3opds's layout) exports it: books on the first page, sections and search on the feed. */
@@ -70,13 +70,68 @@ describe('reading OPDS catalogs', () => {
 
   it('reads Gutenberg’s lists as places to go, and its search from the description', () => {
     const feed = parseOpdsFeed(GUTENBERG_LIST, 'https://www.gutenberg.org/ebooks/search.opds/?sort_order=downloads');
-    expect(feed.entries[0]).toMatchObject({ kind: 'navigation', title: 'Moby Dick; Or, The Whale', detail: 'Herman Melville', href: 'https://www.gutenberg.org/ebooks/2701.opds' });
+    // Each title is a link to its own page: shown as a book, its downloads read from there when opened.
+    expect(feed.entries[0]).toMatchObject({
+      kind: 'book',
+      title: 'Moby Dick; Or, The Whale',
+      authors: ['Herman Melville'],
+      downloads: [],
+      details: 'https://www.gutenberg.org/ebooks/2701.opds',
+      thumbnail: 'https://www.gutenberg.org/cache/epub/2701/pg2701.cover.small.jpg',
+    });
     expect(feed.next).toBe('https://www.gutenberg.org/ebooks/search.opds/?sort_order=downloads&start_index=26');
     expect(feed.sections).toEqual([]);
     const template = parseOpenSearch(OSD, 'https://www.gutenberg.org/catalog/osd-books.xml');
     expect(template).toBe('http://m.gutenberg.org/ebooks/search.opds/?query={searchTerms}');
     expect(fillTemplate(template!, 'love & war')).toBe('http://m.gutenberg.org/ebooks/search.opds/?query=love%20%26%20war');
     expect(fillTemplate('https://x/s?q={searchTerms}&p={startPage?}', 'a')).toBe('https://x/s?q=a&p=');
+  });
+
+  it('takes editions of one title in a feed as one book with all their downloads (Gutenberg’s book pages)', () => {
+    const edition = (id: string, note: string, downloads: string) => `<entry><title>Moby Dick; Or, The Whale</title><id>${id}</id>
+<content type="xhtml"><div xmlns="http://www.w3.org/1999/xhtml"><p>${note}</p></div></content>
+<author><name>Melville, Herman</name></author><category term="Sea stories" />
+<link rel="http://opds-spec.org/image" type="image/jpeg" href="https://www.gutenberg.org/cache/epub/2701/pg2701.cover.medium.jpg" />
+${downloads}
+<link rel="related" type="application/atom+xml;profile=opds-catalog" href="/ebooks/author/9.opds" title="By Melville, Herman…" /></entry>`;
+    const page = parseOpdsFeed(
+      `<feed xmlns="http://www.w3.org/2005/Atom"><title>Moby Dick; Or, The Whale by Herman Melville</title>
+${edition('urn:gutenberg:2701:2', 'This edition had all images removed.', '<link rel="http://opds-spec.org/acquisition" type="application/epub+zip" title="EPUB (older e-readers, no images)" href="https://www.gutenberg.org/ebooks/2701.epub.noimages" />')}
+${edition('urn:gutenberg:2701:3', 'This edition has images.', '<link rel="http://opds-spec.org/acquisition" type="application/epub+zip" title="EPUB3 (E-readers incl. Send-to-Kindle)" href="https://www.gutenberg.org/ebooks/2701.epub3.images" /><link rel="http://opds-spec.org/acquisition" type="application/x-mobipocket-ebook" title="Kindles (kf8)" href="https://www.gutenberg.org/ebooks/2701.kf8.images" />')}
+<entry><title>Moby Dick; Or, The Whale</title><id>other</id><author><name>Someone Else</name></author>
+<link rel="http://opds-spec.org/acquisition" type="application/epub+zip" href="https://example.org/other.epub" /></entry>
+</feed>`,
+      'https://www.gutenberg.org/ebooks/2701.opds',
+    );
+    expect(page.entries).toHaveLength(2);
+    const book = page.entries[0] as OpdsBook;
+    expect(book).toMatchObject({ id: 'urn:gutenberg:2701:2', authors: ['Melville, Herman'], tags: ['Sea stories'] });
+    expect(book.downloads.map((d) => d.title)).toEqual(
+      expect.arrayContaining(['EPUB (older e-readers, no images)', 'EPUB3 (E-readers incl. Send-to-Kindle)', 'Kindles (kf8)']),
+    );
+    expect(book.downloads).toHaveLength(3);
+    expect(book.related).toHaveLength(1);
+    // A different author is a different book, though the title's the same.
+    expect(page.entries[1]).toMatchObject({ id: 'other' });
+
+    // The list's link to it, opened: the page's book in the list's place.
+    const listed = parseOpdsFeed(GUTENBERG_LIST, 'https://www.gutenberg.org/ebooks/search.opds/?sort_order=downloads').entries[0] as OpdsBook;
+    const opened = withDetails(listed, page);
+    expect(opened).toMatchObject({ id: listed.id, authors: ['Melville, Herman'] });
+    expect(opened.downloads).toHaveLength(3);
+    expect(opened).not.toHaveProperty('details');
+  });
+
+  it('reads how many entries a place leads to, where the catalog says (thr:count)', () => {
+    const feed = parseOpdsFeed(
+      `<feed xmlns="http://www.w3.org/2005/Atom" xmlns:thr="http://purl.org/syndication/thread/1.0"><title>Authors</title>
+<entry><title>Agatha Christie</title><id>a</id><link rel="subsection" href="/authors/christie.xml" type="application/atom+xml;profile=opds-catalog;kind=acquisition" thr:count="66" /></entry>
+<entry><title>Unknown</title><id>b</id><link rel="subsection" href="/authors/unknown.xml" type="application/atom+xml;profile=opds-catalog;kind=acquisition" /></entry>
+</feed>`,
+      'https://library.example/authors.xml',
+    );
+    expect(feed.entries[0]).toMatchObject({ kind: 'navigation', title: 'Agatha Christie', count: 66 });
+    expect(feed.entries[1]).not.toHaveProperty('count');
   });
 
   it('refuses what isn’t a feed, and links that aren’t web addresses', () => {
@@ -117,6 +172,24 @@ describe('caching catalog pages', () => {
     const { cached } = await loadFeed(backend, ROOT, fetcher, { now: later });
     expect(calls[1]).toEqual({ url: ROOT, headers: { 'If-None-Match': '"v1"' } });
     expect(cached).toMatchObject({ fetchedAt: start.toISOString(), checkedAt: later.toISOString() });
+  });
+
+  it('reads a page again in full where an older parser read it, though the server says it’s unchanged', async () => {
+    const backend = new StoredLibraryBackend(new MemoryStorage());
+    const { calls, fetcher } = server({ [ROOT]: { text: STATIC_ROOT, etag: '"v1"' } });
+    const start = new Date('2026-10-08T10:00:00Z');
+    const { cached } = await loadFeed(backend, ROOT, fetcher, { now: start });
+    expect(cached.parser).toBe(PARSER_VERSION);
+    // As an older version cached it: its own parse, and no version.
+    const { parser: _, ...older } = { ...cached, feed: { ...cached.feed, title: 'Parsed the old way' } };
+    const key = `opds/${Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(ROOT))), (b) => b.toString(16).padStart(2, '0')).join('')}.json`;
+    await backend.writeLocalFile(key, new Blob([JSON.stringify(older)]));
+
+    const again = await loadFeed(backend, ROOT, fetcher, { now: start });
+    expect(calls).toHaveLength(2);
+    expect(calls[1]).toEqual({ url: ROOT });
+    expect(again.cached.feed.title).toBe('Library');
+    expect(again.cached.parser).toBe(PARSER_VERSION);
   });
 
   it('notices a change by the text, where the server gives nothing to check by', async () => {

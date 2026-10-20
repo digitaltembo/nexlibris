@@ -8,6 +8,9 @@ import { CatalogBrowser } from './components/CatalogBrowser';
 import { CurrentlyReading } from './components/CurrentlyReading';
 import { currentlyReading, setAsideOperations } from './library/currentlyReading';
 import { librarySources, useSearchableSources } from './catalogs/sources';
+import { ConnectionBrowser } from './components/ConnectionBrowser';
+import { readableConnections } from './connections';
+import { useConnectionStatus } from './connections/active';
 import { onTitles, rememberTitle, SEARCH_STEP, titlesVersion } from './catalogs/titles';
 import { BulkEditor } from './components/BulkEditor';
 import { CategoriesDialog } from './components/CategoriesDialog';
@@ -16,7 +19,6 @@ import { BackupDialog } from './components/BackupDialog';
 import { LibraryFolderDialog } from './components/LibraryFolderDialog';
 import { AppMenu, MenuButton, type MenuEntry } from './components/AppMenu';
 import { ConnectionsDialog } from './components/ConnectionsDialog';
-import { FiltersDialog } from './components/FiltersDialog';
 import { IsbnDialog } from './components/IsbnDialog';
 import { MenuIcon } from './components/icons';
 import { ItemDetail } from './components/ItemDetail';
@@ -33,7 +35,6 @@ import { knownView, VIEWS, type View } from './views/views';
 import { IMPORT_ACCEPT } from './formats/formats';
 import { ALL_BOOKS, browse, crumbs, parentPath, viewCount, type BrowsePath } from './library/browse';
 import { availableFields, DEFAULT_COLUMNS, visibleColumns } from './library/columns';
-import { describeRule, filterFields, filtersQuery, parseFilters } from './library/filters';
 import { ALREADY_IN_LIBRARY, importFiles, type ImportResult, type ImportSource } from './library/importFiles';
 import { droppedFiles } from './library/droppedFiles';
 import { ImportProgress, importProgressLabel, type ImportProgressState } from './components/ImportProgress';
@@ -43,14 +44,15 @@ import { followTitleBar } from './backends/desktopBridge';
 import { clickItem, NO_SELECTION, toggleItem, type SelectionState } from './library/selection';
 import { useBackToClose } from './library/useBackToClose';
 import { useLibrary } from './library/LibraryContext';
-import { DEFAULT_DESC, filterItems, sortItems, type Sort, type SortKey } from './library/search';
+import { DEFAULT_DESC, filterItems, formatTerm, sortItems, type Sort, type SortKey } from './library/search';
+import { searchFields } from './library/suggest';
 import { usePersistentState } from './library/usePersistentState';
 import { APPEARANCE_KEY, APPEARANCES, applyAppearance, type Appearance } from './styles/appearance';
 import { Reader } from './reader/Reader';
 import { useBluetoothHosting } from './sync/bluetoothHost';
 import { useSyncHosting } from './sync/hosting';
 import { NARROW } from './styles/GlobalStyle';
-import { besidePanel, Button, Muted, NoticeBox, Tag, TagButton, TagLabel, TagList, TagRemove } from './styles/ui';
+import { besidePanel, Button, Muted, NoticeBox } from './styles/ui';
 import { followWindowColors } from './styles/windowColors';
 import { openReaderWindow, readsInWindows, serveReaderWindows } from './library/readerWindow';
 import { choosesServer, useServerSession } from './library/account';
@@ -96,19 +98,6 @@ const Toolbar = styled.header<{ $withPanel: boolean }>`
     font-size: 1.15rem;
     letter-spacing: 0.02em;
   }
-`;
-
-const FilterChips = styled(TagList)`
-  flex: 1;
-`;
-
-/** A chip's label that opens the filters. */
-const ChipLabel = styled(TagLabel).attrs({ as: 'button', type: 'button' })`
-  border: none;
-  background: none;
-  color: var(--text);
-  font: inherit;
-  cursor: pointer;
 `;
 
 /** What's going on (an import, a selection), beside the search. */
@@ -203,9 +192,6 @@ export function App() {
   /** A search of the text inside books (`fulltext/`), shown instead of the books; never at the same time as `query`. */
   const [textQuery, setTextQuery] = useState('');
   const { progress: indexing, pause: pauseIndexing, index: textIndex } = useTextIndex();
-  /** The filters' rules, as search text (`library/filters.ts`); applied along with `query`. */
-  const [filterQuery, setFilterQuery] = useState('');
-  const [editingFilters, setEditingFilters] = useState(false);
   const [appearance, setAppearance] = usePersistentState<Appearance>(APPEARANCE_KEY, 'system');
   /** The Currently Reading notice, shown each time the app opens while books are being read, until hidden. */
   const [readingHidden, setReadingHidden] = useState(false);
@@ -258,19 +244,25 @@ export function App() {
 
   const allItems = Object.values(library.items);
   const { ratings } = userData(library);
-  /** The books the search and filters leave, wherever the view is. */
+  /** The books the search leaves, wherever the view is. */
   const matching = useMemo(() => {
     const context = { ratings };
-    return filterItems(filterItems(Object.values(library.items), filterQuery, context), query, context);
-  }, [library.items, filterQuery, query, ratings]);
+    return filterItems(Object.values(library.items), query, context);
+  }, [library.items, query, ratings]);
   const categories = useMemo(() => Object.values(library.categories ?? {}), [library.categories]);
   /** Catalogs the library browses, listed in the Library after its own categories. */
   const sourceList = useMemo(() => librarySources(library.devices), [library.devices]);
   const sources = useMemo(() => sourceList.map(({ device }) => ({ id: device.id, name: device.name })), [sourceList]);
+  /** Other connections that read (readers, folders, other instances) and are active here, listed after the catalogs. */
+  const { isActive } = useConnectionStatus();
+  const readable = useMemo(() => readableConnections(library).filter((c) => isActive(c.device)), [library, isActive]);
   const searchableSources = useSearchableSources(backend, library.devices, searching);
   /** Books being read, latest first: the notice above the books, and the Library's Currently reading. */
   const inProgress = useMemo(() => currentlyReading(library), [library]);
-  const extras = useMemo(() => ({ sources, reading: inProgress.map((r) => r.item.id) }), [sources, inProgress]);
+  const extras = useMemo(
+    () => ({ sources, connections: readable.map(({ id, name, type }) => ({ id, name, label: type.label })), reading: inProgress.map((r) => r.item.id) }),
+    [sources, readable, inProgress],
+  );
   const browsed = useMemo(() => browse(matching, path, categories, { ratings }, extras), [matching, path, categories, ratings, extras]);
   // The breadcrumbs name catalog pages as they're read.
   useSyncExternalStore(onTitles, titlesVersion);
@@ -283,9 +275,7 @@ export function App() {
   );
   /** The books a text search looks in: this place's, or (at a list of authors, tags, …) all that match. */
   const textItems = browsed.kind === 'books' ? browsed.items : matching;
-  const countMatches = (q: string) => filterItems(filterItems(allItems, q, { ratings }), query, { ratings }).length;
-  const filterFieldList = useMemo(() => filterFields(Object.values(library.items)), [library.items]);
-  const filters = filterQuery ? parseFilters(filterQuery, filterFieldList) : undefined;
+  const searchFieldList = useMemo(() => searchFields(Object.values(library.items)), [library.items]);
   const fields = useMemo(() => availableFields(Object.values(library.items)), [library.items]);
   const active = previewId ? library.items[previewId] : undefined;
   const selectedItems = [...selection].map((id) => library.items[id]).filter((i): i is Item => i !== undefined);
@@ -309,6 +299,16 @@ export function App() {
     setSelectionState(NO_SELECTION);
     setBulkEditing(false);
   };
+  /** A book from a connection or catalog open in the right-hand pane (its browser shows it): the page makes room. */
+  const [remotePane, setRemotePane] = useState(false);
+  const onRemoteDetail = useCallback((open: boolean) => {
+    setRemotePane(open);
+    // One pane at a time: the library's book closes.
+    if (open) {
+      setSelectionState(NO_SELECTION);
+      setBulkEditing(false);
+    }
+  }, []);
 
   /** Opens the search: in a catalog, searching it; else as the bar's search is. */
   const openSearch = (mode?: SearchMode) =>
@@ -349,7 +349,6 @@ export function App() {
   useBackToClose(choosingFolder, () => setChoosingFolder(false));
   useBackToClose(managingConnections !== false, () => setManagingConnections(false));
   useBackToClose(accountOpen, () => setAccountOpen(false));
-  useBackToClose(editingFilters, () => setEditingFilters(false));
   useBackToClose(searching !== false, () => setSearching(false));
   useBackToClose(reading !== undefined, closeReader);
 
@@ -583,8 +582,6 @@ export function App() {
         { type: 'separator' },
         { id: 'find', label: 'Find…', accelerator: 'CmdOrCtrl+F', run: () => openSearch('books') },
         { id: 'findText', label: 'Find Inside Books…', accelerator: 'CmdOrCtrl+Shift+F', run: () => openSearch('text') },
-        { id: 'filters', label: 'Filters…', accelerator: 'CmdOrCtrl+Shift+F', run: () => setEditingFilters(true) },
-        { id: 'clearFilters', label: 'Clear Filters', enabled: filterQuery !== '', run: () => setFilterQuery('') },
       ],
     },
     {
@@ -656,8 +653,9 @@ export function App() {
           .sort((a, b) => a.name.localeCompare(b.name))
           .map((c) => ({ id: `go:category:${c.id}`, label: c.name, run: () => navigate(['category', c.id]) })),
         { id: 'go:tags', label: 'Tags', run: () => navigate(['tags']) },
-        ...(sources.length ? [{ type: 'separator' as const }] : []),
+        ...(sources.length || readable.length ? [{ type: 'separator' as const }] : []),
         ...sources.map((c) => ({ id: `go:source:${c.id}`, label: c.name, run: () => navigate(['source', c.id]) })),
+        ...readable.map((c) => ({ id: `go:connection:${c.id}`, label: c.name, run: () => navigate(['connection', c.id]) })),
       ],
     },
     {
@@ -683,7 +681,7 @@ export function App() {
     onLongPress,
   };
 
-  const withPanel = showBulk || showDetail;
+  const withPanel = showBulk || showDetail || remotePane;
   const showReading = inProgress.length > 0 && !readingHidden && !textQuery && path[0] !== 'source' && path[0] !== 'reading';
 
   return (
@@ -705,8 +703,6 @@ export function App() {
               setQuery('');
               setTextQuery('');
             }}
-            filterCount={filters ? filters.rules.length : filterQuery ? 1 : 0}
-            onFilters={() => setEditingFilters(true)}
           />
           {importProgress ? (
             <ImportProgress
@@ -733,7 +729,7 @@ export function App() {
                 Bulk convert
               </Button>
               {items.some((i) => !selection.has(i.id)) && (
-                <SubtleButton onClick={selectAll}>Select all{(query || filterQuery) && ' shown'}</SubtleButton>
+                <SubtleButton onClick={selectAll}>Select all{query && ' shown'}</SubtleButton>
               )}
               <Button $variant="icon" aria-label="Clear selection" title="Clear selection" onClick={clearSelection}>
                 ×
@@ -766,11 +762,11 @@ export function App() {
           />
         </Toolbar>
 
-        {(allItems.length > 0 || sources.length > 0) && (
+        {(allItems.length > 0 || sources.length > 0 || readable.length > 0) && (
           <Breadcrumbs
             withPanel={withPanel}
             crumbs={[
-              ...crumbs(allItems, path, categories, sources).map((c) => ({
+              ...crumbs(allItems, path, categories, sources, readable).map((c) => ({
                 label: c.label,
                 onSelect: () => {
                   setTextQuery('');
@@ -797,31 +793,6 @@ export function App() {
             onSetAside={(r) => void apply(setAsideOperations(r))}
             onHide={() => setReadingHidden(true)}
           />
-        </Notice>
-      )}
-      {filterQuery && (
-        <Notice $withPanel={withPanel} role="status" aria-label="Filters">
-          <FilterChips>
-            {filters && filters.any && filters.rules.length > 1 && <Muted>Any of:</Muted>}
-            {filters ? (
-              filters.rules.map((rule, index) => (
-                <Tag key={index}>
-                  <ChipLabel onClick={() => setEditingFilters(true)}>{describeRule(rule, filterFieldList)}</ChipLabel>
-                  <TagRemove
-                    aria-label={`Remove filter: ${describeRule(rule, filterFieldList)}`}
-                    onClick={() => setFilterQuery(filtersQuery({ ...filters, rules: filters.rules.filter((_, i) => i !== index) }))}
-                  >
-                    ×
-                  </TagRemove>
-                </Tag>
-              ))
-            ) : (
-              <TagButton onClick={() => setEditingFilters(true)}>{filterQuery}</TagButton>
-            )}
-          </FilterChips>
-          <Button $variant="secondary" $size="small" onClick={() => setFilterQuery('')}>
-            Clear filters
-          </Button>
         </Notice>
       )}
 
@@ -867,7 +838,7 @@ export function App() {
           if (hasSelection && !(e.target as Element).closest('button, a, input, select, tr')) clearSelection();
         }}
       >
-        {allItems.length === 0 && browsed.kind !== 'source' && !(sources.length && path.length === 0) ? (
+        {allItems.length === 0 && browsed.kind !== 'source' && browsed.kind !== 'connection' && !((sources.length || readable.length) && path.length === 0) ? (
           <Empty>
             <p>Your library is empty.</p>
             <Muted as="p">
@@ -882,6 +853,14 @@ export function App() {
             onRead={(item, file, at) => read(item.id, file, at)}
             onOpenItem={openItem}
           />
+        ) : browsed.kind === 'connection' ? (
+          <ConnectionBrowser
+            key={browsed.id}
+            device={library.devices![browsed.id]!}
+            view={view}
+            listColumns={listColumns}
+            onDetail={onRemoteDetail}
+          />
         ) : browsed.kind === 'source' ? (
           <CatalogBrowser
             key={path.join('\n')}
@@ -894,17 +873,14 @@ export function App() {
               rememberTitle(url, title);
               navigate([...path, url]);
             }}
+            onDetail={onRemoteDetail}
           />
         ) : browsed.kind === 'entries' && browsed.entries.length > 0 ? (
           <BrowseEntries entries={browsed.entries} layout={view === 'list' ? 'list' : 'grid'} onOpen={navigate} />
         ) : items.length === 0 ? (
           <Empty>
             <Muted>
-              {query || filterQuery
-                ? query
-                  ? `Nothing here matches “${query}”${filterQuery ? ' with these filters' : ''}.`
-                  : 'Nothing here matches these filters.'
-                : 'Nothing here.'}
+              {query ? `Nothing here matches “${query}”.` : 'Nothing here.'}
             </Muted>
           </Empty>
         ) : view === 'list' ? (
@@ -923,8 +899,8 @@ export function App() {
           item={active}
           onClose={clearSelection}
           onSelectTag={(tag) => {
-            setQuery('');
-            setFilterQuery(filtersQuery({ any: false, rules: [{ field: 'tag', condition: 'anyOf', values: [tag] }] }));
+            setTextQuery('');
+            setQuery(formatTerm({ kind: 'field', field: 'tag', values: [tag], negate: false }));
           }}
           onRead={(file) => read(active.id, file)}
         />
@@ -949,9 +925,8 @@ export function App() {
       {searching && (
         <SearchDialog
           query={query}
-          filterQuery={filterQuery}
           items={allItems}
-          fields={filterFieldList}
+          fields={searchFieldList}
           ratings={ratings}
           mode={searching}
           sources={searchableSources}
@@ -968,8 +943,6 @@ export function App() {
           }}
           onRead={(item, file, at) => read(item.id, file, at)}
           onClose={() => setSearching(false)}
-          onFilterQuery={setFilterQuery}
-          onEditFilters={() => setEditingFilters(true)}
           onOpenItem={openItem}
           {...(browsed.kind === 'books' &&
             path.join('/') !== ALL_BOOKS.join('/') && {
@@ -982,16 +955,6 @@ export function App() {
               },
             })}
           onLeaveScope={() => navigate(ALL_BOOKS)}
-        />
-      )}
-      {editingFilters && (
-        <FiltersDialog
-          title="Filters"
-          query={filterQuery}
-          onChange={setFilterQuery}
-          onClose={() => setEditingFilters(false)}
-          items={allItems}
-          count={countMatches}
         />
       )}
       {addingByIsbn && (

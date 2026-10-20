@@ -25,6 +25,8 @@ export function syncEndpoints({ libraries, pairings, syncOf }: Services): Messag
       return null;
     },
     missing: (request, caller) => lacking(libraries, pairingOf(caller).accountId, request?.hashes),
+    // Every instance of an account sees its whole library, so may fetch any of its files.
+    allows: () => Promise.resolve(true),
   };
 }
 

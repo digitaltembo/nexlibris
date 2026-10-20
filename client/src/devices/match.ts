@@ -1,9 +1,10 @@
 import type { Item, Library } from '@nexlibris/common';
+import { stripExtension } from '../formats/formats';
 import { loose } from '../library/importFiles';
 import type { RemoteBook } from './types';
 
 /** The file name without the folder or the extension (`.x4.epub` included). */
-const stem = (path: string) => path.slice(path.lastIndexOf('/') + 1).replace(/(\.x[34])?\.[^.]+$/i, '');
+const stem = (path: string) => stripExtension(path.slice(path.lastIndexOf('/') + 1));
 
 /**
  * The library item a book on a connection is: the same title and an author in common, from what

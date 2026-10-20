@@ -108,6 +108,7 @@ export const FilesToUpdate: Story = {
             { item: dune, file: { hash: 'b', size: 1, format: 'x4.epub' }, changes: ['tags'] },
             { item: sampleItems[1]!, file: { hash: 'c', size: 1, format: 'epub' }, changes: ['title sort', 'author sort', 'description'] },
           ],
+          fingerprints: [],
           current: 640,
           notHere: 12,
           drm: [{ title: 'A Bought Book', kind: 'Adobe DRM' }],

@@ -1,17 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import { RevisionMismatchError, StoredLibraryBackend, type LibraryBackend } from './backend';
-import { createItem, type Operation } from './operations';
+import { createDevice, createItem, type Operation } from './operations';
+import type { ScopeRule } from './scope';
 import { stateDigest } from './repair';
 import { createMessageClient, createMessageHandler, type MessageImpl } from './rpc';
 import { MemoryStorage } from './storage';
-import { createSyncService, previewSync, readPairings, runSync, type Pairing, type SyncClient } from './sync';
+import { createSyncService, peerOffer, previewSync, readPairings, requestFromPeer, runSync, type Pairing, type SyncClient } from './sync';
 import { syncApiMeta, type SyncApi } from './syncApi';
 
 /** A hub (its backend, served through the real message handler with a JSON round trip) and a phone to sync with it. */
-async function setup(options: { breakApply?: boolean } = {}) {
+async function setup(options: { breakApply?: boolean; scope?: ScopeRule } = {}) {
   const hub = new StoredLibraryBackend(new MemoryStorage(), 'Desk');
   const phone = new StoredLibraryBackend(new MemoryStorage(), 'Phone');
-  const service = createSyncService(hub, { name: () => 'Desktop' });
+  const service = createSyncService(hub, { name: () => 'Desktop', ...(options.scope && { scope: options.scope }) });
   const done: string[] = [];
   let applies = 0;
   const impl: MessageImpl<SyncApi> = {
@@ -158,6 +159,64 @@ describe('sync', () => {
     expect(result.repaired).toHaveLength(1);
     expect(await titles(s.hub)).toEqual(['Left Hand', 'Piranesi']);
     expect(await hashOf(s.phone)).toBe(await hashOf(s.hub));
+  });
+
+  it('moves only what each side exposes, as Sync from and Sync to choose, and offers the rest to ask for', async () => {
+    // The hub shows the phone its books tagged "phone"; the phone shows the hub everything but its diary.
+    const s = await setup({ scope: () => (item) => item.tags.includes('phone') });
+    const expose: ScopeRule = () => (item) => item.title !== 'Diary';
+    const tagged = (title: string, tags: string[]): Operation => ({ type: 'addItem', item: createItem({ title, tags }) });
+    await s.hub.apply([tagged('Dune', ['phone']), tagged('Emma', [])]);
+    await s.phone.apply([add('Piranesi'), add('Notes'), add('Diary')]);
+
+    // Sync from: the hub's exposed books come here; nothing goes there, the phone's exposed books are offered.
+    const from = await sync(s, { push: 'none', expose });
+    expect(from.preview).toMatchObject({ pushed: [] });
+    expect(await titles(s.phone)).toEqual(['Diary', 'Dune', 'Notes', 'Piranesi']);
+    expect(await titles(s.hub)).toEqual(['Dune', 'Emma']);
+    const origin = (await s.phone.getLibrary()).origin;
+    const offer = await peerOffer(s.hub, origin);
+    expect(offer.items.map((item) => item.title).sort()).toEqual(['Notes', 'Piranesi']);
+
+    // Asked for there, Notes comes with the next sync, even one that sends nothing else.
+    await requestFromPeer(s.hub, origin, [offer.items.find((item) => item.title === 'Notes')!.id]);
+    await sync(s, { push: 'none', expose });
+    expect(await titles(s.hub)).toEqual(['Dune', 'Emma', 'Notes']);
+    expect((await peerOffer(s.hub, origin)).requested).toEqual([]);
+
+    // Sync to: the rest of what the phone exposes goes; its diary never does.
+    const to = await sync(s, { pull: 'none', expose });
+    expect(to.preview.pushed).toHaveLength(1);
+    expect(await titles(s.hub)).toEqual(['Dune', 'Emma', 'Notes', 'Piranesi']);
+  });
+
+  it('never carries deletions across, and keeps deleted books off the side that deleted them', async () => {
+    const keptOff: ScopeRule = (library, peer) => {
+      const excluded = new Set(library.devices?.[peer]?.excluded);
+      return (item) => !excluded.has(item.id);
+    };
+    const s = await setup({ scope: keptOff });
+    const phoneOrigin = (await s.phone.getLibrary()).origin;
+    const hubOrigin = (await s.hub.getLibrary()).origin;
+    // Each side has a connection for the other, as instances do.
+    const connections: Operation[] = [
+      { type: 'addDevice', device: { ...createDevice({ name: 'Phone', type: 'nexlibris.instance' }), id: phoneOrigin } },
+      { type: 'addDevice', device: { ...createDevice({ name: 'Desk', type: 'nexlibris.instance' }), id: hubOrigin } },
+    ];
+    await s.hub.apply([...connections, add('Dune'), add('Emma')]);
+    await sync(s);
+    const ids = Object.fromEntries(Object.values((await s.hub.getLibrary()).items).map((item) => [item.title, item.id]));
+    await s.phone.apply([{ type: 'removeItem', id: ids.Dune! }]);
+    await s.hub.apply([{ type: 'removeItem', id: ids.Emma! }]);
+
+    const { preview } = await sync(s, { expose: keptOff });
+    expect(preview).toMatchObject({ keptOff: [ids.Dune], keptHere: [ids.Emma] });
+    expect(await titles(s.phone)).toEqual(['Emma']);
+    expect(await titles(s.hub)).toEqual(['Dune']);
+    // Later syncs don't bring them back either way.
+    await sync(s, { expose: keptOff });
+    expect(await titles(s.phone)).toEqual(['Emma']);
+    expect(await titles(s.hub)).toEqual(['Dune']);
   });
 
   it('refuses a hub that is a different instance from the one paired with', async () => {

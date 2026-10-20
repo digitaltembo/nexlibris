@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { connectionContents, importFromConnection, linkOperations, matchItem, removeOperations } from './contents';
 import { listDevice, planSync } from './plan';
 import { runSync } from './run';
-import type { DeviceTarget, DeviceType, RemoteFile } from './types';
+import type { DeviceTarget, FilesType, RemoteFile } from './types';
 
 // Under Node the Kindle parser fetches resources; nothing here imports Kindle files.
 vi.mock('../formats/kindle', () => ({}));
@@ -37,10 +37,13 @@ class FakeDevice implements DeviceTarget {
   }
 }
 
-const type: DeviceType = {
+const type: FilesType = {
+  access: 'files',
   id: 'test.reader',
   label: 'Reader',
-  formats: ['epub', 'txt'],
+  read: true,
+  write: { single: true },
+  formats: () => ['epub', 'txt'],
   settings: [],
   folder: () => '/Books',
   target: () => {
@@ -71,7 +74,7 @@ async function setup() {
     const library = await backend.getLibrary();
     const current = library.devices![device.id]!;
     const plan = planSync(library, current, type, await listDevice(current, type, target));
-    await backend.apply((await runSync(device.id, plan, target, backend, undefined)).operations);
+    await backend.apply((await runSync(library, current, plan, target, backend)).operations);
     return plan;
   };
   const contents = async () => {
@@ -103,12 +106,12 @@ describe('connection contents', () => {
     expect(pending.map((item) => item.title)).toEqual(['Solaris']);
     expect([dune, emma, scan].every(Boolean)).toBe(true);
 
-    // Changed on the device, or no longer chosen.
+    // Changed on the device, or out of the catalog (and left there).
     target.files.set('/Books/Dune - Frank Herbert.epub', 'edited on the reader');
     expect((await contents()).entries[0]).toMatchObject({ kind: 'placed', status: 'changed' });
     target.files.set('/Books/Dune - Frank Herbert.epub', 'dune epub');
     await backend.apply([{ type: 'removeDeviceItems', id: deviceId, itemIds: [dune.id] }]);
-    expect((await contents()).entries[0]).toMatchObject({ kind: 'placed', status: 'remove' });
+    expect((await contents()).entries[0]).toMatchObject({ kind: 'placed', status: 'left' });
   });
 
   it('links a book put there by hand, so syncs keep it rather than treating it as someone else’s', async () => {

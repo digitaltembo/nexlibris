@@ -16,6 +16,8 @@ import { filterItems, type SearchContext, type Sort } from './search';
  *   ['category', id, n]         the books of its nth entry
  *   ['source', id, ...steps]    a catalog the library browses (`catalogs/`): its start, then each page
  *                               opened from there (an address, or `search:<terms>`)
+ *   ['connection', id]          the books on another connection that reads: a reader, a folder,
+ *                               another instance (`components/ConnectionBrowser.tsx`)
  *
  * Everything is worked out from the books the search and filters leave, so the entries narrow
  * as they do. All books is where the app starts.
@@ -46,6 +48,8 @@ export type BrowseView =
     }
   /** A page of a catalog the library browses: its start, or `step` (`catalogs/titles.ts`). */
   | { kind: 'source'; id: string; step?: string }
+  /** The books on a connection that reads, other than a catalog on a server. */
+  | { kind: 'connection'; id: string }
   /** A place that no longer exists, such as a removed category. */
   | { kind: 'missing' };
 
@@ -59,6 +63,8 @@ export interface SourceRef {
 export interface BrowseExtras {
   /** Catalogs the library browses, listed last. */
   sources?: SourceRef[];
+  /** Other connections that read (readers, folders, instances), listed after them. */
+  connections?: (SourceRef & { label: string })[];
   /** The books being read, latest first (`library/currentlyReading.ts`). */
   reading?: ItemId[];
 }
@@ -172,9 +178,13 @@ export function browse(
   path: BrowsePath,
   categories: Category[],
   context: SearchContext = {},
-  { sources = [], reading = [] }: BrowseExtras = {},
+  { sources = [], connections = [], reading = [] }: BrowseExtras = {},
 ): BrowseView {
   const [kind, key, sub] = path;
+  if (kind === 'connection') {
+    if (!connections.some((c) => c.id === key) || path.length > 2) return { kind: 'missing' };
+    return { kind: 'connection', id: key! };
+  }
   if (kind === 'source') {
     if (!sources.some((s) => s.id === key)) return { kind: 'missing' };
     const step = path.at(-1);
@@ -205,6 +215,7 @@ export function browse(
         ...custom,
         grouped('tags'),
         ...sources.map((source): BrowseEntry => ({ label: source.name, detail: 'Catalog', path: ['source', source.id] })),
+        ...connections.map((c): BrowseEntry => ({ label: c.name, detail: c.label, path: ['connection', c.id] })),
       ],
     };
   }
@@ -253,7 +264,7 @@ export function browse(
 }
 
 /** The way to `path`, from the Library, for the breadcrumbs. */
-export function crumbs(items: Item[], path: BrowsePath, categories: Category[], sources: SourceRef[] = []): Crumb[] {
+export function crumbs(items: Item[], path: BrowsePath, categories: Category[], sources: SourceRef[] = [], connections: SourceRef[] = []): Crumb[] {
   const trail: Crumb[] = [{ label: 'Library', path: [] }];
   const [kind, key, sub] = path;
   const add = (label: string, to: BrowsePath) => trail.push({ label, path: to });
@@ -272,6 +283,9 @@ export function crumbs(items: Item[], path: BrowsePath, categories: Category[], 
       add(source.name, ['source', source.id]);
       path.slice(2).forEach((step, i) => add(stepTitle(step), path.slice(0, 3 + i)));
     }
+  } else if (kind === 'connection') {
+    const connection = connections.find((c) => c.id === key);
+    if (connection) add(connection.name, ['connection', connection.id]);
   } else if (kind === 'category' && key !== undefined) {
     const category = categories.find((c) => c.id === key);
     if (category) {

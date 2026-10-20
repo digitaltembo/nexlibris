@@ -9,9 +9,9 @@ import {
 import JSZip from 'jszip';
 import { describe, expect, it } from 'vitest';
 import { parseXml } from '../../formats/xml';
-import type { CatalogType } from '../types';
+import type { ExportType } from '../types';
 import { buildCatalog, slug, type CatalogBook, type CatalogFile } from './catalog';
-import { exportCatalog, MANIFEST_PATH, type CatalogSink } from './export';
+import { exportCatalog, MANIFEST_PATH, type CatalogSink, type CloudflareOptions } from './export';
 import { zipSink } from './sinks';
 
 const book = (title: string, authors: string[], extra: Partial<Item> = {}, addedAt = '2026-01-01T00:00:00Z'): CatalogBook => ({
@@ -151,13 +151,13 @@ function memorySink() {
   return { files, sink };
 }
 
-const type: CatalogType = {
-  kind: 'catalog',
+const type: ExportType = {
+  access: 'export',
   id: 'test.catalog',
   label: 'Catalog',
-  formats: ['x4.epub', 'epub'],
+  write: { single: false },
+  formats: () => ['x4.epub', 'epub'],
   settings: [],
-  prepare: { key: (item) => item.title, run: async (item, _f, data) => new Blob([`${await data.text()} titled ${item.title}`]) },
 };
 
 async function setup() {
@@ -176,40 +176,76 @@ async function setup() {
   const notes = await add('Notes', { txt: 'notes' });
   const device = createDevice({ name: 'X4', type: type.id });
   await backend.apply([{ type: 'addDevice', device }, { type: 'addDeviceItems', id: device.id, itemIds: [dune.id, notes.id] }]);
-  const run = async (sink: CatalogSink) => {
+  const run = async (sink: CatalogSink, options: { cloudflare?: CloudflareOptions; type?: ExportType } = {}) => {
     const library = await backend.getLibrary();
-    return exportCatalog(library, library.devices![device.id]!, type, backend, sink);
+    const result = await exportCatalog(library, library.devices![device.id]!, options.type ?? type, backend, sink, undefined, options.cloudflare);
+    await backend.apply([{ type: 'recordDeviceSync', id: device.id, placed: result.placed, removed: [] }]);
+    return result;
   };
   return { backend, dune, run };
 }
 
 describe('catalog export', () => {
-  it('writes each of the device’s formats a book has, with metadata in, and copies only what changed', async () => {
+  it('writes each of its formats a book has, as stored, and copies only what changed', async () => {
     const { backend, dune, run } = await setup();
     const { files, sink } = memorySink();
     const first = await run(sink);
     expect(first).toMatchObject({ books: 1, written: 2, unchanged: 0, skipped: ['Notes'] });
-    expect(files.get('books/dune_author.x4.epub')).toBe('dune for x4 titled Dune');
-    expect(files.get('books/dune_author.epub')).toBe('dune titled Dune');
+    expect(files.get('books/dune_author.x4.epub')).toBe('dune for x4');
+    expect(files.get('books/dune_author.epub')).toBe('dune');
     const stored = (await backend.getLibrary()).items[dune.id]!.files;
-    expect(stored.map((f) => f.format)).toEqual(['epub', 'x4.epub']);
     // Each book file, for recording what the connection holds (covers and feeds aren't books).
     expect(first.placed).toEqual({
-      'books/dune_author.x4.epub': { itemId: dune.id, hash: stored[1]!.hash, size: 23, key: 'Dune' },
-      'books/dune_author.epub': { itemId: dune.id, hash: stored[0]!.hash, size: 16, key: 'Dune' },
+      'books/dune_author.x4.epub': { itemId: dune.id, hash: stored[1]!.hash, size: 11 },
+      'books/dune_author.epub': { itemId: dune.id, hash: stored[0]!.hash, size: 4 },
     });
 
     const second = await run(sink);
     expect(second).toMatchObject({ written: 0, unchanged: 2, removed: 0 });
     expect(Object.keys(second.placed).sort()).toEqual(Object.keys(first.placed).sort());
 
+    // Renamed, it's written under its new name; the old book files stay (syncs only add), though the feeds drop them.
     await backend.apply([{ type: 'updateItem', id: dune.id, patch: { title: 'Dune Messiah' } }]);
     const third = await run(sink);
     expect(third).toMatchObject({ written: 2, unchanged: 0 });
-    expect(files.has('books/dune_author.epub')).toBe(false);
+    expect(files.get('books/dune_author.epub')).toBe('dune');
     expect(files.has('search/dune/page-1.xml')).toBe(false);
     expect(files.has('search/dune-messiah/page-1.xml')).toBe(true);
-    expect(files.get('books/dune-messiah_author.epub')).toBe('dune titled Dune Messiah');
+    expect(files.get('books/dune-messiah_author.epub')).toBe('dune');
+    expect(Object.keys(third.placed).sort()).toEqual([
+      'books/dune-messiah_author.epub',
+      'books/dune-messiah_author.x4.epub',
+      'books/dune_author.epub',
+      'books/dune_author.x4.epub',
+    ]);
+    expect([...files.values()].filter((text) => text.includes('dune_author.epub') && text.startsWith('<?xml'))).toEqual([]);
+  });
+
+  it('writes only the formats chosen', async () => {
+    const { run } = await setup();
+    const { files, sink } = memorySink();
+    await run(sink, { type: { ...type, formats: () => ['epub'] } });
+    expect([...files.keys()].filter((path) => path.startsWith('books/'))).toEqual(['books/dune_author.epub']);
+  });
+
+  it('writes calibre3opds’s Cloudflare files for search routing and Basic Auth, and drops them once turned off', async () => {
+    const { run } = await setup();
+    const { files, sink } = memorySink();
+    await run(sink, { cloudflare: { searchRouting: true } });
+    expect(files.has('functions/search/[[searchTerm]].js')).toBe(true);
+    expect(files.has('_worker.js')).toBe(false);
+    const index = JSON.parse(files.get('search-index.json')!) as { books: { terms: string[]; entry: string }[] };
+    expect(index.books.map((b) => b.terms)).toEqual([['dune', 'author']]);
+    // Each entry stands alone, so it declares its namespaces.
+    expect(parseXml(index.books[0]!.entry)?.documentElement.localName).toBe('entry');
+
+    await run(sink, { cloudflare: { searchRouting: true, basicAuth: true } });
+    // Pages ignores functions/ beside a worker, so the worker routes searches itself.
+    expect(files.has('functions/search/[[searchTerm]].js')).toBe(false);
+    expect(files.get('_worker.js')).toContain('const ROUTE_SEARCH = true;');
+
+    await run(sink);
+    expect([...files.keys()].filter((path) => /worker|functions|search-index|assetsignore|README/.test(path))).toEqual([]);
   });
 
   it('saves a zip of the whole catalog', async () => {
@@ -223,6 +259,6 @@ describe('catalog export', () => {
     expect(sink.saved).toBe(true);
     const zip = await JSZip.loadAsync(await saved!.arrayBuffer());
     expect(Object.keys(zip.files)).toContain('index.xml');
-    expect(await zip.file('books/dune_author.x4.epub')!.async('string')).toBe('dune for x4 titled Dune');
+    expect(await zip.file('books/dune_author.x4.epub')!.async('string')).toBe('dune for x4');
   });
 });

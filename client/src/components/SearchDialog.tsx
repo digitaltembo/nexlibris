@@ -3,15 +3,14 @@ import { useDeferredValue, useEffect, useId, useLayoutEffect, useMemo, useRef, u
 import styled from 'styled-components';
 import type { Passage } from '../fulltext/match';
 import { useTextSearch, type TextHit } from '../fulltext/TextIndexContext';
-import { describeRule, filtersQuery, parseFilters, type FilterField } from '../library/filters';
 import { filterItems } from '../library/search';
-import { suggest } from '../library/suggest';
+import { suggest, type SearchField } from '../library/suggest';
 import { usePersistentState } from '../library/usePersistentState';
 import { NARROW } from '../styles/GlobalStyle';
 import { Button, Muted, Tag, TagButton, TagLabel, TagRemove } from '../styles/ui';
 import { Cover } from './Cover';
 import { coverageNote, passagePlace, Snippet } from './TextResults';
-import { FilterIcon, SearchIcon } from './icons';
+import { SearchIcon } from './icons';
 
 const Dialog = styled.dialog`
   width: min(680px, calc(100vw - 24px));
@@ -258,9 +257,8 @@ interface Props {
   query: string;
   /** Searching books (their titles, authors, metadata) or the text inside them. */
   mode: SearchMode;
-  filterQuery: string;
   items: Item[];
-  fields: FilterField[];
+  fields: SearchField[];
   ratings: Record<string, number>;
   /** Enter or the Search button: the bar takes this search and the dialog closes. */
   onSearch(query: string, mode: SearchMode): void;
@@ -268,8 +266,6 @@ interface Props {
   onRead(item: Item, file: FileRef, locator: string): void;
   /** Escape or a click outside: the bar keeps its search. */
   onClose(): void;
-  onFilterQuery(query: string): void;
-  onEditFilters(): void;
   /** A book picked from the results: searched for, then opened. */
   onOpenItem(id: ItemId): void;
   /** Where the search applies, when that's a place narrower than all books (a tag, an author). */
@@ -282,10 +278,10 @@ interface Props {
 
 /**
  * Searching, as Apple's Spotlight: a field over the page with completions for the word being
- * typed, the filters that apply, and the first books found. Enter puts the search in the bar.
+ * typed, the place searched within, and the first books found. Enter puts the search in the bar.
  */
 export function SearchDialog(props: Props) {
-  const { query, filterQuery, items, fields, ratings, onSearch, onClose, onFilterQuery, onEditFilters, onOpenItem, onRead, scope } = props;
+  const { query, items, fields, ratings, onSearch, onClose, onOpenItem, onRead, scope } = props;
   const ref = useRef<HTMLDialogElement>(null);
   const input = useRef<HTMLInputElement>(null);
   const listId = useId();
@@ -296,7 +292,7 @@ export function SearchDialog(props: Props) {
   const sources = props.sources ?? [];
   const [mode, setMode] = useState(props.mode);
   const text = mode === 'text';
-  /** The catalog searched, in a catalog's mode: the library's filters and completions don't apply. */
+  /** The catalog searched, in a catalog's mode: the library's completions don't apply. */
   const source = mode.startsWith('source:') ? sources.find((s) => `source:${s.id}` === mode) : undefined;
   const inLibrary = !source;
   /** Where to put the caret after a completion, once React has written the new text. */
@@ -320,11 +316,8 @@ export function SearchDialog(props: Props) {
 
   const suggestions = useMemo(() => (text || source ? [] : suggest(draft, caret, items, fields)), [text, source, draft, caret, items, fields]);
   const searched = useDeferredValue(draft);
-  /** The books searched: those in the scope that pass the filters. */
-  const pool = useMemo(() => {
-    const within = scoped && scope ? scope.filter(items) : items;
-    return filterItems(within, filterQuery, { ratings });
-  }, [items, filterQuery, ratings, scoped, scope]);
+  /** The books searched: those in the scope. */
+  const pool = useMemo(() => (scoped && scope ? scope.filter(items) : items), [items, scoped, scope]);
   const found = useMemo(() => (text || source ? [] : filterItems(pool, searched, { ratings })), [text, source, pool, searched, ratings]);
   const books = searched.trim() ? found.slice(0, BOOK_LIMIT) : [];
   const textSearch = useTextSearch(text ? searched : '', pool, TEXT_LIMIT);
@@ -333,9 +326,6 @@ export function SearchDialog(props: Props) {
     ...books.map((b): Choice => ({ kind: 'book', id: b.id })),
     ...textSearch.hits.map((hit): Choice => ({ kind: 'passage', hit, passage: hit.match.passages[0]! })),
   ];
-  const filters = filterQuery ? parseFilters(filterQuery, fields) : undefined;
-  /** The search as filters, if rules can say it, to offer keeping it as filters. */
-  const asFilters = !text && !source && draft.trim() ? parseFilters(draft, fields) : undefined;
 
   const edit = (text: string, at = text.length) => {
     setDraft(text);
@@ -459,20 +449,16 @@ export function SearchDialog(props: Props) {
         ))}
       </Modes>
 
-      {/* Clicking a button here leaves the focus in the field, so typing (and Enter) carries on there, also once the filters dialog closes. */}
+      {/* Clicking a button here leaves the focus in the field, so typing (and Enter) carries on there, */}
       <Scroll onMouseDown={(e) => (e.target as Element).closest('button') && e.preventDefault()}>
         {source && (
           <Section aria-label={`Searching ${source.name}`}>
             <Muted as="p">Searches {source.name}’s catalog when you press Enter, and shows what it finds in the Library.</Muted>
           </Section>
         )}
-        {inLibrary && (
-        <Section aria-label="Filters">
-          <h3>
-            <FilterIcon /> Filters
-          </h3>
-          <Chips>
-            {scope && scoped && (
+        {inLibrary && scope && scoped && (
+          <Section aria-label="Searching within">
+            <Chips>
               <Tag>
                 <TagLabel>In {scope.label}</TagLabel>
                 <TagRemove aria-label={`Search all books, not just ${scope.label}`} title="Search all books" onClick={() => {
@@ -482,42 +468,8 @@ export function SearchDialog(props: Props) {
                   ×
                 </TagRemove>
               </Tag>
-            )}
-            {filters
-              ? filters.rules.map((rule, index) => (
-                  <Tag key={index}>
-                    <TagLabel>{describeRule(rule, fields)}</TagLabel>
-                    <TagRemove
-                      aria-label={`Remove filter: ${describeRule(rule, fields)}`}
-                      onClick={() => {
-                        onFilterQuery(filtersQuery({ ...filters, rules: filters.rules.filter((_, i) => i !== index) }));
-                        input.current?.focus();
-                      }}
-                    >
-                      ×
-                    </TagRemove>
-                  </Tag>
-                ))
-              : filterQuery && <TagButton onClick={onEditFilters}>{filterQuery}</TagButton>}
-            <Button $variant="secondary" $size="small" onClick={onEditFilters}>
-              {filterQuery ? 'Edit filters…' : 'Add a filter…'}
-            </Button>
-            {asFilters && (
-              <Button
-                $variant="secondary"
-                $size="small"
-                title="Keep this search as filters, which stay on while you search for other things"
-                onClick={() => {
-                  onFilterQuery([filterQuery, draft.trim()].filter(Boolean).join(filters?.any ? ' or ' : ' '));
-                  edit('');
-                  input.current?.focus();
-                }}
-              >
-                Keep as filter
-              </Button>
-            )}
-          </Chips>
-        </Section>
+            </Chips>
+          </Section>
         )}
 
         {!text && !source && !draft.trim() && (
@@ -618,7 +570,7 @@ export function SearchDialog(props: Props) {
                 Books <Muted>· {found.length === 1 ? '1 match' : `${found.length} matches`}</Muted>
               </h3>
               {books.length === 0 ? (
-                <Nothing>Nothing matches{filterQuery ? ' with these filters' : ''}.</Nothing>
+                <Nothing>Nothing matches.</Nothing>
               ) : (
                 <Options role="presentation">
                   {books.map((book, j) => {

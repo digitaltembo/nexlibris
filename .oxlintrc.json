@@ -18,5 +18,5 @@
       "rules": { "react/globals": "off" }
     }
   ],
-  "ignorePatterns": ["**/dist/**", "**/node_modules/**", "android/**", "desktop/.app/**"]
+  "ignorePatterns": ["**/dist/**", "**/node_modules/**", "android/**", "desktop/.app/**", "client/src/devices/opds/cloudflare/**"]
 }

@@ -2,13 +2,13 @@ import type { Device, Library, LibraryBackend } from '@nexlibris/common';
 import { useEffect, useMemo, useState } from 'react';
 import { catalogAuth, onCredentialsChange, type CatalogAuth } from './credentials';
 import { canSearch } from './feedCache';
-import { isSource, type SourceType } from '../devices/types';
-import { connectionType } from '../plugins';
+import { isFeed, type FeedType } from '../devices/types';
+import { connectionType } from '../connections';
 
-/** Connections to catalogs that are browsed (`devices/types.ts`'s `SourceType`), not synced. */
-export function sourceOf(device: Device): SourceType | undefined {
+/** Connections to catalogs on servers that are browsed (`devices/types.ts`'s `FeedType`), not synced. */
+export function sourceOf(device: Device): FeedType | undefined {
   const type = connectionType(device.type);
-  return type && isSource(type) ? type : undefined;
+  return type && isFeed(type) ? type : undefined;
 }
 
 export const isSourceConnection = (device: Device) => sourceOf(device) !== undefined;

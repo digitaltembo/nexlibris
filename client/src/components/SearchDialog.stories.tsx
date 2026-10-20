@@ -1,26 +1,23 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useState } from 'react';
 import { fn } from 'storybook/test';
-import { filterFields } from '../library/filters';
+import { searchFields } from '../library/suggest';
 import { sampleItems } from '../stories/sampleLibrary';
 import { SearchBox } from './SearchBox';
 import { SearchDialog, type SearchMode } from './SearchDialog';
 
-const fields = filterFields(sampleItems);
+const fields = searchFields(sampleItems);
 
 const meta = {
   component: SearchDialog,
   args: {
     query: '',
     mode: 'books',
-    filterQuery: '',
     items: sampleItems,
     fields,
     ratings: {},
     onSearch: fn(),
     onClose: fn(),
-    onFilterQuery: fn(),
-    onEditFilters: fn(),
     onOpenItem: fn(),
     onRead: fn(),
   },
@@ -28,14 +25,14 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** Before typing: the filters, fields to search by, and recent searches. */
+/** Before typing: fields to search by, and recent searches. */
 export const Empty: Story = {};
 
 /** Completing a tag, with the books found so far. */
 export const CompletingTag: Story = { args: { query: 'tag:sci' } };
 
-/** With filters on, shown as chips that can be removed. */
-export const WithFilters: Story = { args: { query: 'herbert', filterQuery: 'rating:4+ format:epub' } };
+/** Fields and words together, as the search box takes them. */
+export const FieldsAndWords: Story = { args: { query: 'rating:4+ format:epub herbert' } };
 
 /** Searching the text inside books (the sample library has made-up text for Dune and Emma): passages, never mixed with books. */
 export const InsideBooks: Story = { args: { mode: 'text', query: 'desert' } };
@@ -44,7 +41,6 @@ export const InsideBooks: Story = { args: { mode: 'text', query: 'desert' } };
 function BarAndDialog() {
   const [query, setQuery] = useState('');
   const [mode, setMode] = useState<SearchMode>('books');
-  const [filterQuery, setFilterQuery] = useState('');
   const [open, setOpen] = useState(false);
   return (
     <>
@@ -54,14 +50,11 @@ function BarAndDialog() {
         placeholder="Search 5 items…"
         onOpen={() => setOpen(true)}
         onClear={() => setQuery('')}
-        filterCount={filterQuery ? 1 : 0}
-        onFilters={() => undefined}
       />
       {open && (
         <SearchDialog
           query={query}
           mode={mode}
-          filterQuery={filterQuery}
           items={sampleItems}
           fields={fields}
           ratings={{}}
@@ -71,8 +64,6 @@ function BarAndDialog() {
             setOpen(false);
           }}
           onClose={() => setOpen(false)}
-          onFilterQuery={setFilterQuery}
-          onEditFilters={() => undefined}
           onOpenItem={() => undefined}
           onRead={() => undefined}
         />

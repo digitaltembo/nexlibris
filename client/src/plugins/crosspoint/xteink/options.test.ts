@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { xteinkConverter } from '../converters';
+import { xteinkConverter } from '../convert';
 import { DEFAULT_OPTIMIZE_OPTIONS, OPTIMIZE_FIELDS, optimizeOptionsFrom, optimizerVersion } from './options';
 
 describe('CrossPoint optimizer options', () => {

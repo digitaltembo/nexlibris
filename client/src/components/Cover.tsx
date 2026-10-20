@@ -1,6 +1,7 @@
 import type { Item } from '@nexlibris/common';
 import { useEffect, useState } from 'react';
 import styled, { css } from 'styled-components';
+import { generateCover } from '../library/generateCover';
 import { useThumbnailUrl } from '../library/useFileUrl';
 import { useCatalogImage } from '../catalogs/useCatalogImage';
 import { useCollectionDecor } from './CollectionDecor';
@@ -87,6 +88,52 @@ export function Cover({ item, label, className }: { item?: Item; label?: string;
   return (
     <Placeholder ref={setElement} className={className} $color={waiting ? item?.metadata.coverColor : undefined} aria-hidden>
       {!waiting && <PlaceholderTitle>{label ?? item?.title}</PlaceholderTitle>}
+    </Placeholder>
+  );
+}
+
+/** Generated covers by name, as object URLs: each drawn once. */
+const generated = new Map<string, Promise<string | undefined>>();
+
+/** A random number source seeded by `text`, so a name always gets the same colours. */
+function seeded(text: string): () => number {
+  let state = 0;
+  for (const char of text) state = (Math.imul(state, 31) + char.charCodeAt(0)) | 0;
+  return () => {
+    state = (Math.imul(state ^ (state >>> 15), 0x2c1b3c6d) + 0x6d2b79f5) | 0;
+    return ((state >>> 0) % 1_000_000) / 1_000_000;
+  };
+}
+
+/**
+ * A cover drawn for a name (`library/generateCover.ts`, the name on a muted colour, the same each
+ * time), for a group with no real cover to show: a catalog's place. Drawn once it's near the
+ * viewport; the plain placeholder where it can't be (no canvas).
+ */
+export function GeneratedCover({ title, className }: { title: string; className?: string }) {
+  const [element, setElement] = useState<Element | null>(null);
+  const near = useNearViewport(element);
+  const [url, setUrl] = useState<string>();
+  useEffect(() => {
+    if (!near) return;
+    let cancelled = false;
+    let made = generated.get(title);
+    if (!made) {
+      made = generateCover({ title, creators: [] }, seeded(title)).then(
+        (cover) => URL.createObjectURL(cover.data),
+        () => undefined,
+      );
+      generated.set(title, made);
+    }
+    void made.then((made) => !cancelled && setUrl(made));
+    return () => {
+      cancelled = true;
+    };
+  }, [near, title]);
+  if (url) return <Image ref={setElement} className={className} src={url} alt="" />;
+  return (
+    <Placeholder ref={setElement} className={className} aria-hidden>
+      <PlaceholderTitle>{title}</PlaceholderTitle>
     </Placeholder>
   );
 }

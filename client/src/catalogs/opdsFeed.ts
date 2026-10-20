@@ -24,6 +24,12 @@ export interface OpdsLinkTo {
   title: string;
 }
 
+/**
+ * Bump when parsing changes what a page gives: cached pages parsed by an older version are read
+ * again in full when next opened (`feedCache.ts`), as the cache keeps the parse, not the page.
+ */
+export const PARSER_VERSION = 2;
+
 export interface OpdsBook {
   kind: 'book';
   id: string;
@@ -50,6 +56,11 @@ export interface OpdsBook {
   rights?: string;
   /** `dc:identifier`s, e.g. `urn:isbn:…`. */
   identifiers: string[];
+  /**
+   * Where the rest of it is, downloads included, for a book a list gives only as a link to its own
+   * page (Gutenberg's): read when it's opened (`bookDetails`).
+   */
+  details?: string;
 }
 
 export interface OpdsNavigation {
@@ -60,6 +71,8 @@ export interface OpdsNavigation {
   detail?: string;
   href: string;
   thumbnail?: string;
+  /** How many entries the feed it leads to has, where the catalog says (`thr:count`). */
+  count?: number;
 }
 
 export type OpdsEntry = OpdsBook | OpdsNavigation;
@@ -124,13 +137,18 @@ interface Link {
   type: string;
   title?: string;
   length?: number;
+  /** Atom threading's `thr:count`: how many entries the linked feed has. */
+  count?: number;
 }
+
+const THREADING = 'http://purl.org/syndication/thread/1.0';
 
 function links(el: Element, base: string): Link[] {
   return kids(el, 'link').flatMap((link) => {
     const href = absolute(link.getAttribute('href'), base);
     if (!href) return [];
     const length = Number(link.getAttribute('length'));
+    const count = Number(link.getAttributeNS(THREADING, 'count') ?? link.getAttribute('thr:count') ?? NaN);
     return [
       {
         href,
@@ -138,6 +156,7 @@ function links(el: Element, base: string): Link[] {
         type: (link.getAttribute('type') ?? '').toLowerCase(),
         ...(link.getAttribute('title') && { title: link.getAttribute('title')! }),
         ...(length > 0 && { length }),
+        ...(Number.isInteger(count) && count >= 0 && { count }),
       },
     ];
   });
@@ -181,7 +200,15 @@ function entryOf(el: Element, base: string, index: number): OpdsEntry {
   if (!downloads.length && feedLinks.length) {
     const to = feedLinks.find((l) => !l.rel || l.rel === 'subsection' || l.rel.startsWith('http://opds-spec.org/')) ?? feedLinks[0]!;
     const detail = text(kid(el, 'content')) ?? text(kid(el, 'summary'));
-    return { kind: 'navigation', id, title, href: to.href, ...(detail && { detail }), ...(thumbnail && { thumbnail }) };
+    return {
+      kind: 'navigation',
+      id,
+      title,
+      href: to.href,
+      ...(detail && { detail }),
+      ...(thumbnail && { thumbnail }),
+      ...(to.count !== undefined && { count: to.count }),
+    };
   }
   const authors = kids(el, 'author').flatMap((a) => text(kid(a, 'name')) ?? []);
   const summary = html(kid(el, 'content')) ?? html(kid(el, 'summary'));
@@ -249,7 +276,9 @@ export function parseOpdsFeed(xml: string, url: string): OpdsFeed {
   return {
     url,
     title: text(kid(root, 'title')) ?? 'Catalog',
-    entries: kids(root, 'entry').map((el, i) => entryOf(el, url, i)),
+    entries: mergeEditions(kids(root, 'entry').map((el, i) => entryOf(el, url, i))).map((entry) =>
+      entry.kind === 'navigation' ? (titleLink(entry, url) ?? entry) : entry,
+    ),
     sections,
     ...(subtitle && { subtitle }),
     ...(next && { next }),
@@ -257,6 +286,87 @@ export function parseOpdsFeed(xml: string, url: string): OpdsFeed {
       search: { ...(description && { description }), ...(template && { template: template.replace(/%7B/gi, '{').replace(/%7D/gi, '}') }) },
     }),
   };
+}
+
+/** What makes book entries the same title: its name, its authors and its cover. */
+const editionKey = (book: OpdsBook) => JSON.stringify([book.title.trim().toLowerCase(), book.authors, book.cover ?? null]);
+
+/**
+ * Book entries in one feed that are the same title (same name, authors and cover) as one book with
+ * all their downloads: catalogs that list a title's editions apart, as Gutenberg's book pages do
+ * (with and without images). It keeps the first entry's place and the details of the one with the
+ * most downloads; tags and related links are joined.
+ */
+export function mergeEditions(entries: OpdsEntry[]): OpdsEntry[] {
+  const groups = new Map<string, OpdsBook[]>();
+  for (const entry of entries) {
+    if (entry.kind !== 'book') continue;
+    const key = editionKey(entry);
+    groups.set(key, [...(groups.get(key) ?? []), entry]);
+  }
+  const done = new Set<string>();
+  return entries.flatMap((entry): OpdsEntry[] => {
+    if (entry.kind !== 'book') return [entry];
+    const key = editionKey(entry);
+    const group = groups.get(key)!;
+    if (group.length === 1) return [entry];
+    if (done.has(key)) return [];
+    done.add(key);
+    const fullest = group.reduce((best, book) => (book.downloads.length > best.downloads.length ? book : best));
+    const byHref = <T extends { href: string }>(list: T[]) => [...new Map(list.map((x) => [x.href, x])).values()];
+    return [
+      {
+        ...fullest,
+        id: entry.id,
+        downloads: byHref(group.flatMap((book) => book.downloads)).sort((a, b) => rank(a) - rank(b)),
+        related: byHref(group.flatMap((book) => book.related)),
+        tags: [...new Set(group.flatMap((book) => book.tags))],
+        identifiers: [...new Set(group.flatMap((book) => book.identifiers))],
+      },
+    ];
+  });
+}
+
+/**
+ * A list entry that's really one title: Project Gutenberg's lists give each book as a link to its
+ * own page (`/ebooks/<n>.opds`, the author as its text, a generic thumbnail), where its editions
+ * and downloads are. Shown as a book, with its real cover (Gutenberg's are at a known address),
+ * whose page is read when it's opened (`details`). The one catalog-specific rule here.
+ */
+function titleLink(entry: OpdsNavigation, url: string): OpdsBook | undefined {
+  let number: string | undefined;
+  try {
+    if (!/(^|\.)gutenberg\.org$/.test(new URL(url).hostname)) return undefined;
+    number = /^\/ebooks\/(\d+)\.opds$/.exec(new URL(entry.href).pathname)?.[1];
+  } catch {
+    return undefined;
+  }
+  if (!number) return undefined;
+  const art = `https://www.gutenberg.org/cache/epub/${number}/pg${number}.cover`;
+  return {
+    kind: 'book',
+    id: entry.id,
+    title: entry.title,
+    authors: entry.detail ? [entry.detail] : [],
+    downloads: [],
+    related: [],
+    tags: [],
+    identifiers: [],
+    cover: `${art}.medium.jpg`,
+    thumbnail: `${art}.small.jpg`,
+    details: entry.href,
+  };
+}
+
+/**
+ * A book given as a link to its page (`details`), with that page's details and downloads: the
+ * page's book (its editions merged), kept in the list's place.
+ */
+export function withDetails(book: OpdsBook, page: OpdsFeed): OpdsBook {
+  const found = page.entries.find((e): e is OpdsBook => e.kind === 'book');
+  if (!found) return book;
+  const { details: _, ...rest } = found;
+  return { ...rest, id: book.id, ...(!found.thumbnail && book.thumbnail && { thumbnail: book.thumbnail }), ...(!found.cover && book.cover && { cover: book.cover }) };
 }
 
 /** The search template an OpenSearch description gives for OPDS (Atom) results. */

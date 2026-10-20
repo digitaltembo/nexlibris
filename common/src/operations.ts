@@ -48,6 +48,8 @@ export type Operation =
   | { type: 'removeItem'; id: ItemId }
   | { type: 'attachFile'; id: ItemId; file: FileRef }
   | { type: 'detachFile'; id: ItemId; hash: FileHash }
+  /** Records the fingerprint of the metadata written into one of an item's files (`FileRef.metadataKey`), or that it's unknown. */
+  | { type: 'setFileMetadataKey'; id: ItemId; hash: FileHash; metadataKey: string | undefined }
   | { type: 'setRating'; userId: UserId; itemId: ItemId; rating: number | undefined }
   | { type: 'setReview'; userId: UserId; itemId: ItemId; text: string | undefined }
   | { type: 'setPosition'; userId: UserId; itemId: ItemId; position: Omit<ReadingPosition, 'updatedAt'> | undefined }
@@ -55,7 +57,10 @@ export type Operation =
   | { type: 'updateDevice'; id: DeviceId; patch: DevicePatch }
   | { type: 'removeDevice'; id: DeviceId }
   | { type: 'addDeviceItems'; id: DeviceId; itemIds: ItemId[] }
+  /** Takes items out of a device's catalog, with any particular files of theirs it held. */
   | { type: 'removeDeviceItems'; id: DeviceId; itemIds: ItemId[] }
+  /** Holds only these files of an item in a device's catalog (`Device.files`), adding it if need be, or the item as a whole when undefined. */
+  | { type: 'setDeviceFiles'; id: DeviceId; itemId: ItemId; hashes: FileHash[] | undefined }
   /** Keeps items off a device whether or not they're chosen or match its search (`Device.excluded`), or stops keeping them off. */
   | { type: 'excludeDeviceItems'; id: DeviceId; itemIds: ItemId[] }
   | { type: 'unexcludeDeviceItems'; id: DeviceId; itemIds: ItemId[] }
@@ -215,8 +220,8 @@ export function applyOperation(library: Library, op: Operation, at: string): Lib
           return [userId, { ratings, reviews, positions }];
         }),
       );
-      // Taken off devices too; what's already on them is removed by their next sync.
-      const devices = library.devices && mapValues(library.devices, (d) => ({ ...d, items: d.items.filter((id) => id !== op.id) }));
+      // Taken out of devices' catalogs too; what's already on them stays.
+      const devices = library.devices && mapValues(library.devices, (d) => withoutFiles({ ...d, items: d.items.filter((id) => id !== op.id) }, [op.id]));
       return { ...next, items, userData, ...(devices && { devices }) };
     }
     case 'attachFile': {
@@ -227,6 +232,16 @@ export function applyOperation(library: Library, op: Operation, at: string): Lib
     case 'detachFile': {
       const item = requireItem(op.id);
       return withItem({ ...item, files: item.files.filter((f) => f.hash !== op.hash) });
+    }
+    case 'setFileMetadataKey': {
+      const item = requireItem(op.id);
+      if (!item.files.some((f) => f.hash === op.hash)) throw new OperationError(`Item ${op.id} has no file ${op.hash}`, op);
+      const files = item.files.map((f) => {
+        if (f.hash !== op.hash) return f;
+        const { metadataKey: _old, ...rest } = f;
+        return op.metadataKey === undefined ? rest : { ...rest, metadataKey: op.metadataKey };
+      });
+      return withItem({ ...item, files });
     }
     case 'setRating': {
       requireItem(op.itemId);
@@ -292,7 +307,17 @@ export function applyOperation(library: Library, op: Operation, at: string): Lib
     case 'removeDeviceItems': {
       const device = requireDevice(op.id);
       const removed = new Set(op.itemIds);
-      return withDevice({ ...device, items: device.items.filter((id) => !removed.has(id)) });
+      return withDevice(withoutFiles({ ...device, items: device.items.filter((id) => !removed.has(id)) }, op.itemIds));
+    }
+    case 'setDeviceFiles': {
+      const device = requireDevice(op.id);
+      const rest = withoutFiles(device, [op.itemId]);
+      const hashes = op.hashes && [...new Set(op.hashes)];
+      if (!hashes?.length) return withDevice(rest);
+      // Particular files put the item in the catalog, if it wasn't.
+      requireItem(op.itemId);
+      const items = rest.items.includes(op.itemId) ? rest.items : [...rest.items, op.itemId];
+      return withDevice({ ...rest, items, files: { ...rest.files, [op.itemId]: hashes } });
     }
     case 'excludeDeviceItems': {
       // Items needn't exist here: a device can be kept from items this instance never had.
@@ -350,6 +375,15 @@ export function applyOperations(
 
 export function userData(library: Library, userId: UserId = LOCAL_USER): UserData {
   return library.userData[userId] ?? { ratings: {}, reviews: {} };
+}
+
+/** A device without the particular files of these items (`Device.files`), dropping the record when it's empty. */
+function withoutFiles(device: Device, itemIds: ItemId[]): Device {
+  if (!device.files || !itemIds.some((id) => device.files![id])) return device;
+  const files = { ...device.files };
+  for (const id of itemIds) delete files[id];
+  const { files: _files, ...rest } = device;
+  return Object.keys(files).length ? { ...rest, files } : rest;
 }
 
 function mapValues<T>(record: Record<string, T>, f: (value: T) => T): Record<string, T> {

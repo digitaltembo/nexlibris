@@ -47,7 +47,9 @@ export function scopeLibrary(library: Library, scope: Set<ItemId>): Library {
  */
 function scopeDevice(device: Device, scope: Set<ItemId>): Device {
   const placed = Object.fromEntries(Object.entries(device.placed).filter(([, file]) => scope.has(file.itemId)));
-  return { ...device, items: device.items.filter((id) => scope.has(id)), placed };
+  const { files: all, ...rest } = device;
+  const files = all && Object.fromEntries(Object.entries(all).filter(([id]) => scope.has(id)));
+  return { ...rest, items: device.items.filter((id) => scope.has(id)), ...(files && Object.keys(files).length && { files }), placed };
 }
 
 /**
@@ -70,6 +72,7 @@ export function scopeChanges(ops: Operation[], scope: Set<ItemId>): Operation[] 
       case 'removeTags':
       case 'attachFile':
       case 'detachFile':
+      case 'setFileMetadataKey':
         if (scope.has(op.id)) scoped.push(op);
         break;
       case 'setRating':
@@ -86,6 +89,9 @@ export function scopeChanges(ops: Operation[], scope: Set<ItemId>): Operation[] 
         if (itemIds.length) scoped.push({ ...op, itemIds });
         break;
       }
+      case 'setDeviceFiles':
+        if (scope.has(op.itemId)) scoped.push(op);
+        break;
       case 'recordDeviceSync': {
         const placed = Object.fromEntries(Object.entries(op.placed).filter(([, file]) => scope.has(file.itemId)));
         if (Object.keys(placed).length) scoped.push({ ...op, placed, removed: [] });

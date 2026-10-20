@@ -77,6 +77,23 @@ describe('applyOperations', () => {
     expect(detached.items[item.id]?.files).toEqual([]);
   });
 
+  it('records the metadata fingerprint of a file, and forgets it', () => {
+    const { library, item } = libraryWithItem();
+    const file = { hash: 'abc', format: 'epub', size: 10 };
+    const marked = applyOperations(
+      library,
+      [
+        { type: 'attachFile', id: item.id, file },
+        { type: 'setFileMetadataKey', id: item.id, hash: 'abc', metadataKey: 'k1' },
+      ],
+      AT,
+    ).library;
+    expect(marked.items[item.id]?.files).toEqual([{ ...file, metadataKey: 'k1' }]);
+    const cleared = applyOperations(marked, [{ type: 'setFileMetadataKey', id: item.id, hash: 'abc', metadataKey: undefined }], AT).library;
+    expect(cleared.items[item.id]?.files).toEqual([file]);
+    expect(() => applyOperations(marked, [{ type: 'setFileMetadataKey', id: item.id, hash: 'nope', metadataKey: 'k' }])).toThrow(OperationError);
+  });
+
   it('stores ratings and reviews per user and clears them with the item', () => {
     const { library, item } = libraryWithItem();
     const rated = applyOperations(
@@ -157,6 +174,25 @@ describe('applyOperations', () => {
     ({ library } = applyOperations(library, [{ type: 'removeDevice', id: x4.id }]));
     expect(library.devices).toEqual({});
     expect(() => applyOperations(library, [{ type: 'addDeviceItems', id: x4.id, itemIds: [emma.id] }])).toThrow(OperationError);
+  });
+
+  it('keeps particular files of items in a device catalog, dropped with the item', () => {
+    const { library: base, item } = libraryWithItem();
+    const x4 = createDevice({ name: 'X4', type: 'crosspoint.reader' });
+    const { library } = applyOperations(base, [
+      { type: 'addDevice', device: x4 },
+      { type: 'addDeviceItems', id: x4.id, itemIds: [item.id] },
+      { type: 'setDeviceFiles', id: x4.id, itemId: item.id, hashes: ['a', 'b', 'a'] },
+    ]);
+    expect(library.devices![x4.id]!.files).toEqual({ [item.id]: ['a', 'b'] });
+    const whole = applyOperations(library, [{ type: 'setDeviceFiles', id: x4.id, itemId: item.id, hashes: undefined }]).library;
+    expect(whole.devices![x4.id]!.files).toBeUndefined();
+    expect(whole.devices![x4.id]!.items).toEqual([item.id]);
+    const removed = applyOperations(library, [{ type: 'removeDeviceItems', id: x4.id, itemIds: [item.id] }]).library;
+    expect(removed.devices![x4.id]).toMatchObject({ items: [] });
+    expect(removed.devices![x4.id]!.files).toBeUndefined();
+    const deleted = applyOperations(library, [{ type: 'removeItem', id: item.id }]).library;
+    expect(deleted.devices![x4.id]!.files).toBeUndefined();
   });
 
   it('rejects device items that are not in the library', () => {

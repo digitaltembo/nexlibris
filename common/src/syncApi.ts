@@ -1,6 +1,6 @@
 import { get, post, put, TransportType, type SimpleMeta } from 'estuary-rpc';
 import type { Operation } from './operations';
-import type { ItemId, Library } from './types';
+import type { Item, ItemId, Library } from './types';
 
 /**
  * M6 sync between two instances of a library, as an estuary-rpc API. One instance (the hub: the
@@ -65,7 +65,7 @@ export interface ScopeRequest {
 
 /** A call's body as a hub's host passes it on: `state` and `apply` say who's asking, the paired instance whose key came with it. */
 export function fromPeer(endpoint: string, body: unknown, origin: string): unknown {
-  if ((endpoint !== 'state' && endpoint !== 'apply') || !body || typeof body !== 'object') return body;
+  if ((endpoint !== 'state' && endpoint !== 'apply' && endpoint !== 'allows') || !body || typeof body !== 'object') return body;
   return { ...body, peer: origin };
 }
 
@@ -84,20 +84,30 @@ export interface StateResult {
    * the ones it has), and books deleted there stay on the hub, kept off that instance instead.
    */
   scoped?: boolean;
+  /** Books the instance offered the hub that were asked for there, to send with this sync (`sync.ts`'s offers). */
+  requested?: ItemId[];
 }
 
 export interface ApplyRequest extends ScopeRequest {
   ops: Operation[];
   /** The hub's revision when the caller fetched its state; nothing is applied if it has moved on. */
   expectRevision: number;
+  /** The books both sides hold afterwards: the hash is of those alone. All the instance sees, without it. */
+  compare?: ItemId[];
+  /** Books the instance exposes to the hub that it lacks, for the hub to browse and ask for. */
+  offer?: Item[];
 }
 
 export interface ApplyResult {
   revision: number;
-  /** The hub's state hash afterwards (`stateDigest(library).hash`), of the library as the instance sees it. */
+  /** The hub's state hash afterwards (`stateDigest(library).hash`), of the books compared, as the instance sees them. */
   hash: string;
-  /** When scoped: items the instance has that its connection no longer picks, for it to let go of. */
-  outside?: ItemId[];
+}
+
+/** Whether the paired instance may fetch a file: it belongs to a book (or cover) the hub shows it. */
+export interface AllowsRequest {
+  hash: string;
+  peer?: string;
 }
 
 export interface DoneRequest {
@@ -121,6 +131,8 @@ export const syncApiMeta = {
     done: post<DoneRequest, null, SimpleMeta>('api/sync/done', paired),
     /** Which of these files (by hash) the hub doesn't have. Handled by the hub's host, which has its files. */
     missing: post<{ hashes: string[] }, string[], SimpleMeta>('api/sync/missing', paired),
+    /** Whether the instance may fetch a file; hosts that serve files themselves ask the page before sending one. */
+    allows: post<AllowsRequest, boolean, SimpleMeta>('api/sync/allows', paired),
   },
 };
 

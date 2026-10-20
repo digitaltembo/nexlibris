@@ -2,10 +2,8 @@ import { createDevice } from '@nexlibris/common';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import type { DeviceTarget, DeviceType, RemoteFile } from '../../devices/types';
-import { crosspoint, readerInventory } from './index';
-
-const x4 = crosspoint.connectionTypes.find((t) => t.id === 'crosspoint.x4') as DeviceType;
+import type { DeviceTarget, RemoteFile } from '../../devices/types';
+import { readerInventory, readerType as x4 } from './index';
 const fixture = () => readFile(join(process.cwd(), 'src/plugins/crosspoint/fixtures/library.idx'));
 
 /** A reader whose card has the fixture's index, and these files in the folders a sync lists. */
