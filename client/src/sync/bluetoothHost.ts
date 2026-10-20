@@ -12,17 +12,17 @@ import {
   type SyncMessageRequest,
 } from '@nexlibris/common';
 import { useEffect } from 'react';
-import { androidTransport, inAndroidApp } from '../backends/androidBridge';
+import { inMobileApp, mobileTransport } from '../backends/mobileBridge';
 import { instanceName } from './hub';
 import { instanceScope } from './instances';
 
 /**
- * The Android app as a sync hub over Bluetooth (see `common/src/bluetoothApi.ts`): the app carries
+ * The Android or iOS app as a sync hub over Bluetooth (see `common/src/bluetoothApi.ts`): the app carries
  * the bytes, and the page, where the library is, answers each request with `createSyncHub`. Runs
  * while the app is open; turning it on and pairing are in the sync dialog.
  */
 
-export const bluetoothHost = () => createMessageClient(bluetoothHostApiMeta, androidTransport()).bluetoothHost;
+export const bluetoothHost = () => createMessageClient(bluetoothHostApiMeta, mobileTransport()).bluetoothHost;
 
 /** What the hosting loop uses of the app's API. */
 interface BluetoothHostClient {
@@ -59,10 +59,10 @@ let current: SyncHub | undefined;
 /** The hub answering over Bluetooth, for pairing codes and the list of paired devices. */
 export const bluetoothSyncHub = () => current;
 
-/** In the Android app, answers requests from devices connected over Bluetooth; `refresh` shows what a sync changed. */
+/** In the phone apps, answers requests from devices connected over Bluetooth; `refresh` shows what a sync changed. */
 export function useBluetoothHosting(backend: LibraryBackend, refresh: () => Promise<void>) {
   useEffect(() => {
-    if (!inAndroidApp()) return;
+    if (!inMobileApp()) return;
     const hub = createSyncHub(backend, { name: instanceName, onApplied: () => void refresh(), scope: instanceScope });
     current = hub;
     let stopped = false;

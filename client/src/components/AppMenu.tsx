@@ -5,10 +5,11 @@ export type MenuEntry = { label: string; onSelect(): void; disabled?: boolean } 
 
 const Drawer = styled.dialog`
   margin: 0;
-  width: min(280px, calc(100vw - 48px));
+  width: calc(min(280px, calc(100vw - 48px)) + var(--safe-left, 0px));
   height: 100%;
   max-height: 100%;
-  padding: 0;
+  /* Its rows run to the screen's edge; their text keeps clear of the notch (--safe-left in GlobalStyle). */
+  padding: 0 0 var(--safe-bottom, 0px);
   border: none;
   border-right: 1px solid var(--border);
   background: var(--surface);
@@ -21,7 +22,7 @@ const Drawer = styled.dialog`
 
   h2 {
     margin: 0;
-    padding: 14px 20px;
+    padding: 14px 20px 14px calc(20px + var(--safe-left, 0px));
     font-size: 1.15rem;
     letter-spacing: 0.02em;
   }
@@ -42,7 +43,7 @@ const Drawer = styled.dialog`
 const Entry = styled.button.attrs({ type: 'button' })`
   display: block;
   width: 100%;
-  padding: 10px 20px;
+  padding: 10px 20px 10px calc(20px + var(--safe-left, 0px));
   border: none;
   background: none;
   color: var(--text);

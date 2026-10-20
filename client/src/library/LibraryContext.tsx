@@ -1,7 +1,7 @@
 import { fetchingMissingFiles, isSignedOut, type Library, type LibraryBackend, type Operation, type SessionInfo } from '@nexlibris/common';
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 import styled from 'styled-components';
-import { inAndroidApp } from '../backends/androidBridge';
+import { mobileApp } from '../backends/mobileBridge';
 import { nativeTransport } from '../backends/native';
 import { Button, Status } from '../styles/ui';
 import { SignInForm } from '../components/AccountDialog';
@@ -49,7 +49,7 @@ let opening: Promise<LibraryBackend> | undefined;
 function openBackend(): Promise<LibraryBackend> {
   const transport = nativeTransport();
   // The apps open their own library, unless it's to be the account's on their server.
-  const native = transport && !wantsCloud() ? openNativeLibrary(transport, inAndroidApp() ? 'android' : 'desktop') : undefined;
+  const native = transport && !wantsCloud() ? openNativeLibrary(transport, mobileApp() ?? 'desktop') : undefined;
   opening ??= (native ?? (wantsCloud() ? openCloudLibrary() : openBrowserLibrary())).then((backend) =>
     // An instance that syncs with a hub may leave books' files there; they're fetched when read. The account's has them all.
     canSync() && libraryPlace().kind !== 'cloud' ? fetchingMissingFiles(backend, (hash) => fetchFromHub(backend, hash)) : backend,

@@ -7,7 +7,8 @@
  * A message is `[header length: u32 little-endian][header: UTF-8 JSON][body]`. Each chunk is
  * `[flags: u8][part of the message]`, with flag `LAST_CHUNK` on a message's final chunk. One
  * message is in flight at a time each way (the client waits for each response), so chunks need
- * no ids. The Android app has the same framing (`BluetoothFraming.kt`); keep the two in step.
+ * no ids. The Android and iOS apps have the same framing (`BluetoothFraming.kt`, `BluetoothFraming.swift`);
+ * keep the three in step.
  */
 
 export interface SyncMessageRequest {

@@ -3,11 +3,11 @@ import type { MessageClient } from './rpc';
 import { DEFAULT_CHUNK_SIZE, fromBase64, toBase64 } from './rpcStorage';
 
 /**
- * Calling a device on the local network (a CrossPoint reader's web server) from the Android app. Its page
- * is served over https, so the WebView won't let it call a reader's plain-http address; the app makes the
+ * Calling a device on the local network (a CrossPoint reader's web server) from the Android or iOS app. Its
+ * page is on a secure origin, so the web view won't let it call a reader's plain-http address; the app makes the
  * call instead. Only local addresses are called (`isLocalAddress`), and redirects aren't followed, so it
  * can't be used to reach anywhere else. Bodies cross the bridge in chunks: a request's is staged under a
- * token first, and a reply's comes back whole when small, else under a token to read. Android only: a
+ * token first, and a reply's comes back whole when small, else under a token to read. Android and iOS only: a
  * browser calls the device with `fetch` (`localFetch` in the client).
  */
 
@@ -56,7 +56,7 @@ export type LocalHttpApi = typeof localHttpApiMeta;
 /**
  * Whether a URL is one the app calls for the page: http(s) to a private or link-local IPv4 address, IPv6
  * loopback, link-local or unique-local, a `.local` name or a name without dots, with no credentials in it.
- * As `LocalHttpService.isLocal` in the Android app.
+ * As `LocalHttpService.isLocal` in the Android and iOS apps.
  */
 export function isLocalAddress(url: string): boolean {
   let parsed: URL;

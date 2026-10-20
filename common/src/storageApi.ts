@@ -35,7 +35,7 @@ export interface ChunkWriteRequest {
   last: boolean;
 }
 
-/** The storage endpoints under `base` (`api/storage` for the library; the Android app serves the same for its sync folder). */
+/** The storage endpoints under `base` (`api/storage` for the library; the phone apps serve the same for their sync folder). */
 export const storageEndpoints = (base: string) => ({
   /** The file's text (UTF-8), or null if there's no file. */
   readText: get<PathRequest, string | null, SimpleMeta>(`${base}/readText`),

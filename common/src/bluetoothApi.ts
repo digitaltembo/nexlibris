@@ -1,14 +1,14 @@
 import { get, post, type SimpleMeta } from 'estuary-rpc';
 
 /**
- * Sync over Bluetooth (M6): the Android app is the hub, as a Bluetooth LE peripheral that a
+ * Sync over Bluetooth (M6): the Android or iOS app is the hub, as a Bluetooth LE peripheral that a
  * browser or the desktop app connects to with Web Bluetooth (which can only connect, not be
  * connected to). Its GATT service has two characteristics: the client writes request chunks to
  * `BLUETOOTH_REQUESTS`, and the hub answers with notifications on `BLUETOOTH_RESPONSES`, framed as
  * in `syncMessage.ts`.
  *
  * The app only carries the bytes: its page answers each request with `createSyncHub`. This API is
- * how the page runs that, Android only.
+ * how the page runs that, in the Android and iOS apps only.
  */
 
 export const BLUETOOTH_SERVICE = '4e28ef00-8886-467b-9c6a-a0b49a90cf89';

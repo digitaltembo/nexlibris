@@ -32,6 +32,11 @@ export const InAndroidApp: Story = {
   args: { place: { kind: 'app', app: 'android', name: '', native: {} as MessageClient<LibraryFolderApi>['libraryFolder'] } },
 };
 
+/** iOS, with the library in the app’s own storage: what a folder costs there. */
+export const InIosApp: Story = {
+  args: { place: { kind: 'app', app: 'ios', name: '', native: {} as MessageClient<LibraryFolderApi>['libraryFolder'] } },
+};
+
 /** Android, having lost access to the folder the library was in, so it opened its own storage instead. */
 export const AndroidLostFolder: Story = {
   args: {

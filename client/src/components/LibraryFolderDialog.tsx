@@ -71,7 +71,7 @@ function describePlace(place: LibraryPlace): string {
   if (place.kind === "folder") return `in ${place.name}`;
   if (place.app === "desktop")
     return `in the app’s data folder (${place.name})`;
-  if (place.app === "android")
+  if (place.app === "android" || place.app === "ios")
     return "in the app’s own storage, which only nexlibris can see";
   return "in this browser’s own storage, which only nexlibris can see";
 }
@@ -80,7 +80,7 @@ function describePlace(place: LibraryPlace): string {
 const homeOf = (place: LibraryPlace) =>
   place.app === "desktop"
     ? "the app’s data folder"
-    : place.app === "android"
+    : place.app === "android" || place.app === "ios"
       ? "the app’s own storage"
       : "this browser’s storage";
 
@@ -96,6 +96,14 @@ function folderTradeoffs(place: LibraryPlace): string | undefined {
       "open a little more slowly, and importing, converting and moving books takes noticeably longer. In return, file managers, " +
       "other apps and a computer plugged in by USB can see the books, and they stay if nexlibris is uninstalled, which deletes " +
       "its own storage. No permission is needed beyond the folder you pick."
+    );
+  }
+  if (place.app === "ios") {
+    return (
+      "In a folder, the books are files you can see in the Files app, and other apps, a computer (through iCloud Drive or a " +
+      "drive) and backups can reach them; they stay if nexlibris is deleted, which deletes its own storage. A folder in " +
+      "iCloud Drive is slower, as books not yet on the phone are downloaded when they’re opened. No permission is needed " +
+      "beyond the folder you pick."
     );
   }
   return (
@@ -152,7 +160,7 @@ export function LibraryFolderDialog({
   onAccount?(): void;
   /** Pairs this library with the account's, to keep a copy there (Connections). */
   onSyncWithAccount?(): void;
-  /** Whether this is an app (desktop or Android), which chooses its server; for stories. */
+  /** Whether this is an app (desktop, Android or iOS), which chooses its server; for stories. */
   app?: boolean;
 }) {
   const { library, backend } = useLibrary();
@@ -378,7 +386,7 @@ export function LibraryFolderDialog({
                 <Muted>
                   This browser can’t keep the library in a folder of yours: that
                   needs the File System Access API, which Chrome and Edge have,
-                  as do nexlibris’s desktop and Android apps.
+                  as do nexlibris’s desktop and phone apps.
                 </Muted>
               </p>
             )
@@ -612,7 +620,7 @@ export function AccountSection({
 }: {
   /** None in an app that hasn't chosen a server, or can't reach it. */
   session: SessionInfo | undefined;
-  /** In the desktop and Android apps, which keep their own library beside the account's, rather than moving it. */
+  /** In the desktop and phone apps, which keep their own library beside the account's, rather than moving it. */
   app?: boolean;
   place: LibraryPlace;
   /** What the account holds, once known. */

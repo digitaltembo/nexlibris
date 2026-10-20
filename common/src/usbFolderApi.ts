@@ -5,7 +5,8 @@ import { storageEndpoints, type PathRequest } from './storageApi';
  * The Android app's sync folder (see `folderHub.ts`): a folder in shared storage the user picks
  * once (say `Documents/nexlibris-sync`), which a computer sees when the phone is plugged in by
  * USB. The app reaches it through the system's storage provider, so it can use files a computer
- * copied in. Android only: the page reaches the folder as `Storage` (the same endpoints as the
+ * copied in. The iOS app's is a folder picked in Files that a computer also reaches (on a drive, or
+ * in iCloud Drive), as iOS shows no folders over USB. Android and iOS only: the page reaches the folder as `Storage` (the same endpoints as the
  * library's, under `api/usbFolder`), lists and removes in it, and has the app copy stored files
  * between it and the library.
  */

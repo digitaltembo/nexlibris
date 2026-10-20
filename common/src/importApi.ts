@@ -93,5 +93,5 @@ export const importApiMeta = {
 
 export type ImportApi = typeof importApiMeta;
 
-/** Where a stored file lives in library storage, by hash. Android and desktop store picked files here too. */
+/** Where a stored file lives in library storage, by hash. Android, iOS and desktop store picked files here too. */
 export const storedFilePath = (hash: FileHash) => `files/${hash.slice(0, 2)}/${hash}`;

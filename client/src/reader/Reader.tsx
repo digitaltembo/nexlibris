@@ -14,7 +14,7 @@ const Shell = styled.div`
   z-index: 20;
   display: flex;
   flex-direction: column;
-  padding-top: var(--title-bar-height, 0px);
+  padding: var(--title-bar-height, 0px) var(--safe-right, 0px) var(--safe-bottom, 0px) var(--safe-left, 0px);
   background: var(--bg);
 
   /* Without a title bar (the desktop app on macOS), a strip above the reader holds the window

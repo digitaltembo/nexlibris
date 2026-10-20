@@ -6,7 +6,7 @@
 
 I think [Calibre](https://calibre-ebook.com/) is one of my favorite pieces of software, but what if I could make my own library management software? With a few features (an app, and more robust device management) that are not implemented in Calibre, that could play well with my new Xteink X4 Pro ereader running a fork of [CrossPoint Reader](https://github.com/crosspoint-reader/crosspoint-reader), [nexlibrOS](https://github.com/digitaltembo/nexlibrOS)
 
-A library manager for ebooks (and hopefully eventually other media) that runs in the browser, on the desktop (Electron) and on Android. Early work in progress; see [PLAN.md](PLAN.md) for what's next.
+A library manager for ebooks (and hopefully eventually other media) that runs in the browser, on the desktop (Electron), on Android and on iOS. Early work in progress; see [PLAN.md](PLAN.md) for what's next.
 
 ## Architecture
 
@@ -17,6 +17,7 @@ common/    the library model, operations, storage interface, sync      (shared b
 client/    React + Vite web app: UI, formats, conversion, devices, search
 desktop/   Electron shell: serves client/dist, native files, LAN sync hub
 android/   Kotlin WebView shell: serves client/dist, native files, Bluetooth/USB sync
+ios/       Swift WKWebView shell, the same as Android's: serves client/dist, native files, Bluetooth/folder sync
 server/    Node server: the web app, accounts, a library per account, sync (M4)
 ```
 
@@ -37,9 +38,9 @@ server/    Node server: the web app, accounts, a library per account, sync (M4)
 - **One backend for every platform:** `StoredLibraryBackend` (`common/src/backend.ts`) keeps the library JSON, the change log and the files on any `Storage`.
 - **Each platform supplies the storage:**
   - **Browser:** OPFS (`client/src/backends/opfsStorage.ts`).
-  - **Desktop and Android:** the app's native files.
+  - **Desktop, Android and iOS:** the app's native files.
     - The page calls them through the Storage, Save and Import APIs (`common/src/storageApi.ts` and its siblings), defined with [estuary-rpc](https://github.com/digitaltembo/estuary-rpc) over a message channel.
-    - The desktop app serves them from its main process; the Android app from Kotlin services behind a WebView message listener.
+    - The desktop app serves them from its main process; the Android app from Kotlin services behind a WebView message listener; the iOS app from Swift services behind a WKWebView script message handler.
     - Stored files are read by plain `fetch` from paths the app serves (`/library/files/…`), so large files never cross the bridge.
 
 ### The client
@@ -70,7 +71,7 @@ Every step can be run again, so an interrupted sync just runs again. The hub can
 | Hub | Transport |
 |---|---|
 | The desktop app | HTTP on the LAN, paired by QR code or a one-time code |
-| An Android phone | Bluetooth |
+| An Android phone or iPhone | Bluetooth |
 | A shared folder | A replica library in the folder; used for a phone over USB. Every book's details pass through it, and only the chosen books' files |
 
 The sync API is `common/src/syncApi.ts`.
@@ -97,17 +98,20 @@ npm run build-storybook -w client  # static Storybook → client/storybook-stati
 
 npm run android          # debug APK (android/app/build/outputs/apk/debug)
 npm run android:install  # build and install on a connected device
+npm run ios              # build the web app, then the iOS app for the simulator (needs Xcode)
 ```
 
 Stories sit next to their components (`client/src/**/*.stories.tsx`). Each one renders with the app's theme and a fresh in-memory sample library (`client/src/stories/sampleLibrary.ts`), so components that read or edit the library work and nothing is stored.
 
 The Android build needs the Android SDK and JDK 17+ (e.g. `export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"`). Native unit tests: `cd android && ./gradlew testDebugUnitTest`.
 
+The iOS app is `ios/nexlibris.xcodeproj` (open it in Xcode to run it on a simulator or an iPhone; set a team under Signing first), generated from `ios/project.yml` by [XcodeGen](https://github.com/yonaskolb/XcodeGen): run `xcodegen` in `ios/` after changing that, and commit the result. Its build copies `client/dist` into the app, so run `npm run build` first. Its native side is the Swift package `ios/NexlibrisKit`, which builds for macOS too, so its tests run without a simulator: `cd ios/NexlibrisKit && swift test`. With only the Command Line Tools (no Xcode), Swift Testing needs pointing at: `swift test -Xswiftc -F -Xswiftc $F -Xlinker -rpath -Xlinker $F -Xlinker -rpath -Xlinker $L`, with `F=/Library/Developer/CommandLineTools/Library/Developer/Frameworks` and `L=/Library/Developer/CommandLineTools/Library/Developer/usr/lib`.
+
 ## Server
 
 `server/` serves the web app with accounts (M4). Signed out, a visitor gets the app as ever, with the library in their browser. Signed in, they can move the library into their account (Library folder…), where every device they sign in on opens the same one, or keep it in the browser and keep a copy in the account that it syncs with (Connections…, "Your account on …"), as with another device.
 
-The desktop and Android apps do the same with a server at an address the user gives (Account…), for a server they run themselves. They sign in for a token, sent as a bearer token, rather than a cookie; the desktop app calls the server through its main process (`app://nexlibris/server/…`, `desktop/src/serverProxy.ts`), and the Android app through its relay on the local network (plain http) or directly elsewhere (https only). Using the account's library, an app copies the device's library there first and keeps it, to open again.
+The desktop and phone apps do the same with a server at an address the user gives (Account…), for a server they run themselves. They sign in for a token, sent as a bearer token, rather than a cookie; the desktop app calls the server through its main process (`app://nexlibris/server/…`, `desktop/src/serverProxy.ts`), and the Android and iOS apps through their relay on the local network (plain http) or directly elsewhere (https only). Using the account's library, an app copies the device's library there first and keeps it, to open again.
 
 - **API:** `common/src/serverApi.ts`, defined with estuary-rpc and served by estuary-rpc-server's `createApiServer` (`server/src/app.ts`: sessions and sync keys checked by its `authenticate` and middlewares, the web app by its static files) by its REST conventions: 200 with JSON, 204 for nothing, an error as `{ status: 'error', message }` with its status (401 signed out, 409 the library moved on). The client calls it with estuary-rpc-client over `fetch` (`common/src/rest.ts`); the sync API over HTTP uses the same conventions everywhere. Books' files stream through raw endpoints, at `api/library/files/<hash>`.
 - **Accounts:** scrypt-hashed passwords; sessions in an HttpOnly, SameSite=Strict cookie, stored only as hashes; calls that change anything with the cookie must be same-origin JSON; the apps' bearer tokens are sessions too, and the API answers other origins (CORS) without credentials; sign-in attempts are rate-limited.

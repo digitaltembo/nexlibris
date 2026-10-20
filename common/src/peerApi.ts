@@ -1,11 +1,11 @@
 import { post, type SimpleMeta } from 'estuary-rpc';
 
 /**
- * Calling a sync hub from the Android app. Its page is served over https, so the WebView won't let
- * it call a hub's plain-http address on the local network; the app makes the call instead. It only
+ * Calling a sync hub from the Android or iOS app. Its page is on a secure origin (https, or iOS's
+ * `app://`), so the web view won't let it call a hub's plain-http address on the local network; the app makes the call instead. It only
  * calls the sync API (`api/sync/…` on an http or https address), and passes the reply back as is,
  * for estuary-rpc-client (`client/src/sync/hub.ts` relays its `fetch`). Files go straight between the hub and the app's storage, streamed,
- * never through the page. Android only: a browser calls the hub with `fetch` (`httpSyncClient`, `httpHubFiles`).
+ * never through the page. Android and iOS only: a browser calls the hub with `fetch` (`httpSyncClient`, `httpHubFiles`).
  */
 
 export interface PeerCallRequest {

@@ -182,9 +182,10 @@ export const Panel = styled.aside`
   top: 0;
   right: 0;
   bottom: 0;
-  width: var(--detail-width);
+  /* Past the right edge's safe area too, which the body leaves clear (--safe-right in GlobalStyle). */
+  width: calc(var(--detail-width) + var(--safe-right, 0px));
   overflow-y: auto;
-  padding: 16px;
+  padding: 16px calc(16px + var(--safe-right, 0px)) calc(16px + var(--safe-bottom, 0px)) 16px;
   background: var(--surface);
   border-left: 1px solid var(--border);
   z-index: 2;

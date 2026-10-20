@@ -27,7 +27,8 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import styled from 'styled-components';
 import { cameraAvailable, qrReader } from '../isbn/scanner';
 import { useLibrary } from '../library/LibraryContext';
-import { inAndroidApp } from '../backends/androidBridge';
+import { inIosApp } from '../backends/iosBridge';
+import { inMobileApp } from '../backends/mobileBridge';
 import { inDesktopApp } from '../backends/desktopBridge';
 import { forgetFolder, saveFolder } from '../library/savedFolders';
 import {
@@ -43,9 +44,9 @@ import { bluetoothHost, bluetoothSyncHub } from '../sync/bluetoothHost';
 import { connectHub, describeAddress, transportOf, type HubConnection, type Transport } from '../sync/connect';
 import { describeConflict } from '../sync/describe';
 import {
-  androidFolderPath,
+  appFolderPath,
   canSyncThroughFolder,
-  chooseAndroidFolder,
+  chooseAppFolder,
   chooseFolder,
   FOLDER_PREFIX,
   folderKey,
@@ -137,7 +138,7 @@ const when = (iso: string | undefined) => (iso ? new Date(iso).toLocaleString() 
 /**
  * Sync between instances (M6), as connections (`ConnectionsDialog`): pairing with another
  * instance however this one can (over the network, over Bluetooth, through a folder), syncing
- * with one, and hosting (the desktop app on the network, the Android app over Bluetooth).
+ * with one, and hosting (the desktop app on the network, the Android and iOS apps over Bluetooth).
  */
 
 const TRANSPORT_LABEL: Record<Transport, string> = { network: 'over the network', bluetooth: 'over Bluetooth', folder: 'through a folder' };
@@ -148,8 +149,8 @@ export const transportLabel = (pairing: Pairing) => (isOwnServer(pairing.address
 /** How to pair: reaching another device as this one's hub, or (`host`) letting another reach this one. */
 export type PairHow = 'network' | 'bluetooth' | 'folder' | 'server' | 'host';
 
-/** Whether other devices can pair with this one as their hub: the desktop app on the network, Android over Bluetooth. */
-export const canHost = () => inDesktopApp() || inAndroidApp();
+/** Whether other devices can pair with this one as their hub: the desktop app on the network, the phone apps over Bluetooth. */
+export const canHost = () => inDesktopApp() || inMobileApp();
 
 /** The ways this instance can pair with another, for adding a connection. */
 export function PairChoices({ onChoose }: { onChoose(how: PairHow): void }) {
@@ -186,7 +187,7 @@ export function PairChoices({ onChoose }: { onChoose(how: PairHow): void }) {
         )}
         {canSyncThroughFolder() && (
           <Button $variant="secondary" onClick={() => onChoose('folder')}>
-            {inAndroidApp() ? 'A computer by USB…' : 'A phone by USB, or a folder…'}
+            {inIosApp() ? 'A computer through a folder…' : inMobileApp() ? 'A computer by USB…' : 'A phone by USB, or a folder…'}
           </Button>
         )}
       </Choices>
@@ -218,7 +219,7 @@ export function PairScreen({ how, onPaired, onBack }: { how: PairHow } & PairPro
 
 /**
  * Letting other devices pair with this one (Add connection → Nexlibris twin → Let a device pair…):
- * the desktop app on the network, the Android app over Bluetooth. Turning it on, and a pairing code.
+ * the desktop app on the network, the Android and iOS apps over Bluetooth. Turning it on, and a pairing code.
  * The devices paired are listed as connections (`useHostedPeers`), except those that haven't synced
  * yet, so have none, which are listed here.
  */
@@ -226,20 +227,20 @@ function Hosting() {
   const { library } = useLibrary();
   const listed = (origin: string) => !!library.devices?.[origin];
   if (inDesktopApp()) return <NetworkHosting listed={listed} />;
-  if (inAndroidApp()) return <BluetoothHosting listed={listed} />;
+  if (inMobileApp()) return <BluetoothHosting listed={listed} />;
   return null;
 }
 
 /**
- * The devices paired with this one as their hub (the desktop app over the network, Android over
- * Bluetooth), kept current while shown, and forgetting one. Empty where this one doesn't host.
+ * The devices paired with this one as their hub (the desktop app over the network, the phone apps
+ * over Bluetooth), kept current while shown, and forgetting one. Empty where this one doesn't host.
  */
 export function useHostedPeers(): { peers: PairedPeer[]; forget(origin: string): Promise<void> } {
   const [peers, setPeers] = useState<PairedPeer[]>([]);
   useEffect(() => {
     const read = inDesktopApp()
       ? async () => (await syncHost().status(null)).peers
-      : inAndroidApp()
+      : inMobileApp()
         ? async () => (await bluetoothSyncHub()?.peers()) ?? []
         : undefined;
     if (!read) return;
@@ -814,24 +815,26 @@ function PairBluetooth({ onPaired, onBack }: PairProps) {
 
 /**
  * Pairing through a folder: in the Android app, a folder in the phone's storage, which a computer
- * sees over USB; elsewhere a folder the user picks, such as that one on the plugged-in phone.
+ * sees over USB; in the iOS app, a folder picked in Files that the computer reaches too (iOS doesn't
+ * show its folders to a computer over USB, so a drive carried between them, or iCloud Drive);
+ * elsewhere a folder the user picks, such as that one on the plugged-in phone.
  */
 function PairFolder({ onPaired, onBack }: PairProps) {
   const { backend } = useLibrary();
-  /** The Android app's folder: undefined while finding out, null before one is chosen. */
-  const [androidPath, setAndroidPath] = useState<string | null>();
+  /** The phone app's folder: undefined while finding out, null before one is chosen. */
+  const [appPath, setAppPath] = useState<string | null>();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
 
   useEffect(() => {
-    if (inAndroidApp()) void androidFolderPath().then(setAndroidPath, (e: unknown) => setError(errorMessage(e)));
+    if (inMobileApp()) void appFolderPath().then(setAppPath, (e: unknown) => setError(errorMessage(e)));
   }, []);
 
   const chooseOnPhone = async () => {
     setError(undefined);
     setBusy(true);
     try {
-      setAndroidPath(await chooseAndroidFolder());
+      setAppPath(await chooseAppFolder());
     } catch (e) {
       setError(errorMessage(e));
     }
@@ -842,10 +845,10 @@ function PairFolder({ onPaired, onBack }: PairProps) {
     setError(undefined);
     setBusy(true);
     try {
-      const handle = inAndroidApp() ? undefined : await chooseFolder();
-      if (!inAndroidApp() && !handle) return setBusy(false);
+      const handle = inMobileApp() ? undefined : await chooseFolder();
+      if (!inMobileApp() && !handle) return setBusy(false);
       const { hub } = openFolder(handle);
-      const label = handle?.name ?? androidPath ?? 'sync folder';
+      const label = handle?.name ?? appPath ?? 'sync folder';
       const pairing = await pairWithHub(backend, hub.client, `${FOLDER_PREFIX}${label}`, '', instanceName());
       if (handle) await saveFolder(folderKey(pairing.hub.origin), handle);
       onPaired(pairing);
@@ -858,16 +861,34 @@ function PairFolder({ onPaired, onBack }: PairProps) {
   return (
     <>
       <Section>
-        {inAndroidApp() ? (
+        {inIosApp() ? (
+          <>
+            <h3>Sync with a computer through a folder</h3>
+            <Muted as="p">
+              This iPhone syncs through a folder that the computer reaches too: on a USB drive plugged into the iPhone, then
+              into the computer, or in iCloud Drive on both. Make one for it (say, nexlibris-sync) and choose it.
+            </Muted>
+            {appPath && (
+              <p>
+                <Code>{appPath}</Code>
+              </p>
+            )}
+            <Muted as="p">
+              Sync here, take the drive to the computer (or let iCloud Drive catch up), and in nexlibris on the computer add a
+              Nexlibris twin (“A phone by USB, or a folder”) and choose that folder. Then sync here again to take what the
+              computer sent. Books’ files are only kept in the folder until the other side has them.
+            </Muted>
+          </>
+        ) : inMobileApp() ? (
           <>
             <h3>Sync with a computer by USB</h3>
             <Muted as="p">
               This phone syncs through a folder in its storage, which a computer can open when the phone is plugged in by
               USB. Make one for it (say, nexlibris-sync in Documents) and choose it.
             </Muted>
-            {androidPath && (
+            {appPath && (
               <p>
-                <Code>{androidPath}</Code>
+                <Code>{appPath}</Code>
               </p>
             )}
             <Muted as="p">
@@ -888,14 +909,14 @@ function PairFolder({ onPaired, onBack }: PairProps) {
           </>
         )}
         <Row>
-          {inAndroidApp() && (
-            <Button $variant={androidPath ? 'secondary' : 'primary'} disabled={busy || androidPath === undefined} onClick={() => void chooseOnPhone()}>
-              {androidPath ? 'Choose another folder…' : 'Choose a folder…'}
+          {inMobileApp() && (
+            <Button $variant={appPath ? 'secondary' : 'primary'} disabled={busy || appPath === undefined} onClick={() => void chooseOnPhone()}>
+              {appPath ? 'Choose another folder…' : 'Choose a folder…'}
             </Button>
           )}
-          {(!inAndroidApp() || androidPath) && (
+          {(!inMobileApp() || appPath) && (
             <Button disabled={busy} onClick={() => void pair()}>
-              {busy ? 'Pairing…' : inAndroidApp() ? 'Use this folder' : 'Choose the folder…'}
+              {busy ? 'Pairing…' : inMobileApp() ? 'Use this folder' : 'Choose the folder…'}
             </Button>
           )}
         </Row>
@@ -906,7 +927,7 @@ function PairFolder({ onPaired, onBack }: PairProps) {
   );
 }
 
-/** The Android app's side of Bluetooth: turning hosting on, showing a pairing code, and the paired devices. */
+/** The phone apps' side of Bluetooth: turning hosting on, showing a pairing code, and the paired devices. */
 function BluetoothHosting({ listed }: { listed(origin: string): boolean }) {
   const [status, setStatus] = useState<BluetoothHostStatus>();
   const [peers, setPeers] = useState<PairedPeer[]>([]);

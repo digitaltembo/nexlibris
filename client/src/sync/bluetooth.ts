@@ -7,7 +7,7 @@ import {
   MessageAssembler,
   messageFetch,
 } from '@nexlibris/common';
-import { inAndroidApp } from '../backends/androidBridge';
+import { inMobileApp } from '../backends/mobileBridge';
 
 /**
  * Reaching a hub over Bluetooth (see `common/src/bluetoothApi.ts`): the Android app, hosting sync,
@@ -48,8 +48,8 @@ interface WebBluetooth {
 }
 const webBluetooth = () => (navigator as Navigator & { bluetooth?: WebBluetooth }).bluetooth;
 
-/** Whether this browser can reach a hub over Bluetooth. The Android app is the hub, so it doesn't. */
-export const canSyncOverBluetooth = () => typeof navigator !== 'undefined' && !!webBluetooth() && !inAndroidApp();
+/** Whether this browser can reach a hub over Bluetooth. The phone apps are the hub, so they don't. */
+export const canSyncOverBluetooth = () => typeof navigator !== 'undefined' && !!webBluetooth() && !inMobileApp();
 
 export interface BluetoothLink {
   /** The phone's name, as it advertises itself. */

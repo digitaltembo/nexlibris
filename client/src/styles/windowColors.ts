@@ -1,9 +1,9 @@
 import { createMessageClient, hexColor, windowApiMeta, type WindowColors } from '@nexlibris/common';
-import { androidTransport, inAndroidApp } from '../backends/androidBridge';
+import { inMobileApp, mobileTransport } from '../backends/mobileBridge';
 import { isDark, onAppearanceChange } from './appearance';
 
 /**
- * The colours around the page in the Android app, behind the system bars (`common/src/windowApi.ts`):
+ * The colours around the page in the Android and iOS apps, behind the system bars (`common/src/windowApi.ts`):
  * the theme's background, or the reader's while it has colours of its own (epubier's themes).
  * Elsewhere this does nothing; the desktop app's title bar strip is part of the page.
  */
@@ -17,12 +17,12 @@ function themeColors(): WindowColors | undefined {
 }
 
 function send() {
-  if (!inAndroidApp()) return;
+  if (!inMobileApp()) return;
   const colors = reader ?? themeColors();
   const key = colors && JSON.stringify(colors);
   if (!colors || key === sent) return;
   sent = key;
-  createMessageClient(windowApiMeta, androidTransport())
+  createMessageClient(windowApiMeta, mobileTransport())
     .window.setColors(colors)
     .catch(() => {
       sent = undefined;

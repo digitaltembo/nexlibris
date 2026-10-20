@@ -7,15 +7,17 @@ import {
   type FolderHub,
   type FolderStorage,
 } from '@nexlibris/common';
-import { androidTransport, inAndroidApp } from '../backends/androidBridge';
+import { inMobileApp, mobileTransport } from '../backends/mobileBridge';
 import { OpfsStorage } from '../backends/opfsStorage';
 import { canUseFolders, mayWrite, savedFolder } from '../library/savedFolders';
 
 /**
  * Sync through a shared folder (see `common/src/folderHub.ts`). In the Android app it's a folder
  * in the phone's shared storage that the user picks (say `Documents/nexlibris-sync`), which a
- * computer sees when the phone is plugged in by USB; in a browser or the desktop app, a folder the
- * user picks: that one on the plugged-in phone, or any other both devices reach.
+ * computer sees when the phone is plugged in by USB; in the iOS app, one picked in Files that the
+ * computer reaches too (on a drive plugged into the phone, then the computer, or in iCloud Drive);
+ * in a browser or the desktop app, a folder the user picks: that one on the plugged-in phone or
+ * drive, or any other both devices reach.
  */
 
 /** Pairings through a folder have addresses `folder:<what to call it>`. */
@@ -43,10 +45,10 @@ export class HandleStorage extends OpfsStorage implements FolderStorage {
   }
 }
 
-const usbFolder = () => createMessageClient(usbFolderApiMeta, androidTransport()).usbFolder;
+const usbFolder = () => createMessageClient(usbFolderApiMeta, mobileTransport()).usbFolder;
 
-/** The Android app's sync folder, as storage, and copying stored files in and out of it natively. */
-function androidFolder(): { storage: FolderStorage; copy: FolderCopy } {
+/** The phone app's sync folder, as storage, and copying stored files in and out of it natively. */
+function appFolder(): { storage: FolderStorage; copy: FolderCopy } {
   const api = usbFolder();
   const storage = Object.assign(new RpcStorage(api), {
     list: (dir: string) => api.list({ path: dir }),
@@ -60,14 +62,14 @@ function androidFolder(): { storage: FolderStorage; copy: FolderCopy } {
   };
 }
 
-/** Where the Android app's sync folder is, as a computer browsing the phone sees it; null before one is chosen. */
-export const androidFolderPath = async () => (await usbFolder().info(null)).path;
+/** Where the phone app's sync folder is, as the user knows it; null before one is chosen. */
+export const appFolderPath = async () => (await usbFolder().info(null)).path;
 
-/** Asks for the Android app's sync folder (the system's folder picker); returns where it is. */
-export const chooseAndroidFolder = async () => (await usbFolder().choose(null)).path;
+/** Asks for the phone app's sync folder (the system's folder picker); returns where it is. */
+export const chooseAppFolder = async () => (await usbFolder().choose(null)).path;
 
 /** Whether this instance can sync through a folder. */
-export const canSyncThroughFolder = () => inAndroidApp() || canUseFolders();
+export const canSyncThroughFolder = () => inMobileApp() || canUseFolders();
 
 export interface OpenFolder {
   hub: FolderHub;
@@ -76,10 +78,10 @@ export interface OpenFolder {
   handle?: FileSystemDirectoryHandle;
 }
 
-/** Opens the Android app's folder, or one the user picked. */
+/** Opens the phone app's folder, or one the user picked. */
 export function openFolder(handle?: FileSystemDirectoryHandle): OpenFolder {
-  if (inAndroidApp()) {
-    const { storage, copy } = androidFolder();
+  if (inMobileApp()) {
+    const { storage, copy } = appFolder();
     return { hub: openFolderHub(storage, { name: 'Sync folder' }), copy };
   }
   if (!handle) throw new Error('Choose the folder first.');
@@ -96,12 +98,12 @@ export async function chooseFolder(): Promise<FileSystemDirectoryHandle | undefi
 }
 
 /**
- * The folder a pairing syncs through: the app's own on Android, else the one remembered here,
+ * The folder a pairing syncs through: the app's own on Android and iOS, else the one remembered here,
  * once allowed to use it this session. Asking for that needs a click under way, so it's only
  * asked when `interactive`.
  */
 export async function pairedFolder(hubOrigin: string, interactive: boolean): Promise<OpenFolder> {
-  if (inAndroidApp()) return openFolder();
+  if (inMobileApp()) return openFolder();
   const handle = await savedFolder(folderKey(hubOrigin));
   if (!handle) throw new Error('This computer doesn’t remember the sync folder. Pair with it again.');
   if (!(await mayWrite(handle, interactive))) {

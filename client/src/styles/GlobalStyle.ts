@@ -87,8 +87,18 @@ export const GlobalStyle = createGlobalStyle`
     box-sizing: border-box;
   }
 
+  /* What the screen's edges take, where the page runs under them: the notch and rounded corners of an
+     iPhone held sideways, and the home indicator (the iOS app's web view spans the screen's width and
+     runs to its bottom). None elsewhere. */
+  :root {
+    --safe-left: env(safe-area-inset-left, 0px);
+    --safe-right: env(safe-area-inset-right, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
   body {
     margin: 0;
+    padding: 0 var(--safe-right) var(--safe-bottom) var(--safe-left);
     background: var(--bg);
     color: var(--text);
   }

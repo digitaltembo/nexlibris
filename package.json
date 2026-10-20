@@ -17,6 +17,7 @@
     "server": "npm run build -w client && npm run build -w server && npm start -w server --",
     "android": "npm run build -w client && cd android && ./gradlew assembleDebug",
     "android:install": "npm run build -w client && cd android && ./gradlew installDebug",
+    "ios": "npm run build -w client && cd ios && xcodebuild -project nexlibris.xcodeproj -scheme nexlibris -destination 'generic/platform=iOS Simulator' -derivedDataPath build build",
     "desktop": "npm run build && npm start -w desktop"
   },
   "devDependencies": {

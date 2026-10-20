@@ -2,8 +2,8 @@
 """Makes every app icon from icon.png (the artwork, on its chiffon background) as a squircle.
 
 Run from the repo root after changing icon.png: python3 scripts/make-icons.py (needs Pillow).
-Writes the web favicons (client/public), the desktop icons (desktop/assets, .png and .icns) and the Android
-launcher icons (android/app/src/main/res).
+Writes the web favicons (client/public), the desktop icons (desktop/assets, .png and .icns), the Android
+launcher icons (android/app/src/main/res) and the iOS app icon (ios/App/Assets.xcassets).
 """
 from pathlib import Path
 
@@ -77,6 +77,11 @@ def main() -> None:
     # The macOS bundle icon, for the renamed Electron that `npm start -w desktop` runs.
     mac.save(ROOT / 'desktop/assets/icon.icns', sizes=[(16, 16), (32, 32), (64, 64), (128, 128), (256, 256), (512, 512), (1024, 1024)])
     print('desktop/assets/icon.icns')
+
+    # iOS: a square, opaque, which the system masks itself.
+    ios = Image.new('RGBA', (1024, 1024), BACKGROUND)
+    ios.paste(artwork().resize((922, 922), Image.LANCZOS), (51, 51))
+    save(ios.convert('RGB'), 'ios/App/Assets.xcassets/AppIcon.appiconset/icon-1024.png')
 
     # Android: a squircle for launchers that show legacy icons as they are, and an adaptive icon's
     # foreground (the artwork within the 66 dp safe zone of 108 dp) for launchers that apply their own mask.

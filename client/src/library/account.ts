@@ -11,7 +11,7 @@ import {
   type SessionInfo,
 } from '@nexlibris/common';
 import { useEffect, useState } from 'react';
-import { inAndroidApp } from '../backends/androidBridge';
+import { inMobileApp } from '../backends/mobileBridge';
 import { inDesktopApp } from '../backends/desktopBridge';
 import { localFetch } from '../devices/localFetch';
 
@@ -21,16 +21,16 @@ import { localFetch } from '../devices/localFetch';
  * synced with it (a connection, like another instance: `PairServer` in `components/InstanceSync.tsx`).
  *
  * In a browser it's the server the page came from, if it came from one (a page from a static host
- * has none), signed in by the session cookie. The desktop and Android apps use a server at an
+ * has none), signed in by the session cookie. The desktop and phone apps use a server at an
  * address the user gives (self-hosting), kept with the session's token in local storage, and send
  * the token as a bearer token. The desktop app calls it through its main process
- * (`common/src/appServer.ts`), as its `app://` page may not call it freely; the Android app calls a
- * server on the local network through its relay (`localHttpApi.ts`; its https page may not call
- * plain http), and one elsewhere directly, over https.
+ * (`common/src/appServer.ts`), as its `app://` page may not call it freely; the Android and iOS
+ * apps call a server on the local network through their relay (`localHttpApi.ts`; their secure pages
+ * may not call plain http), and one elsewhere directly, over https.
  */
 
 /** Whether this instance chooses its server (the apps), rather than using the one its page came from. */
-export const choosesServer = () => inAndroidApp() || inDesktopApp();
+export const choosesServer = () => inMobileApp() || inDesktopApp();
 
 const SERVER_KEY = 'nexlibris:server';
 
@@ -183,11 +183,11 @@ export async function changePassword(password: string, newPassword: string): Pro
 export async function chooseServer(typed: string): Promise<SessionInfo> {
   const url = serverAddress(typed);
   if (!url) throw new Error('That isn’t a server’s address. Type it as your browser would, e.g. books.example.org or 192.168.1.20:8080.');
-  if (inAndroidApp() && url.startsWith('http:') && !isLocalAddress(url)) {
+  if (inMobileApp() && url.startsWith('http:') && !isLocalAddress(url)) {
     throw new Error('A server outside your network needs an https:// address.');
   }
-  // Sync goes through the app's relay (`PeerService.kt`), which calls servers at their origin.
-  if (inAndroidApp() && new URL(url).pathname !== '/') throw new Error('The Android app needs a server at its own address, without a path.');
+  // Sync goes through the app's relay (`PeerService.kt`, `PeerService.swift`), which calls servers at their origin.
+  if (inMobileApp() && new URL(url).pathname !== '/') throw new Error('The app needs a server at its own address, without a path.');
   const connection = connectionTo(url);
   let session: SessionInfo | undefined;
   try {

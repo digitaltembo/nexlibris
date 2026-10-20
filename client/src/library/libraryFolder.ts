@@ -34,22 +34,23 @@ import { forgetFolder, mayWrite, savedFolder, saveFolder } from './savedFolders'
  * in it by path templates (`fileLayout.ts`, `common/src/placedLibrary.ts`). The browser keeps the
  * folder's handle (`savedFolders.ts`) and moves the library itself (`relocate`); the desktop app
  * keeps the folder's path, and its main process moves the library (`desktop/src/libraryFolder.ts`).
- * Android keeps the library in its own storage. A page from a nexlibris server (M4) can keep it
- * in the account signed in there instead (`cloud`), moving it there and back.
+ * Android and iOS keep it in their own storage, or a folder the user picks, and move it natively. A
+ * page from a nexlibris server (M4) can keep it in the account signed in there instead (`cloud`),
+ * moving it there and back.
  */
 
 export interface LibraryPlace {
   /** The browser's own storage, the app's own storage, a folder of the user's, or an account on the server the page came from. */
   kind: 'browser' | 'app' | 'folder' | 'cloud';
-  /** In the desktop or Android app. */
-  app?: 'desktop' | 'android';
-  /** The folder's path in the desktop app, where it is on Android, its name in a browser; the account's name in the cloud. */
+  /** In the desktop, Android or iOS app. */
+  app?: 'desktop' | 'android' | 'ios';
+  /** The folder's path in the desktop app, where it is on Android or iOS, its name in a browser; the account's name in the cloud. */
   name?: string;
   /** In a folder: the library, whose layout can change. */
   placed?: PlacedLibraryBackend;
-  /** In the desktop or Android app: the app's side. */
+  /** In the desktop or phone apps: the app's side. */
   native?: MessageClient<LibraryFolderApi>['libraryFolder'];
-  /** On Android: a folder the library was in that the app lost access to. */
+  /** On Android and iOS: a folder the library was in that the app lost access to. */
   lost?: string;
 }
 
@@ -61,7 +62,7 @@ export const libraryPlace = () => current;
 /**
  * Whether a book's files can be shown in the system's file manager: in the desktop app, whose
  * library is in a folder on disk. A browser can't show its folders (OPFS has none to show, and a
- * folder handle has no path), and Android's library is in the app's private storage.
+ * folder handle has no path), and the phone apps' libraries are in their private storage or reached through the system's pickers.
  */
 export const canShowFiles = () => current.app === 'desktop';
 
@@ -86,8 +87,8 @@ export class FolderPermissionNeeded extends Error {
   }
 }
 
-/** The desktop or Android app's library, in the app's own storage or a folder of the user's. */
-export async function openNativeLibrary(transport: RpcSend, app: 'desktop' | 'android'): Promise<LibraryBackend> {
+/** The desktop, Android or iOS app's library, in the app's own storage or a folder of the user's. */
+export async function openNativeLibrary(transport: RpcSend, app: 'desktop' | 'android' | 'ios'): Promise<LibraryBackend> {
   const client = createMessageClient({ ...storageApiMeta, ...libraryFolderApiMeta }, transport);
   const location = await client.libraryFolder.location(null);
   const storage = new NativeStorage(client.storage, undefined, { api: client.libraryFolder, placed: location.placed });

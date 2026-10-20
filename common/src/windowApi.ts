@@ -1,10 +1,10 @@
 import { post, type SimpleMeta } from 'estuary-rpc';
 
 /**
- * The colours around the page in the Android app: the strips behind the status and navigation
- * bars, which the WebView doesn't cover, and whether the bars' icons should be light. The page
+ * The colours around the page in the Android and iOS apps: the strips behind the status and navigation
+ * bars (the home indicator on iOS), which the web view doesn't cover, and whether the bars' icons should be light. The page
  * sets them to its own background, or to the reader's while a book is open
- * (`client/src/styles/windowColors.ts`). Android only.
+ * (`client/src/styles/windowColors.ts`). Android and iOS only.
  */
 export interface WindowColors {
   /** `#rrggbb`. */

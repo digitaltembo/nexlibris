@@ -1,5 +1,5 @@
 import { LOCAL_USER, userData, type FileHash, type FileRef, type ItemId, type Library, type LibraryBackend, type Operation } from '@nexlibris/common';
-import { inAndroidApp } from '../backends/androidBridge';
+import { inMobileApp } from '../backends/mobileBridge';
 
 /**
  * Books are read in windows of their own in the browser and the desktop app (Android's WebView has
@@ -18,7 +18,7 @@ export interface ReaderAddress {
 }
 
 /** Whether books open in windows of their own here. */
-export const readsInWindows = () => !inAndroidApp();
+export const readsInWindows = () => !inMobileApp();
 
 /** The reader window's address for a book, on this page's origin and path. */
 export function readerUrl({ itemId, hash, at }: ReaderAddress, base: string = location.href): string {
