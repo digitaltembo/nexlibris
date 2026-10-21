@@ -4,11 +4,11 @@ import { connectionContents, importFromConnection } from '../../devices/contents
 import { listDevice, planSync } from '../../devices/plan';
 import { runSync } from '../../devices/run';
 import type { DeviceTarget, RemoteFile } from '../../devices/types';
-import { folderType } from './index';
+import { folderType } from '.';
 import { MANIFEST_PATH, readManifest } from './manifest';
 
 // Under Node the Kindle parser fetches resources; nothing here imports Kindle files.
-vi.mock('../../formats/kindle', () => ({}));
+vi.mock('@nexlibris/tools/formats/kindle', () => ({}));
 
 /** A folder as a map of path to contents. */
 class FakeFolder implements DeviceTarget {

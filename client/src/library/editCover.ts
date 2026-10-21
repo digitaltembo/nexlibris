@@ -1,5 +1,5 @@
 import type { Item, LibraryBackend, Operation } from '@nexlibris/common';
-import { coverColor } from './coverColor';
+import { coverColor } from '@nexlibris/tools/coverColor';
 
 /** A cover chosen in the editor, kept until it's saved. */
 export interface NewCover {

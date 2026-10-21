@@ -3,12 +3,13 @@ import { useState } from 'react';
 import styled from 'styled-components';
 import { checkSend, type SendCheck } from '../devices/send';
 import type { ConnectionType } from '../devices/types';
+import { pathOptions, pathWithOptions } from '@nexlibris/tools/formats/convert/converters';
 import { useTextIndex } from '../fulltext/TextIndexContext';
 import { convertItemFile } from '../library/convert';
 import { useLibrary } from '../library/LibraryContext';
 import { updateFiles } from '../library/updateFiles';
 import { Button, Muted, Spacer } from '../styles/ui';
-import { ConvertOptions, optionDefaults } from './ConvertOptions';
+import { ConvertOptions, useOptionValues } from './ConvertOptions';
 import { formatLabel } from './ItemFiles';
 import { ModalFooter } from './Modal';
 
@@ -68,12 +69,11 @@ export function SendCheckStep({
   const { index: textIndex } = useTextIndex();
   const [convert, setConvert] = useState(check.convertible.length > 0);
   const [update, setUpdate] = useState(check.behind.length > 0);
-  const converter = check.convertible[0]?.converter;
-  const fields = converter?.options ?? [];
-  const [values, setValues] = useState(() => optionDefaults(fields));
+  const fields = pathOptions(check.convertible.flatMap((c) => c.path));
+  const [values, setValues] = useOptionValues(fields);
   const [working, setWorking] = useState<string>();
   const [error, setError] = useState<string>();
-  const formats = [...new Set(check.convertible.map((c) => c.converter.to))].map(formatLabel).join(' or ');
+  const formats = [...new Set(check.convertible.map((c) => c.path.at(-1)!.to))].map(formatLabel).join(' or ');
 
   const run = async () => {
     setError(undefined);
@@ -90,7 +90,7 @@ export function SendCheckStep({
           const current = (await backend.getLibrary()).items[item.id];
           const source = current && checkSend(await backend.getLibrary(), device, type, [current]).convertible[0];
           if (!current || !source) continue;
-          await apply([await convertItemFile(backend, current, source.file, source.converter.withOptions?.(values) ?? source.converter)]);
+          await apply([await convertItemFile(backend, current, source.file, pathWithOptions(source.path, values))]);
         }
       }
       onContinue();

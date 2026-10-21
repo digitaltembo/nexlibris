@@ -1,7 +1,7 @@
 import type { FileRef, Item } from '@nexlibris/common';
-import { bookFromItem } from '../formats/convert/bookFromItem';
-import type { EpubMetadata } from '../formats/epubMetadata';
-import { isEpub } from '../formats/formats';
+import { bookFromItem } from '@nexlibris/tools/formats/convert/bookFromItem';
+import type { EpubMetadata } from '@nexlibris/tools/formats/epubMetadata';
+import { isEpub } from '@nexlibris/tools/formats/formats';
 
 /**
  * Which of a book's files are behind its metadata. A file records the fingerprint of the metadata

@@ -1,5 +1,5 @@
 import { userData, type Device, type FileRef, type Item, type Library, type LibraryBackend, type PlacedFile } from '@nexlibris/common';
-import { FORMATS, isFormatId } from '../../formats/formats';
+import { FORMATS, isFormatId } from '@nexlibris/tools/formats/formats';
 import { filterItems } from '../../library/search';
 import { catalogFiles } from '../selection';
 import type { ConnectionType } from '../types';

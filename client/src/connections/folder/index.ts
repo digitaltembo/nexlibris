@@ -2,7 +2,7 @@ import type { Device, Library } from '@nexlibris/common';
 import { expandPath, PLACEHOLDERS, templateProblems } from '../../devices/pathTemplate';
 import { listDevice } from '../../devices/plan';
 import { pickedChoices, settingOf, type FilesType, type SettingField } from '../../devices/types';
-import { FORMATS, type FormatId } from '../../formats/formats';
+import { FORMATS, type FormatId } from '@nexlibris/tools/formats/formats';
 import { canUseFolders, mayWrite, savedFolder } from '../../library/savedFolders';
 import { describe, downloadBook, readManifest, writeManifest } from './manifest';
 import { FolderTarget } from './target';

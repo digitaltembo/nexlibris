@@ -1,7 +1,7 @@
 import { createMessageClient, DATA_DIR, importApiMeta, storedFilePath, type RpcSend, type Skipped } from '@nexlibris/common';
 import { libraryPlace } from './libraryFolder';
 import { nativeTransport } from '../backends/native';
-import { IMPORT_ACCEPT } from '../formats/formats';
+import { IMPORT_ACCEPT } from '@nexlibris/tools/formats/formats';
 import { quietlySkipped, SIDECAR_NAMES, type ImportSource } from './importFiles';
 
 /** Whether files are picked through the native app (Android, desktop) rather than a file input. */

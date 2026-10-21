@@ -18,7 +18,7 @@ import {
   type UserData,
   type UserId,
 } from './types';
-import { normalizeMetadata, normalizeValue } from './metadata';
+import { mergeTags, normalizeMetadata, normalizeValue } from './metadata';
 
 /** Top-level item fields that are replaced wholesale by `updateItem`. */
 export type ItemPatch = Partial<Pick<Item, 'kind' | 'title' | 'creators' | 'identifiers' | 'cover'>>;
@@ -143,19 +143,6 @@ export function createDevice(
 }
 
 const tagKey = (tag: string) => tag.trim().toLowerCase();
-
-/** Appends trimmed tags not already present, comparing case-insensitively. */
-export function mergeTags(existing: string[], added: string[]): string[] {
-  const seen = new Set(existing.map(tagKey));
-  const merged = [...existing];
-  for (const tag of added) {
-    const trimmed = tag.trim();
-    if (!trimmed || seen.has(tagKey(trimmed))) continue;
-    seen.add(tagKey(trimmed));
-    merged.push(trimmed);
-  }
-  return merged;
-}
 
 /** Pure: returns a new library with `op` applied, or throws `OperationError`. */
 export function applyOperation(library: Library, op: Operation, at: string): Library {

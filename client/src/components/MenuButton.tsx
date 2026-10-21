@@ -55,7 +55,7 @@ export const MenuEntry = styled.button.attrs({ type: 'button' })<{ $danger?: boo
 `;
 
 /**
- * A "⋯" button opening a menu of actions. The menu is fixed to the viewport beside the button, so
+ * A "⋮" button opening a menu of actions. The menu is fixed to the viewport beside the button, so
  * a scrolling panel doesn't clip it, and closes on choosing, Escape, a click elsewhere or scrolling.
  */
 export function MenuButton({ label, actions }: { label: string; actions: MenuAction[] }) {
@@ -123,7 +123,7 @@ export function MenuButton({ label, actions }: { label: string; actions: MenuAct
         aria-expanded={open}
         onClick={() => (open ? close(false) : setOpen(true))}
       >
-        ⋯
+        ⋮
       </Button>
       {open && (
         <MenuPanel

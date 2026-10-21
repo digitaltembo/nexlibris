@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import styled, { css } from 'styled-components';
-import { decodeText, loadRtfjs } from '../formats/text';
+import { decodeText, loadRtfjs } from '@nexlibris/tools/formats/text';
 import { Status } from '../styles/ui';
 
 const docStyles = css`

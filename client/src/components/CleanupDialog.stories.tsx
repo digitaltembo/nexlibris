@@ -3,7 +3,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { fn } from 'storybook/test';
 import { LibraryProvider } from '../library/LibraryContext';
 import { openSampleLibrary, sampleItems } from '../stories/sampleLibrary';
-import { buildEpub } from '../formats/epubBuilder';
+import { buildEpub } from '@nexlibris/tools/formats/epubBuilder';
 import { CleanupDialog, Duplicates, FilesUpdated, RereadSummary, StaleFiles, UpdateFiles } from './CleanupDialog';
 import { Modal } from './Modal';
 

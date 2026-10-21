@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import styled from 'styled-components';
-import { openComic, type Comic } from '../formats/comic';
+import { openComic, type Comic } from '@nexlibris/tools/formats/comic';
 import { Status } from '../styles/ui';
 
 const Shell = styled.div`

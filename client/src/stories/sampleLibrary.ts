@@ -11,8 +11,8 @@ import {
   type LibraryBackend,
   type Operation,
 } from '@nexlibris/common';
-import { EXTRACTOR_VERSION, type TextDoc } from '../fulltext/extract';
-import { wordList } from '../fulltext/match';
+import { EXTRACTOR_VERSION, type TextDoc } from '@nexlibris/tools/fulltext/extract';
+import { wordList } from '@nexlibris/tools/fulltext/match';
 
 /**
  * A small library for Storybook: a few books with covers, tags, series, ratings and files, and a

@@ -3,8 +3,8 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { DeviceTarget, RemoteFile } from '../../devices/types';
-import { readerInventory, readerType as x4 } from './index';
-const fixture = () => readFile(join(process.cwd(), 'src/plugins/crosspoint/fixtures/library.idx'));
+import { readerInventory, readerType as x4 } from '.';
+const fixture = () => readFile(join(process.cwd(), '../crosspoint-tools/src/fixtures/library.idx'));
 
 /** A reader whose card has the fixture's index, and these files in the folders a sync lists. */
 function reader(listed: Record<string, RemoteFile[]>, index?: Uint8Array<ArrayBuffer>): DeviceTarget {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyOperations, createCategory, createDevice, createItem, createLibrary, OperationError, userData } from './operations';
+import { applyOperation, applyOperations, createCategory, createDevice, createItem, createLibrary, OperationError, userData } from './operations';
 import { LOCAL_USER } from './types';
 
 const AT = '2026-01-01T00:00:00.000Z';
@@ -230,5 +230,16 @@ describe('applyOperations', () => {
     ).toThrow(OperationError);
     expect(library.items[item.id]?.title).toBe('Dune');
     expect(() => applyOperations(library, [{ type: 'removeItem', id: 'missing' }], AT)).toThrow(OperationError);
+  });
+});
+
+describe('metadata', () => {
+  it('applies as items are made and fields set', () => {
+    const item = createItem({ title: 'Dune', metadata: { published: 'August 1965' } });
+    expect(item.metadata).toEqual({ published: '1965-08' });
+    let library = applyOperation(createLibrary('Books'), { type: 'addItem', item }, '2026-01-01T00:00:00Z');
+    library = applyOperation(library, { type: 'setMetadata', id: item.id, key: 'seriesIndex', value: '1' }, '2026-01-01T00:00:00Z');
+    library = applyOperation(library, { type: 'setMetadata', id: item.id, key: 'published', value: '' }, '2026-01-01T00:00:00Z');
+    expect(library.items[item.id]!.metadata).toEqual({ seriesIndex: 1 });
   });
 });

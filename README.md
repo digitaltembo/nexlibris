@@ -13,12 +13,15 @@ A library manager for ebooks (and hopefully eventually other media) that runs in
 One React web app runs everywhere. Each platform supplies only storage and a few native services; all library logic is shared TypeScript.
 
 ```
-common/    the library model, operations, storage interface, sync      (shared by everything)
-client/    React + Vite web app: UI, formats, conversion, devices, search
-desktop/   Electron shell: serves client/dist, native files, LAN sync hub
-android/   Kotlin WebView shell: serves client/dist, native files, Bluetooth/USB sync
-ios/       Swift WKWebView shell, the same as Android's: serves client/dist, native files, Bluetooth/folder sync
-server/    Node server: the web app, accounts, a library per account, sync (M4)
+common/           the library model, operations, storage interface, sync      (shared by everything)
+tools/            books' files, standalone: formats, metadata and covers, conversion, text for search, zips
+crosspoint-tools/ CrossPoint readers' files: the X4/X3 optimizer, sleep images, fonts, dictionaries, library.idx
+client/           React + Vite web app: UI, devices, search
+cli/              the nexlibris command: books' metadata, covers, conversion and metadata edits, over tools/
+desktop/          Electron shell: serves client/dist, native files, LAN sync hub
+android/          Kotlin WebView shell: serves client/dist, native files, Bluetooth/USB sync
+ios/              Swift WKWebView shell, the same as Android's: serves client/dist, native files, Bluetooth/folder sync
+server/           Node server: the web app, accounts, a library per account, sync (M4)
 ```
 
 ### The library
@@ -45,12 +48,41 @@ server/    Node server: the web app, accounts, a library per account, sync (M4)
 
 ### The client
 
-- **Formats** (`client/src/formats/`): metadata extraction for EPUB, MOBI/AZW3, PDF, TXT/RTF and CBZ/CBR. In-browser conversion, including the CrossPoint X4/X3 optimizer, a TS port of the Calibre plugin.
+- **Formats** (`tools/src/formats/`, the standalone `@nexlibris/tools` package): metadata and cover extraction for EPUB, MOBI/AZW3, PDF, TXT/RTF and CBZ/CBR, and in-browser conversion, among them EPUB to Kindle books (AZW3 as KF8; MOBI and AZW as MOBI 6, which every Kindle reads), to RTF and to PDF (typeset, with options for page size, headers and page and chapter numbers), CBZ to CBR, and PDFs with a text layer back to EPUB (reflowed after scan2epub: running heads and page numbers left out, paragraphs rejoined, chapters from bookmarks or chapter openings). Converters can take options, asked for when converting. Conversions run alike in browsers and in the CLI, which gives the tools a canvas under Node. Plugins register formats and converters of their own, such as the CrossPoint X4/X3 optimizer in `@nexlibris/crosspoint-tools`, a TS port of the Calibre plugin.
 - **Import** (`library/importFiles.ts`): files, folders and whole Calibre libraries. It groups formats of one book together and matches books already in the library.
-- **Search** (`library/search.ts`): a Gmail-style syntax (`tag:fantasy rating:4+ -has:file`). It's the one way of choosing books: the search box, connections' catalogs and browse categories all take search text, with no separate filters. Full-text search inside books (`fulltext/`) indexes in the background into local state.
+- **Search** (`library/search.ts`): a Gmail-style syntax (`tag:fantasy rating:4+ -has:file`). It's the one way of choosing books: the search box, connections' catalogs and browse categories all take search text, with no separate filters. Full-text search inside books (`fulltext/`, over the text `tools/src/fulltext/` extracts) indexes in the background into local state.
 - **Browsing** (`library/browse.ts`): calibre3opds's navigation (authors, series, tags, the user's categories). Books show as a grid, a list, or a view a plugin adds, such as the built-in 3D bookshelf (`plugins/bookshelf/`) and force graph (`plugins/graph/`, books drawn together by the authors, tags and series they share).
 - **Reading** (`reader/`): EPUB (through epubier, a wrapper around epub.js), PDF (pdf.js), comics and text.
 - **Connections** (`devices/`, `connections/`, `plugins/`): a connection reads (lists a place's books and brings them into the library), writes (holds a catalog of books it's given), or both. OPDS servers, the static OPDS export, other instances and folders are built in; plugins add more, with formats, converters and views. A write connection's catalog is the books (or particular files) added to it by hand (Add to…, Send to…, Bulk edit) plus what its search matches; a book's details list the catalogs holding it. Syncs only add: books in the catalog are sent as stored, changed files replaced, and nothing is removed, except by the user. Before sending, books without a format the connection prefers can be converted, and files behind their book's details updated (`devices/send.ts`). A device type can add tools for what else is on the device; CrossPoint's manage its sleep images, StarDict dictionaries and fonts. Where books go on a reader or folder is a path template (`/library/<author>/<title>/`), and books move when it changes. Copies of chosen books already on the device (from Calibre, say) are kept, or moved into place, rather than sent again. A folder gets a manifest, `.nexlibris-library.json`, so another library reads its books back with their details. The static export writes an OPDS catalog in calibre3opds's layout, with its Cloudflare Pages files for search and sign-in.
+
+### Formats
+
+- **Metadata read:** EPUB (and its variants, such as X4 and X3 EPUBs), MOBI, AZW3 and AZW (from their headers), PDF (its document info), RTF (its `\info`), CBZ and CBR (from ComicInfo.xml). TXT has none, so its title is its file name.
+- **Covers:** EPUB, MOBI, AZW3 and AZW, PDF (its first page drawn, which needs a canvas), CBZ and CBR (their first page). TXT and RTF have none.
+- **Metadata written:** EPUB, MOBI, AZW3 and AZW (Kindle books hold no series or sorts).
+- **Read in the app:** EPUB, PDF, CBZ, CBR, TXT and RTF. Kindle books are converted to EPUB to be read.
+- **Text for full-text search:** EPUB, PDF, TXT and RTF.
+- **Converted:** see Conversions, below.
+
+### Conversions
+
+Rows convert to columns. ● is one conversion; ○ is more than one, by way of EPUB, which the app marks as indirect. The app (a book's Convert…, and Bulk convert, which can pick each book's easiest file) and the CLI both run any of them (`nexlibris convert --help` prints this table from the converters registered). Each conversion says how much it keeps (`Converter.fidelity`, from 1 for everything of value to plain text's 0.1), a chain keeps the product of its steps' fidelities, and conversions chain by the most kept, the fewest steps between equals: so nothing goes through plain text where anything else reaches, and X4/X3 EPUBs go back to EPUB by way of AZW3. The X4/X3 formats and their converter come from the CrossPoint plugin (`crosspoint-tools/`).
+
+| from \ to | epub | pdf | cbz | cbr | txt | rtf | mobi | azw3 | azw | x4.epub | x3.epub |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| **epub** | — | ● | | | ● | ● | ● | ● | ● | ● | ● |
+| **pdf** | ● | — | | | ○ | ○ | ○ | ○ | ○ | ○ | ○ |
+| **cbz** | ● | ○ | — | ● | ○ | ○ | ○ | ○ | ○ | ○ | ○ |
+| **cbr** | ● | ○ | ● | — | ○ | ○ | ○ | ○ | ○ | ○ | ○ |
+| **txt** | ● | ○ | | | — | ○ | ○ | ○ | ○ | ○ | ○ |
+| **rtf** | ● | ○ | | | ○ | — | ○ | ○ | ○ | ○ | ○ |
+| **mobi** | ● | ○ | | | ○ | ○ | — | ○ | ○ | ○ | ○ |
+| **azw3** | ● | ○ | | | ○ | ○ | ○ | — | ○ | ○ | ○ |
+| **azw** | ● | ○ | | | ○ | ○ | ○ | ○ | — | ○ | ○ |
+| **x4.epub** | ○ | ● | | | ● | ● | ● | ● | ● | — | ○ |
+| **x3.epub** | ○ | ● | | | ● | ● | ● | ● | ● | ○ | — |
+
+Some converters take options, asked for when converting (`--option key=value` in the CLI; `nexlibris formats` lists them): EPUB to PDF its page size, headers, and page and chapter numbers; PDF to EPUB where chapters come from, which side its first page is and each side's margins to ignore; EPUB to X4/X3 the optimizer's settings. PDF to EPUB reads a PDF's text layer and has no OCR, so a scanned PDF needs one first.
 
 ### Sync between instances
 

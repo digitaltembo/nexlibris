@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Button } from '../../../styles/ui';
-import { DICTIONARY_ROOT, HIDDEN_DICTIONARY_ROOT, isSidecar, parseIfo, prepareDictionaries } from '../stardict';
+import { DICTIONARY_ROOT, HIDDEN_DICTIONARY_ROOT, isSidecar, parseIfo, prepareDictionaries } from '@nexlibris/crosspoint-tools/stardict';
 import { Actions, Note, PickButton, Rows, sizeLabel, Status, useReaderState, type ToolProps } from './shared';
 
 interface InstalledDictionary {

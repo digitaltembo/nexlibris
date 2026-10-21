@@ -10,5 +10,5 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** The sample books: some have EPUBs already, one a PDF, one no file. */
+/** The sample books: some have EPUBs already, one a PDF, one no file. Picking best converts each from its easiest file. */
 export const Default: Story = {};

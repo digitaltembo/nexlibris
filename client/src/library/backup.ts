@@ -6,7 +6,7 @@ import {
   type LibraryBackend,
   type Operation,
 } from '@nexlibris/common';
-import { NotAZipError, readZip, zipParts, type ZipEntry, type ZipEntryInput, type ZipPart } from './zip';
+import { NotAZipError, readZip, zipParts, type ZipEntry, type ZipEntryInput, type ZipPart } from '@nexlibris/tools/zip';
 
 /**
  * A backup is a zip of:

@@ -1,7 +1,6 @@
-import type { Device, FileRef, Item, Library } from '@nexlibris/common';
-import type { Converter } from '../formats/convert/converters';
-import type { FormatId } from '../formats/formats';
-import { conversionSource } from '../library/convert';
+import type { Device, Item, Library } from '@nexlibris/common';
+import type { FormatId } from '@nexlibris/tools/formats/formats';
+import { conversionSource, type ConversionSource } from '../library/convert';
 import { isBehind } from '../library/fileMetadata';
 import type { StaleFile } from '../library/updateFiles';
 import { itemFiles } from './selection';
@@ -12,7 +11,7 @@ import type { ConnectionType } from './types';
  * anything that would make what's sent better is done first, in the library, if the user wants:
  *
  * - `convertible`: books without a format the connection prefers (`ConnectionType.preferred`), which a
- *   converter can make from a file they have;
+ *   conversion can make from a file they have (by way of other formats if need be);
  * - `behind`: files that would be sent whose metadata is behind the library's (`fileMetadata.ts`),
  *   which can be updated first (`updateFiles`);
  * - `unsendable`: books with nothing the connection takes, and nothing to make it from.
@@ -20,7 +19,7 @@ import type { ConnectionType } from './types';
  * Nothing to ask means the books go as they are.
  */
 export interface SendCheck {
-  convertible: { item: Item; file: FileRef; converter: Converter }[];
+  convertible: ({ item: Item } & ConversionSource)[];
   behind: StaleFile[];
   unsendable: Item[];
 }
@@ -42,7 +41,7 @@ export function checkSend(library: Library, device: Device, type: ConnectionType
   return check;
 }
 
-/** What to convert for a book that has none of `preferred`: the first preferred format a converter can make for it. */
+/** What to convert for a book that has none of `preferred`: the first preferred format a conversion can make for it. */
 function convertTo(item: Item, preferred: FormatId[]) {
   if (!preferred.length || item.files.some((file) => preferred.includes(file.format as FormatId))) return undefined;
   for (const format of preferred) {

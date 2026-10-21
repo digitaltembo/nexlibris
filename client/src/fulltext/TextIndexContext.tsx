@@ -1,8 +1,8 @@
 import type { FileRef, Item } from '@nexlibris/common';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useLibrary } from '../library/LibraryContext';
-import { EXTRACTOR_VERSION } from './extract';
-import type { BookMatch } from './match';
+import { EXTRACTOR_VERSION } from '@nexlibris/tools/fulltext/extract';
+import type { BookMatch } from '@nexlibris/tools/fulltext/match';
 import { parseTextQuery, TextIndex, textFile } from './textIndex';
 import type { TextWork } from './textWork';
 import { startTextWork } from './textWorker';

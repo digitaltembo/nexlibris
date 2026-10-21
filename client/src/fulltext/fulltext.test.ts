@@ -1,9 +1,9 @@
 import { createItem, MemoryStorage, StoredLibraryBackend, type Item } from '@nexlibris/common';
 import { describe, expect, it } from 'vitest';
-import { buildEpub } from '../formats/epubBuilder';
-import { parseXml } from '../formats/xml';
-import { extractText, MAX_BOOK_TEXT, MAX_SECTION_SOURCE, type TextDoc } from './extract';
-import { findPassages, locate, parseTextQuery, placeOf, score, wordList } from './match';
+import { buildEpub } from '@nexlibris/tools/formats/epubBuilder';
+import { parseXml } from '@nexlibris/tools/formats/xml';
+import { extractText, MAX_BOOK_TEXT, MAX_SECTION_SOURCE, type TextDoc } from '@nexlibris/tools/fulltext/extract';
+import { findPassages, locate, parseTextQuery, placeOf, score, wordList } from '@nexlibris/tools/fulltext/match';
 import { TextIndex } from './textIndex';
 import { TextWork } from './textWork';
 import { inThread } from './workerRpc';

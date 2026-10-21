@@ -1,7 +1,7 @@
 import { createItem, mergeTags, normalizeDate, type Creator, type Item, type LibraryBackend, type MetadataValue } from '@nexlibris/common';
-import { coverColor } from '../library/coverColor';
+import { coverColor } from '@nexlibris/tools/coverColor';
 import { isbn13to10 } from './isbn';
-import { bcp47Language } from '../formats/language';
+import { bcp47Language } from '@nexlibris/tools/formats/language';
 
 /**
  * Book lookup by ISBN from Open Library (https://openlibrary.org/developers/api), which

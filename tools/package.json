@@ -1,0 +1,31 @@
+{
+  "name": "@nexlibris/tools",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./*": "./src/*.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "@expo-google-fonts/jetbrains-mono": "^0.4.1",
+    "@expo-google-fonts/literata": "^0.4.3",
+    "@lingo-reader/mobi-parser": "^0.4.6",
+    "@pdf-lib/fontkit": "^1.1.1",
+    "domhandler": "^6.0.1",
+    "entities": "^7.0.1",
+    "htmlparser2": "^12.0.0",
+    "jszip": "^3.10.2",
+    "node-unrar-js": "^2.0.2",
+    "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "^6.3.289",
+    "rtf.js": "^3.0.9"
+  },
+  "devDependencies": {
+    "happy-dom": "^20.14.5",
+    "vite": "^8.3.1"
+  }
+}

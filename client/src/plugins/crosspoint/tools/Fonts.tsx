@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Badge, Button } from '../../../styles/ui';
 import type { FontFamily, ReaderSetting } from '../client';
-import { FONT_ROOT, isCpfont, sortFonts } from '../fonts';
+import { FONT_ROOT, isCpfont, sortFonts } from '@nexlibris/crosspoint-tools/fonts';
 import { Actions, Note, PickButton, Rows, sizeLabel, Status, useReaderState, type ToolProps } from './shared';
 
 interface FontsState {

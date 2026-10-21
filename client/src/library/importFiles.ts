@@ -1,14 +1,14 @@
 import { libraryPlace } from './libraryFolder';
 import { createItem, LOCAL_USER, type Cover, type FileRef, type Item, type LibraryBackend, type Operation } from '@nexlibris/common';
 import { hasIsbn, normalizeIsbn } from '../isbn/isbn';
-import { CONVERTERS } from '../formats/convert/converters';
-import { epubMetadataChanges } from '../formats/epubMetadata';
-import { EPUB_FORMATS, formatFromName, isEpub, KINDLE_FORMATS, READER_EPUBS, type FormatId, type ParsedItem } from '../formats/formats';
+import { CONVERTERS } from '@nexlibris/tools/formats/convert/converters';
+import { epubMetadataChanges } from '@nexlibris/tools/formats/epubMetadata';
+import { EPUB_FORMATS, formatFromName, isEpub, KINDLE_FORMATS, READER_EPUBS, type FormatId, type ParsedItem } from '@nexlibris/tools/formats/formats';
 import { fileMetadata, metadataKey } from './fileMetadata';
-import { parseOpf, type OpfMetadata } from '../formats/opf';
-import { parseFile } from '../formats/parseFile';
+import { parseOpf, type OpfMetadata } from '@nexlibris/tools/formats/opf';
+import { parseFile } from '@nexlibris/tools/formats/parseFile';
 import { runConversion } from './convert';
-import { coverColor } from './coverColor';
+import { coverColor } from '@nexlibris/tools/coverColor';
 
 export interface ImportResult {
   added: Item[];
@@ -296,7 +296,7 @@ async function importBook(
   const hasEpub = (list: FileRef[]) => list.some((f) => EPUB_FORMATS.includes(f.format as FormatId));
   if (kindle && !hasEpub(files) && !(existing && hasEpub(existing.files))) {
     try {
-      item.files.push(await runConversion(backend, item, kindle.ref, kindle.candidate.file, kindleToEpub));
+      item.files.push(await runConversion(backend, item, kindle.ref, kindle.candidate.file, [kindleToEpub]));
     } catch (e) {
       result.warnings.push({ name: kindle.candidate.file.name, message: `couldn't convert to EPUB: ${errorMessage(e)}` });
     }

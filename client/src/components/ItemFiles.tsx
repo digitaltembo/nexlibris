@@ -1,10 +1,7 @@
 import { readPairings, type FileRef, type Item, type LibraryBackend } from '@nexlibris/common';
 import { useEffect, useState } from 'react';
 import styled from 'styled-components';
-import type { SettingField } from '../devices/types';
-import type { Converter } from '../formats/convert/converters';
-import { FORMATS, formatFromName, isFormatId } from '../formats/formats';
-import { availableConversions, convertItemFile } from '../library/convert';
+import { FORMATS, formatFromName, isFormatId } from '@nexlibris/tools/formats/formats';
 import { removeFiles } from '../library/freeFiles';
 import { useLibrary } from '../library/LibraryContext';
 import { canShowFiles, showFileInFolder } from '../library/libraryFolder';
@@ -13,7 +10,6 @@ import { isReadable } from '../reader/Reader';
 import { Button, FileButton, Muted, Stack } from '../styles/ui';
 import { onFileFetched } from '../sync/files';
 import { canSync } from '../sync/connect';
-import { ConvertOptionsDialog } from './ConvertOptions';
 import { MenuButton, type MenuAction } from './MenuButton';
 import { AddTo } from './AddTo';
 import { writableConnections } from './SendTo';
@@ -89,43 +85,9 @@ async function downloadFile(backend: LibraryBackend, item: Item, file: FileRef) 
   await saveFile(new Blob([blob], { type }), fileName(item, file));
 }
 
-/** Converting a file: the conversions it has, choosing one (asking for its options first), and how it's going. */
-function useConversion(item: Item, file: FileRef) {
-  const { backend, apply } = useLibrary();
-  const [status, setStatus] = useState<{ busy: boolean; error?: string }>({ busy: false });
-  const [asking, setAsking] = useState<Converter & { options: SettingField[] }>();
-  const conversions = availableConversions(item, file);
-
-  const convert = async (converter: Converter) => {
-    setAsking(undefined);
-    setStatus({ busy: true });
-    try {
-      await apply([await convertItemFile(backend, item, file, converter)]);
-      setStatus({ busy: false });
-    } catch (e) {
-      setStatus({ busy: false, error: e instanceof Error ? e.message : String(e) });
-    }
-  };
-  const choose = (converter: Converter) => {
-    if (converter.options?.length) setAsking({ ...converter, options: converter.options });
-    else void convert(converter);
-  };
-
-  const dialog = asking && (
-    <ConvertOptionsDialog
-      converter={asking}
-      title={`Convert to ${formatLabel(asking.to)}`}
-      what={fileName(item, file)}
-      onConvert={(converter) => void convert(converter)}
-      onClose={() => setAsking(undefined)}
-    />
-  );
-  return { conversions, choose, status, dialog };
-}
-
 /**
- * One file's row: its name (which downloads it), Read, and a menu of the rest (download, convert,
- * show in the file manager, remove, which asks again in the row).
+ * One file's row: its name (which downloads it), Read, and a menu of the rest (download, show in the
+ * file manager, add to a connection, remove, which asks again in the row). Converting is the book's (`ConvertDialog`).
  */
 function FileItem({ item, file, notDownloaded, onRead }: {
   item: Item;
@@ -134,7 +96,6 @@ function FileItem({ item, file, notDownloaded, onRead }: {
   onRead(file: FileRef): void;
 }) {
   const { backend, apply, library } = useLibrary();
-  const { conversions, choose, status, dialog } = useConversion(item, file);
   const [confirming, setConfirming] = useState(false);
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState<string>();
@@ -154,11 +115,6 @@ function FileItem({ item, file, notDownloaded, onRead }: {
 
   const actions: MenuAction[] = [
     { label: 'Download', onSelect: () => void download() },
-    ...conversions.map((c) => ({
-      label: `Convert to ${formatLabel(c.to)}${c.options?.length ? '…' : ''}`,
-      disabled: status.busy,
-      onSelect: () => choose(c),
-    })),
     ...(canShowFiles() && !notDownloaded ? [{ label: 'Show in folder', onSelect: () => void show() }] : []),
     ...(writableConnections(library).length ? [{ label: 'Add to…', onSelect: () => setAdding(true) }] : []),
     { label: 'Remove…', danger: true, onSelect: () => setConfirming(true) },
@@ -174,7 +130,6 @@ function FileItem({ item, file, notDownloaded, onRead }: {
         {file.derivedFrom && ' · converted'}
         {isBehind(item, file) && ' · details older than the library’s'}
         {notDownloaded && ' · not downloaded'}
-        {status.busy && ' · converting…'}
       </Meta>
       <Actions>
         {confirming ? (
@@ -205,9 +160,7 @@ function FileItem({ item, file, notDownloaded, onRead }: {
           </>
         )}
       </Actions>
-      {status.error && <ErrorText role="alert">{status.error}</ErrorText>}
       {error && <ErrorText role="alert">{error}</ErrorText>}
-      {dialog}
       {adding && <AddTo items={[item]} file={file} onClose={() => setAdding(false)} />}
     </FileRow>
   );
@@ -241,7 +194,7 @@ function useNotDownloaded(files: FileRef[]): Set<string> {
 }
 
 /**
- * An item's files, with reading, downloading, converting, showing where they are (in the desktop
+ * An item's files, with reading, downloading, showing where they are (in the desktop
  * app; all but reading in each file's menu), attaching and removing (none of which need edit mode). Removing a file deletes it from the library's storage unless another item has it.
  */
 export function ItemFiles({ item, onRead }: { item: Item; onRead(file: FileRef): void }) {

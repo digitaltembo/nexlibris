@@ -1,6 +1,6 @@
 import { createMessageClient, remoteApiMeta, type RemoteText } from '@nexlibris/common';
 import { inDesktopApp, desktopSend } from '../backends/desktopBridge';
-import { formatFromName, type FormatId } from '../formats/formats';
+import { formatFromName, type FormatId } from '@nexlibris/tools/formats/formats';
 import type { ImportSource } from '../library/importFiles';
 import { storedSource } from '../library/nativeImport';
 import { authHeaders, type CatalogAuth } from './credentials';

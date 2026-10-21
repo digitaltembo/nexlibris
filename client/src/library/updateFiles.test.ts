@@ -1,8 +1,8 @@
 import JSZip from 'jszip';
 import { createItem, LOCAL_USER, MemoryStorage, StoredLibraryBackend, type Item, type Operation } from '@nexlibris/common';
 import { describe, expect, it } from 'vitest';
-import { epubDrm, parseEpub } from '../formats/epub';
-import { buildEpub } from '../formats/epubBuilder';
+import { epubDrm, parseEpub } from '@nexlibris/tools/formats/epub';
+import { buildEpub } from '@nexlibris/tools/formats/epubBuilder';
 import { findStaleFiles, updateFiles } from './updateFiles';
 
 const epub = (title: string, tags: string[], body = '<p>Hi</p>') =>

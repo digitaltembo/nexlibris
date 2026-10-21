@@ -4,12 +4,12 @@ import { useMemo } from 'react';
 import { settingOf, type DeviceTarget, type DeviceTool, type FilesType, type Inventory, type Plugin, type RemoteBook, type RemoteFile, type SettingField } from '../../devices/types';
 import { listDevice, parentOf, syncFolders } from '../../devices/plan';
 import { CrossPointTarget } from './client';
-import { CROSSPOINT_CONVERTERS } from './convert';
-import { CROSSPOINT_FORMATS } from './formats';
+import { CROSSPOINT_CONVERTERS } from '@nexlibris/crosspoint-tools/convert';
+import { CROSSPOINT_FORMATS } from '@nexlibris/crosspoint-tools/formats';
 import { Dictionaries } from './tools/Dictionaries';
 import { Fonts } from './tools/Fonts';
 import { SleepImages } from './tools/SleepImages';
-import { LIBRARY_INDEX_PATH, LibraryIndexError, parseLibraryIndex, recentBooks } from './libraryIndex';
+import { LIBRARY_INDEX_PATH, LibraryIndexError, parseLibraryIndex, recentBooks } from '@nexlibris/crosspoint-tools/libraryIndex';
 
 /** What can go in the folder and file name. */
 const PLACEHOLDER_HELP = `${PLACEHOLDERS.map((p) => `<${p.key}>`).join(', ')}; <authorSort:1> for its first letter; [ … ] for a part kept only when everything in it has a value, as in [<series>/]. Books move when this changes.`;

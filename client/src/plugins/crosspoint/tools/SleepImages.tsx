@@ -13,7 +13,7 @@ import {
   sleepImageName,
   type Placement,
   type Profile,
-} from '../sleepImage';
+} from '@nexlibris/crosspoint-tools/sleepImage';
 import { Actions, Note, PickButton, Status, useReaderState, type ToolProps } from './shared';
 
 interface SleepImage {

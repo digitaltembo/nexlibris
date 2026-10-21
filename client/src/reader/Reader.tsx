@@ -1,7 +1,7 @@
 import type { FileRef, Item, WindowColors } from '@nexlibris/common';
 import { lazy, Suspense, useCallback, useEffect, useState, type ComponentType } from 'react';
 import styled from 'styled-components';
-import { EPUB_FORMATS, FORMATS, isEpub, isFormatId, READ_PREFERENCE, type FormatId } from '../formats/formats';
+import { EPUB_FORMATS, FORMATS, isEpub, isFormatId, READ_PREFERENCE, type FormatId } from '@nexlibris/tools/formats/formats';
 import { useLibrary } from '../library/LibraryContext';
 import { useReadingPosition } from '../library/useReadingPosition';
 import { LockScroll } from '../styles/GlobalStyle';

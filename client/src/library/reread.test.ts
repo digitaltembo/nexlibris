@@ -1,6 +1,6 @@
 import { createItem, MemoryStorage, StoredLibraryBackend, type Operation } from '@nexlibris/common';
 import { describe, expect, it } from 'vitest';
-import type { ParsedItem } from '../formats/formats';
+import type { ParsedItem } from '@nexlibris/tools/formats/formats';
 import { rereadMetadata } from './reread';
 
 const parsed = (fields: Partial<ParsedItem>): ParsedItem => ({ title: 'From file', creators: [], identifiers: {}, tags: [], metadata: {}, ...fields });

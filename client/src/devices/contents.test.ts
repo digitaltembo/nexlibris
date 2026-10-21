@@ -6,7 +6,7 @@ import { runSync } from './run';
 import type { DeviceTarget, FilesType, RemoteFile } from './types';
 
 // Under Node the Kindle parser fetches resources; nothing here imports Kindle files.
-vi.mock('../formats/kindle', () => ({}));
+vi.mock('@nexlibris/tools/formats/kindle', () => ({}));
 
 /** A device as a map of path to contents, that can send files back. */
 class FakeDevice implements DeviceTarget {

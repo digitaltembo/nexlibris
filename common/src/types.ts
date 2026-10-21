@@ -1,3 +1,8 @@
+import type { BookMetadata, Creator, MetadataValue } from '@nexlibris/tools/metadata';
+
+/** The metadata of books, as their files and the library both keep it: part of the stored shape (see `SCHEMA_VERSION`). */
+export type { BookMetadata, Creator, MetadataValue };
+
 export type ItemId = string;
 export type DeviceId = string;
 export type CategoryId = string;
@@ -11,15 +16,6 @@ export const SCHEMA_VERSION = 9;
 export const LOCAL_USER: UserId = 'local';
 
 export type ItemKind = 'book' | 'audio' | 'video';
-
-export interface Creator {
-  name: string;
-  /** MARC relator code, e.g. 'aut', 'edt', 'trl'. */
-  role: string;
-}
-
-/** JSON-compatible value, used for arbitrary item metadata. */
-export type MetadataValue = string | number | boolean | null | MetadataValue[] | { [key: string]: MetadataValue };
 
 export interface FileRef {
   hash: FileHash;
@@ -41,43 +37,6 @@ export interface FileRef {
 export interface Cover {
   hash: FileHash;
   mediaType: string;
-}
-
-/**
- * An item's descriptive metadata beyond its title, creators, tags and identifiers (the item's own
- * fields, which operations change one at a time). The fields named here have fixed meanings and
- * shapes, covering what Calibre and EPUB's package metadata record; any other key is the user's
- * or a plugin's own (e.g. "mood", "x4:fontSize"). Values are normalized as `metadata.ts` does.
- * Typed since schema 4, which normalized the dates and numbers stored before.
- */
-export interface BookMetadata {
-  /** EPUB's `title-type="subtitle"`; the title doesn't repeat it. */
-  subtitle?: string;
-  /** How the title sorts, e.g. "Left Hand of Darkness, The" (Calibre's title sort, EPUB's title `file-as`). */
-  titleSort?: string;
-  /** How the authors sort, e.g. "Le Guin, Ursula K." (Calibre's author sort; EPUB's creator `file-as`, joined with " & "). */
-  authorSort?: string;
-  series?: string;
-  /** The book's place in its series; may be fractional (2.5). */
-  seriesIndex?: number;
-  publisher?: string;
-  /**
-   * When this edition was published (EPUB's `dc:date`, Calibre's publication date), as `YYYY`,
-   * `YYYY-MM` or `YYYY-MM-DD`. For an ebook this is often the ebook's own release.
-   */
-  published?: string;
-  /** When the work itself was first published, which is what a library is usually sorted by; as `published`. */
-  originallyPublished?: string;
-  /** The book's main language, as a BCP 47 tag (e.g. "en", "pt-BR"). */
-  language?: string;
-  /** HTML, untrusted: shown with `RichText`. */
-  description?: string;
-  /** EPUB's `dc:rights`. */
-  rights?: string;
-  pages?: number;
-  /** The cover's most prominent colour, as `#rrggbb`, for styling around the book. */
-  coverColor?: string;
-  [key: string]: MetadataValue | undefined;
 }
 
 export interface Item {

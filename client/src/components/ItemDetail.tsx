@@ -14,9 +14,10 @@ import { isReadable, preferredReadable } from '../reader/Reader';
 import { Cover } from './Cover';
 import { CoverPicker } from './CoverPicker';
 import { CreatorsEditor } from './CreatorsEditor';
-import { DeleteButton } from './DeleteButton';
+import { ConvertDialog, convertibleFiles } from './ConvertDialog';
 import { EditableFiles, formatSize, ItemFiles } from './ItemFiles';
 import { KeyValueEditor } from './KeyValueEditor';
+import { MenuButton, type MenuAction } from './MenuButton';
 import { Prose, RichText } from './RichText';
 import { AddTo } from './AddTo';
 import { ItemCatalogs } from './ItemCatalogs';
@@ -98,6 +99,7 @@ const Line = styled.p`
 const Actions = styled.div`
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 8px;
   margin-top: 10px;
 `;
@@ -203,6 +205,8 @@ function LibraryItemDetail({ item, onClose, onSelectTag, onRead = () => undefine
   const [draft, setDraft] = useState<ItemDraft>();
   const [sending, setSending] = useState(false);
   const [adding, setAdding] = useState(false);
+  const [converting, setConverting] = useState(false);
+  const [confirming, setConfirming] = useState(false);
   // A new cover chosen while editing, shown in the header and saved with the rest.
   const [cover, setCover] = useState<NewCover>();
   const position = savedPosition(library, item.id);
@@ -211,6 +215,18 @@ function LibraryItemDetail({ item, onClose, onSelectTag, onRead = () => undefine
   const readable = resume?.file ?? preferredReadable(item);
   const progress = resume?.progress !== undefined ? ` · ${Math.round(resume.progress * 100)}%` : '';
   const review = reviews[item.id]?.text;
+  const writable = writableConnections(library).length > 0;
+  const actions: MenuAction[] = [
+    { label: 'Edit', onSelect: () => setDraft(draftFromItem(item, review)) },
+    ...(convertibleFiles(item).length ? [{ label: 'Convert…', onSelect: () => setConverting(true) }] : []),
+    ...(writable
+      ? [
+          { label: 'Send to…', onSelect: () => setSending(true) },
+          { label: 'Add to…', onSelect: () => setAdding(true) },
+        ]
+      : []),
+    { label: 'Delete…', danger: true, onSelect: () => setConfirming(true) },
+  ];
 
   return (
     <Panel aria-label={`Details for ${item.title}`}>
@@ -237,21 +253,28 @@ function LibraryItemDetail({ item, onClose, onSelectTag, onRead = () => undefine
           />
           {!draft && (
             <Actions>
-              {readable && <Button onClick={() => onRead(readable)}>{resume ? `Continue${progress}` : 'Read'}</Button>}
-              <Button $variant="secondary" onClick={() => setDraft(draftFromItem(item, review))}>
-                Edit
-              </Button>
-              {writableConnections(library).length > 0 && (
+              {confirming ? (
                 <>
-                  <Button $variant="secondary" onClick={() => setSending(true)}>
-                    Send to…
+                  <Button
+                    $variant="danger"
+                    autoFocus
+                    onClick={() => {
+                      setConfirming(false);
+                      void deleteItems(backend, apply, [item]);
+                    }}
+                  >
+                    Delete
                   </Button>
-                  <Button $variant="secondary" onClick={() => setAdding(true)}>
-                    Add to…
+                  <Button $variant="secondary" onClick={() => setConfirming(false)}>
+                    Cancel
                   </Button>
                 </>
+              ) : (
+                <>
+                  {readable && <Button onClick={() => onRead(readable)}>{resume ? `Continue${progress}` : 'Read'}</Button>}
+                  <MenuButton label={`Actions for ${item.title}`} actions={actions} />
+                </>
               )}
-              <DeleteButton onDelete={() => void deleteItems(backend, apply, [item])} />
             </Actions>
           )}
         </div>
@@ -277,6 +300,7 @@ function LibraryItemDetail({ item, onClose, onSelectTag, onRead = () => undefine
       )}
       {sending && <SendTo items={[item]} onClose={() => setSending(false)} />}
       {adding && <AddTo items={[item]} onClose={() => setAdding(false)} />}
+      {converting && <ConvertDialog item={item} onClose={() => setConverting(false)} />}
     </Panel>
   );
 }

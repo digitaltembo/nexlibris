@@ -3,17 +3,20 @@
   "private": true,
   "type": "module",
   "workspaces": [
+    "tools",
+    "crosspoint-tools",
     "common",
     "client",
+    "cli",
     "desktop",
     "server"
   ],
   "scripts": {
     "dev": "npm run dev -w client --",
-    "build": "npm run build -w client -- && npm run build -w desktop && npm run build -w server",
+    "build": "npm run build -w client -- && npm run build -w desktop && npm run build -w server && npm run build -w cli",
     "test": "npm test --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "lint": "oxlint client/src client/.storybook common/src desktop/src desktop/scripts server/src scripts",
+    "lint": "oxlint client/src client/.storybook common/src tools/src crosspoint-tools/src cli/src desktop/src desktop/scripts server/src scripts",
     "server": "npm run build -w client && npm run build -w server && npm start -w server --",
     "android": "npm run build -w client && cd android && ./gradlew assembleDebug",
     "android:install": "npm run build -w client && cd android && ./gradlew installDebug",

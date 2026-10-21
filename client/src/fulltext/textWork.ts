@@ -1,7 +1,7 @@
 import type { FileHash } from '@nexlibris/common';
-import type { FormatId } from '../formats/formats';
-import { extractText, WORKER_FORMATS, type TextDoc } from './extract';
-import { findPassages, score, wordList, type BookMatch, type TextTerm, type WordList } from './match';
+import type { FormatId } from '@nexlibris/tools/formats/formats';
+import { extractText, workerFormats, type TextDoc } from '@nexlibris/tools/fulltext/extract';
+import { findPassages, score, wordList, type BookMatch, type TextTerm, type WordList } from '@nexlibris/tools/fulltext/match';
 
 /**
  * Full-text search's heavy work, done in a worker (`text.worker.ts`) so the page never waits on it:
@@ -45,9 +45,9 @@ export class TextWork {
   private wordsSize = 0;
   private readonly docs = new Map<FileHash, TextDoc>();
 
-  /** Reads a book's text (in a format the worker reads: {@link WORKER_FORMATS}) and packs it for storing. */
+  /** Reads a book's text (in a format the worker reads: {@link workerFormats}) and packs it for storing. */
   async index(data: Blob, format: FormatId): Promise<Packed> {
-    if (!WORKER_FORMATS.includes(format)) throw new Error(`${format} files are read in the page.`);
+    if (!workerFormats().includes(format)) throw new Error(`${format} files are read in the page.`);
     return this.pack(await extractText(data, format));
   }
 

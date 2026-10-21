@@ -1,5 +1,5 @@
 import { pickedChoices, type ExportType, type FeedType, type SettingField } from '../devices/types';
-import { FORMATS, type FormatId } from '../formats/formats';
+import { FORMATS, type FormatId } from '@nexlibris/tools/formats/formats';
 
 /** Where a catalog is hosted, for showing it; nothing is uploaded there. */
 export const HOSTED_AT: SettingField = {

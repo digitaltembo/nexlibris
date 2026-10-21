@@ -62,10 +62,14 @@ afterEach(async () => {
 const button = (text: string) =>
   [...container.querySelectorAll('button')].find((b) => b.textContent?.startsWith(text)) as HTMLButtonElement;
 const click = (element: HTMLElement) => act(async () => element.click());
+const edit = async () => {
+  await click(container.querySelector<HTMLButtonElement>('[aria-label="Actions for Dune"]')!);
+  await click(button('Edit'));
+};
 
 describe('editing a cover', () => {
   it('finds covers on Open Library and saves the one chosen, deleting the old', async () => {
-    await click(button('Edit'));
+    await edit();
     await click(container.querySelector<HTMLButtonElement>('[aria-label="Change cover"]')!);
     await click(button('Find on Open Library'));
     const choices = [...container.querySelectorAll<HTMLButtonElement>('[aria-label="Covers from Open Library"] button')];
@@ -86,7 +90,7 @@ describe('editing a cover', () => {
   });
 
   it('generates a cover, again on asking, and saves the last', async () => {
-    await click(button('Edit'));
+    await edit();
     await click(container.querySelector<HTMLButtonElement>('[aria-label="Change cover"]')!);
     await click(button('Generate'));
     await click(button('Generate'));
@@ -97,7 +101,7 @@ describe('editing a cover', () => {
   });
 
   it('changes nothing until saved', async () => {
-    await click(button('Edit'));
+    await edit();
     await click(container.querySelector<HTMLButtonElement>('[aria-label="Change cover"]')!);
     await click(button('Generate'));
     await click(button('Cancel'));

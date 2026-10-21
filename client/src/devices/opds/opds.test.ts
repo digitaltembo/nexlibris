@@ -8,7 +8,7 @@ import {
 } from '@nexlibris/common';
 import JSZip from 'jszip';
 import { describe, expect, it } from 'vitest';
-import { parseXml } from '../../formats/xml';
+import { parseXml } from '@nexlibris/tools/formats/xml';
 import type { ExportType } from '../types';
 import { buildCatalog, slug, type CatalogBook, type CatalogFile } from './catalog';
 import { exportCatalog, MANIFEST_PATH, type CatalogSink, type CloudflareOptions } from './export';

@@ -1,3 +1,4 @@
+import '../src/plugins/formats';
 import type { Preview } from '@storybook/react-vite';
 import { useLayoutEffect } from 'react';
 import { TextIndexProvider } from '../src/fulltext/TextIndexContext';

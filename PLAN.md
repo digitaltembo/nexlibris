@@ -106,7 +106,7 @@ Built: `server/` serves the web app, accounts (sign-in by a session cookie; sign
 Full-text search is done; this milestone is about running long work off the main thread and out of the way.
 - **Jobs manager:** one queue for long work (indexing, conversion, OCR, device sync): resumable, with visible progress, never blocking the UI.
 - **Kindle-only books in full-text search,** once M1's parser work is done.
-- **OCR for scanned PDFs** with tesseract-wasm, run by the jobs manager, so their text is indexed.
+- **OCR for scanned PDFs** with tesseract-wasm, run by the jobs manager, so their text is indexed and PDF to EPUB (`pdfText/`, which reads only text layers now) can convert them.
 
 **Done when:** importing and indexing a big library never makes the app stutter, and a scanned PDF is searchable.
 

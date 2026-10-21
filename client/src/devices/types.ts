@@ -1,6 +1,7 @@
 import type { Device, Item, Library, LibraryBackend } from '@nexlibris/common';
-import type { Converter } from '../formats/convert/converters';
-import type { FormatId, FormatInfo } from '../formats/formats';
+import type { Converter } from '@nexlibris/tools/formats/convert/converters';
+import type { FormatId, FormatInfo } from '@nexlibris/tools/formats/formats';
+import type { OptionField } from '@nexlibris/tools/options';
 import type { ComponentType } from 'react';
 import type { LibraryViewType } from '../views/types';
 
@@ -56,20 +57,7 @@ export interface Catalog {
 }
 
 /** A setting a connection type asks for when adding or editing a connection. Values are stored as strings. */
-export interface SettingField {
-  key: string;
-  label: string;
-  default: string;
-  help?: string;
-  /**
-   * How it's asked for: free text (the default), a checkbox (`yes` or `no`), or some of `choices`,
-   * stored as their values joined by commas (empty for all of them, the default).
-   */
-  kind?: 'text' | 'checkbox' | 'some';
-  /** Offered as a list of choices rather than free text (or, for `some`, the ones to pick from). */
-  choices?: { value: string; label: string }[];
-  /** A whole number in this range. */
-  range?: { min: number; max: number };
+export interface SettingField extends OptionField {
   /** Checks a value as it's typed (with the connection's other settings), giving problems and an example of its effect. */
   check?(value: string, settings: Record<string, string>, library: Library): { problems?: string[]; example?: string };
 }
@@ -228,8 +216,8 @@ export interface Plugin {
   /** Ways of showing the books, beside grid and list. */
   views?: LibraryViewType[];
   /**
-   * Formats it adds, by id, and converters making them. These are gathered for the format modules
-   * in `plugins/formats.ts` too, which load without the plugins' UI; list them in both.
+   * Formats it adds, by id, and converters making them. They're registered with `@nexlibris/tools` by
+   * `plugins/formats.ts`, which loads without the plugins' UI; list them in both.
    */
   formats?: Partial<Record<FormatId, FormatInfo>>;
   converters?: Converter[];

@@ -1,5 +1,5 @@
-import { formatFromName, type FormatId } from '../formats/formats';
-import { parseXml } from '../formats/xml';
+import { formatFromName, type FormatId } from '@nexlibris/tools/formats/formats';
+import { parseXml } from '@nexlibris/tools/formats/xml';
 
 /**
  * Reading OPDS 1 catalogs (Atom feeds), as served by Project Gutenberg, calibre's content server,

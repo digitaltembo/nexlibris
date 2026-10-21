@@ -1,7 +1,7 @@
 import type { FileHash, FileRef, Item, LibraryBackend } from '@nexlibris/common';
-import { isFormatId } from '../formats/formats';
-import { EXTRACTOR_VERSION, extractText, TEXT_FORMATS, WORKER_FORMATS } from './extract';
-import { parseTextQuery, type BookMatch, type TextTerm } from './match';
+import { isFormatId } from '@nexlibris/tools/formats/formats';
+import { EXTRACTOR_VERSION, extractText, textFormats, workerFormats } from '@nexlibris/tools/fulltext/extract';
+import { parseTextQuery, type BookMatch, type TextTerm } from '@nexlibris/tools/fulltext/match';
 import type { TextWork } from './textWork';
 import type { Remote } from './workerRpc';
 
@@ -35,7 +35,7 @@ const READ_AT_ONCE = 16;
 
 /** The file of an item whose text is searched: its best format with text. */
 export function textFile(item: Item): FileRef | undefined {
-  const rank = (f: FileRef) => (isFormatId(f.format) ? TEXT_FORMATS.indexOf(f.format) : -1);
+  const rank = (f: FileRef) => (isFormatId(f.format) ? textFormats().indexOf(f.format) : -1);
   return item.files.filter((f) => rank(f) >= 0).sort((a, b) => rank(a) - rank(b))[0];
 }
 
@@ -81,7 +81,7 @@ export class TextIndex {
       const data = await this.backend.getFile(file.hash);
       if (!data) throw new Error('The file is missing from storage.');
       if (!isFormatId(file.format)) throw new Error(`Unknown format ${file.format}`);
-      const packed = WORKER_FORMATS.includes(file.format)
+      const packed = workerFormats().includes(file.format)
         ? await this.work.index(data, file.format)
         : await this.work.pack(await extractText(data, file.format));
       await this.backend.writeLocalFile(textPath(file.hash), packed.text);

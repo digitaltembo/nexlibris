@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import styled from 'styled-components';
-import { loadPdfjs } from '../formats/pdf';
+import { loadPdfjs } from '@nexlibris/tools/formats/pdf';
 import { Status } from '../styles/ui';
 
 const Frame = styled.iframe`

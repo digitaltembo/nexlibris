@@ -1,7 +1,7 @@
 import type { Device, LibraryBackend } from '@nexlibris/common';
 import { useEffect, useMemo, useSyncExternalStore } from 'react';
 import { useLibrary } from '../library/LibraryContext';
-import { connectionType } from './index';
+import { connectionType } from '.';
 
 /**
  * Whether each connection is active on this device: only active ones are in the Library and can

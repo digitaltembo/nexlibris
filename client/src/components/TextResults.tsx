@@ -1,7 +1,7 @@
 import type { FileRef, Item, ItemId } from '@nexlibris/common';
 import { useState } from 'react';
 import styled from 'styled-components';
-import type { Passage } from '../fulltext/match';
+import type { Passage } from '@nexlibris/tools/fulltext/match';
 import { useTextSearch, type TextCoverage, type TextHit } from '../fulltext/TextIndexContext';
 import { NARROW } from '../styles/GlobalStyle';
 import { Muted } from '../styles/ui';

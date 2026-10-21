@@ -1,12 +1,12 @@
 import type { Item } from '@nexlibris/common';
 import { useState } from 'react';
 import styled from 'styled-components';
-import type { FormatId } from '../formats/formats';
-import { CONVERSION_TARGETS } from '../formats/convert/converters';
+import { conversionPaths, pathOptions, pathWithOptions } from '@nexlibris/tools/formats/convert/converters';
+import { FORMATS, type FormatId } from '@nexlibris/tools/formats/formats';
 import { conversionSource, convertItemFile } from '../library/convert';
 import { useLibrary } from '../library/LibraryContext';
-import { Button, Muted, Row, Spacer, Stack } from '../styles/ui';
-import { ConvertOptions, optionDefaults } from './ConvertOptions';
+import { Button, Muted, SmallSelect, Spacer } from '../styles/ui';
+import { ConvertOptions, Field, IndirectNote, pathLabel, useOptionValues } from './ConvertOptions';
 import { formatLabel } from './ItemFiles';
 import { Modal, ModalFooter } from './Modal';
 
@@ -14,20 +14,19 @@ const ErrorText = styled.p`
   color: var(--danger);
 `;
 
-const OptionsBox = styled.fieldset`
-  margin: 16px 0 0;
-  padding: 0 12px 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-`;
-
+/** Converting from whichever of a book's files is easiest. */
+const BEST = '';
 
 interface Props {
   items: Item[];
   onClose(): void;
 }
 
-/** Converts the selected books to a format, each book that can be (and lacks it) in turn. */
+/**
+ * Converts the selected books to a format: from one format they have, or, picking the best, from each
+ * book's file whose conversion loses least. Books that have the format already, or nothing to make
+ * it from, are left as they are. Only the options of the conversions that would run are asked for.
+ */
 export function BulkConvertDialog({ items, onClose }: Props) {
   const { backend, apply } = useLibrary();
   const [progress, setProgress] = useState<string>();
@@ -35,29 +34,40 @@ export function BulkConvertDialog({ items, onClose }: Props) {
   const [running, setRunning] = useState(false);
   const count = items.length;
 
-  const targets = CONVERSION_TARGETS.map((to) => ({
-    to,
-    sources: items.flatMap((item) => {
-      const source = conversionSource(item, to);
-      return source ? [{ item, ...source }] : [];
-    }),
-  }));
-  // Options of the converters that would run, each once (the X4 and X3 optimizers share theirs).
-  const withOptions = targets.filter((t) => t.sources.some((s) => s.converter.options?.length));
-  const fields = [
-    ...new Map(withOptions.flatMap((t) => t.sources.flatMap((s) => s.converter.options ?? [])).map((f) => [f.key, f])).values(),
-  ];
-  const [values, setValues] = useState(() => optionDefaults(fields));
+  // Each format the books have that converts to something, with what it reaches.
+  const reach = new Map<string, Set<FormatId>>();
+  for (const file of items.flatMap((item) => item.files)) {
+    if (reach.has(file.format)) continue;
+    const targets = new Set(conversionPaths(file.format).keys());
+    if (targets.size) reach.set(file.format, targets);
+  }
+  const ordered = (formats: Set<string>) => (Object.keys(FORMATS) as FormatId[]).filter((f) => formats.has(f));
+  const inputs = [...reach.keys()];
+  const [from, setFrom] = useState(BEST);
+  const input = reach.has(from) ? from : BEST;
+  const outputs = ordered(input ? reach.get(input)! : new Set([...reach.values()].flatMap((targets) => [...targets])));
+  const [chosen, setChosen] = useState<FormatId>();
+  const to = chosen && outputs.includes(chosen) ? chosen : outputs[0];
 
-  const convertAll = async (to: FormatId) => {
-    const sources = targets.find((t) => t.to === to)?.sources ?? [];
+  const sources = to
+    ? items.flatMap((item) => {
+        const source = conversionSource(item, to, input || undefined);
+        return source ? [{ item, ...source }] : [];
+      })
+    : [];
+  const indirect = sources.filter((s) => s.path.length > 1);
+  const fields = pathOptions(sources.flatMap((s) => s.path));
+  const [values, setValues] = useOptionValues(fields);
+
+  const convertAll = async () => {
+    if (!to) return;
     const failed: string[] = [];
     setRunning(true);
     setFailures([]);
-    for (const [n, { item, file, converter }] of sources.entries()) {
+    for (const [n, { item, file, path }] of sources.entries()) {
       setProgress(`Converting ${n + 1} of ${sources.length} to ${formatLabel(to)}…`);
       try {
-        await apply([await convertItemFile(backend, item, file, converter.withOptions?.(values) ?? converter)]);
+        await apply([await convertItemFile(backend, item, file, pathWithOptions(path, values))]);
       } catch (e) {
         failed.push(`${item.title}: ${e instanceof Error ? e.message : e}`);
       }
@@ -67,28 +77,49 @@ export function BulkConvertDialog({ items, onClose }: Props) {
     setProgress(`Converted ${sources.length - failed.length} to ${formatLabel(to)}.`);
   };
 
+  const paths = new Set(indirect.map((s) => pathLabel(s.file.format, s.path)));
+  const books = (n: number) => `${n} book${n === 1 ? '' : 's'}`;
+
   return (
-    <Modal title={`Convert ${count} book${count === 1 ? '' : 's'}`} onClose={() => !running && onClose()}>
-      <Muted as="p">Each book that lacks the format, and has a file to make it from, gets a copy in it.</Muted>
-      <Stack>
-        {targets.map(({ to, sources }) => (
-          <Row key={to}>
-            <span>
-              {formatLabel(to)}{' '}
-              <Muted>({sources.length === 0 ? 'none' : sources.length === count ? 'all' : `${sources.length} of ${count}`})</Muted>
-            </span>
-            <Spacer />
-            <Button $variant="secondary" $size="small" disabled={running || sources.length === 0} onClick={() => void convertAll(to)}>
-              Make {formatLabel(to)}
-            </Button>
-          </Row>
-        ))}
-      </Stack>
-      {fields.length > 0 && (
-        <OptionsBox>
-          <legend>{withOptions.map((t) => formatLabel(t.to)).join(' and ')} options</legend>
+    <Modal title={`Convert ${books(count)}`} onClose={() => !running && onClose()}>
+      {!to ? (
+        <Muted as="p">None of these books has a file that can be converted.</Muted>
+      ) : (
+        <>
+          <Field>
+            From
+            <SmallSelect value={input} disabled={running} onChange={(e) => setFrom(e.target.value)}>
+              <option value={BEST}>Pick best (least lost for each book)</option>
+              {inputs.map((format) => (
+                <option key={format} value={format}>
+                  {formatLabel(format)}
+                </option>
+              ))}
+            </SmallSelect>
+          </Field>
+          <Field>
+            To
+            <SmallSelect value={to} disabled={running} onChange={(e) => setChosen(e.target.value as FormatId)}>
+              {outputs.map((format) => (
+                <option key={format} value={format}>
+                  {formatLabel(format)}
+                </option>
+              ))}
+            </SmallSelect>
+          </Field>
+          <Muted as="p">
+            {sources.length === 0
+              ? `None of these books can be made ${formatLabel(to)}${input ? ` from ${formatLabel(input)}` : ''}, or all have it already.`
+              : `${sources.length === count ? `All ${books(count)}` : `${sources.length} of ${books(count)}`} will get a copy in ${formatLabel(to)}; the rest have one already or nothing to make it from.`}
+          </Muted>
+          {indirect.length > 0 && (
+            <IndirectNote>
+              {indirect.length === sources.length ? 'Indirect' : `${books(indirect.length)} ${indirect.length === 1 ? 'converts' : 'convert'} indirectly`}
+              {paths.size === 1 ? `: ${[...paths][0]}.` : ', by way of other formats.'}
+            </IndirectNote>
+          )}
           <ConvertOptions fields={fields} values={values} onChange={setValues} disabled={running} />
-        </OptionsBox>
+        </>
       )}
       {progress && (
         <Muted as="p" role="status">
@@ -101,9 +132,17 @@ export function BulkConvertDialog({ items, onClose }: Props) {
         </ErrorText>
       )}
       <ModalFooter>
+        {fields.length > 0 && (
+          <Button $variant="secondary" disabled={running} onClick={() => setValues({})}>
+            Defaults
+          </Button>
+        )}
         <Spacer />
-        <Button disabled={running} onClick={onClose}>
+        <Button $variant="secondary" disabled={running} onClick={onClose}>
           Done
+        </Button>
+        <Button disabled={running || sources.length === 0} onClick={() => void convertAll()}>
+          Convert {sources.length > 0 && books(sources.length)}
         </Button>
       </ModalFooter>
     </Modal>

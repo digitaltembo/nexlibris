@@ -15,6 +15,8 @@ export default defineConfig({
   },
   test: {
     environment: 'happy-dom',
+    // Plugins' formats, registered as the app's entry points do.
+    setupFiles: ['src/plugins/formats.ts'],
     environmentOptions: {
       happyDOM: {
         // Tests parse untrusted and book HTML; like DOMParser in a browser, don't fetch what it links to.

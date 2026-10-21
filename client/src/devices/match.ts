@@ -1,5 +1,5 @@
 import type { Item, Library } from '@nexlibris/common';
-import { stripExtension } from '../formats/formats';
+import { stripExtension } from '@nexlibris/tools/formats/formats';
 import { loose } from '../library/importFiles';
 import type { RemoteBook } from './types';
 

@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useState } from 'react';
 import { Modal } from '../../../components/Modal';
 import { fakeReader } from '../fakeReader';
-import { encodeBmp, SCREEN } from '../sleepImage';
+import { encodeBmp, SCREEN } from '@nexlibris/crosspoint-tools/sleepImage';
 import { Dictionaries } from './Dictionaries';
 import { Fonts } from './Fonts';
 import { SleepImages } from './SleepImages';

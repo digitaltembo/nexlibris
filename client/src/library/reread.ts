@@ -1,7 +1,7 @@
 import type { Item, Library, LibraryBackend, Operation } from '@nexlibris/common';
-import { isFormatId, type FormatId, type ParsedItem } from '../formats/formats';
-import { parseFile } from '../formats/parseFile';
-import { coverColor } from './coverColor';
+import { isFormatId, type FormatId, type ParsedItem } from '@nexlibris/tools/formats/formats';
+import { parseFile } from '@nexlibris/tools/formats/parseFile';
+import { coverColor } from '@nexlibris/tools/coverColor';
 import { METADATA_PREFERENCE } from './importFiles';
 
 /**

@@ -1,0 +1,21 @@
+{
+  "name": "@nexlibris/crosspoint-tools",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./*": "./src/*.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "@nexlibris/tools": "^0.0.0",
+    "jszip": "^3.10.2"
+  },
+  "devDependencies": {
+    "happy-dom": "^20.14.5",
+    "vite": "^8.3.1"
+  }
+}

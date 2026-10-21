@@ -8,9 +8,9 @@ import {
   type Operation,
 } from '@nexlibris/common';
 import { canWriteMetadata, fileMetadata, metadataKey } from './fileMetadata';
-import { epubDrm, parseEpub } from '../formats/epub';
-import { epubMetadataChanges, writeEpubMetadata } from '../formats/epubMetadata';
-import type { ParsedItem } from '../formats/formats';
+import { epubDrm, parseEpub } from '@nexlibris/tools/formats/epub';
+import { epubMetadataChanges, writeEpubMetadata } from '@nexlibris/tools/formats/epubMetadata';
+import type { ParsedItem } from '@nexlibris/tools/formats/formats';
 
 /**
  * Library cleanup's "Update book files": writes the library's metadata (title, creators, tags,

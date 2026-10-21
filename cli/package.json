@@ -1,0 +1,29 @@
+{
+  "name": "@nexlibris/cli",
+  "version": "0.0.0",
+  "private": true,
+  "description": "nexlibris's tools on the command line: books' metadata, covers, conversion and metadata edits",
+  "type": "module",
+  "bin": {
+    "nexlibris": "dist/main.js"
+  },
+  "scripts": {
+    "build": "rolldown -c rolldown.config.js",
+    "start": "node dist/main.js",
+    "test": "vitest run",
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "@napi-rs/canvas": "^1.0.9",
+    "@nexlibris/crosspoint-tools": "^0.0.0",
+    "@nexlibris/tools": "^0.0.0",
+    "happy-dom": "^20.14.5"
+  },
+  "devDependencies": {
+    "@lingo-reader/mobi-parser": "^0.4.6",
+    "@types/node": "^26.6.3",
+    "jszip": "^3.10.2",
+    "rolldown": "^1.2.12",
+    "vite": "^8.3.1"
+  }
+}

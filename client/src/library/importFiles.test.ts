@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { importFiles } from './importFiles';
 
 // Under Node the real Kindle parser fetches its resources over the network, so stand in for parsing and conversion.
-vi.mock('../formats/parseFile', () => ({
+vi.mock('@nexlibris/tools/formats/parseFile', () => ({
   parseFile: async (_format: string, _data: Blob, name: string) => ({
     title: name,
     creators: [],

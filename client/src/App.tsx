@@ -32,7 +32,7 @@ import { SettingsDialog, SORT_LABELS } from './components/SettingsDialog';
 import { ViewSwitcher } from './components/ViewSwitcher';
 import { viewType } from './plugins';
 import { knownView, VIEWS, type View } from './views/views';
-import { IMPORT_ACCEPT } from './formats/formats';
+import { IMPORT_ACCEPT } from '@nexlibris/tools/formats/formats';
 import { ALL_BOOKS, browse, crumbs, parentPath, viewCount, type BrowsePath } from './library/browse';
 import { availableFields, DEFAULT_COLUMNS, visibleColumns } from './library/columns';
 import { ALREADY_IN_LIBRARY, importFiles, type ImportResult, type ImportSource } from './library/importFiles';
