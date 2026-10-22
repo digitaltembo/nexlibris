@@ -1,7 +1,6 @@
 import styled from 'styled-components';
-import { fieldLabel } from '../library/bookFields';
+import { DEFAULT_DESC, fieldLabel, type Sort, type SortKey } from '@nexlibris/common';
 import { BUILTIN_COLUMNS, DEFAULT_COLUMNS, fieldColumn, type ColumnId } from '../library/columns';
-import { DEFAULT_DESC, type Sort, type SortKey } from '../library/search';
 import { Button, Muted, Spacer } from '../styles/ui';
 import { Modal, ModalFooter } from './Modal';
 import { APPEARANCES, type Appearance } from '../styles/appearance';

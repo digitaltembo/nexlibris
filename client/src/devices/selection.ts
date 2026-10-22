@@ -1,27 +1,18 @@
-import { userData, type Device, type FileHash, type FileRef, type Item, type ItemId, type Library, type Operation } from '@nexlibris/common';
-import { filterItems } from '../library/search';
+import {
+  deviceItemFiles,
+  deviceItems,
+  searchMatches,
+  type Device,
+  type FileHash,
+  type FileRef,
+  type Item,
+  type ItemId,
+  type Library,
+  type Operation,
+} from '@nexlibris/common';
 import type { ConnectionType } from './types';
 
-/**
- * A connection's catalog: the items it holds. Those chosen by hand come first, in the order they
- * were added, then those its search matches that aren't in it yet, by title. A search's matches are
- * added to the catalog for good (`catalogAdditions`) when the connection is opened or synced, so a
- * book that later stops matching stays. Items taken out (`Device.excluded`) are left out either way.
- */
-export function deviceItems(library: Library, device: Device): Item[] {
-  const excluded = new Set(device.excluded);
-  const chosen = device.items.map((id) => library.items[id]).filter((item): item is Item => !!item && !excluded.has(item.id));
-  return [...chosen, ...searchMatches(library, device, new Set(device.items))];
-}
-
-/** Items a connection's search matches that aren't in its catalog (or taken out of it), by title. */
-function searchMatches(library: Library, device: Device, picked: Set<ItemId>): Item[] {
-  if (!device.query?.trim()) return [];
-  const excluded = new Set(device.excluded);
-  return filterItems(Object.values(library.items), device.query, { ratings: userData(library).ratings })
-    .filter((item) => !picked.has(item.id) && !excluded.has(item.id))
-    .sort((a, b) => a.title.localeCompare(b.title, undefined, { numeric: true }) || a.id.localeCompare(b.id));
-}
+export { deviceItems };
 
 /** Operations adding what a connection's search matches now to its catalog, so they stay once they stop matching. */
 export function catalogAdditions(library: Library, device: Device): Operation[] {
@@ -78,14 +69,8 @@ export const inCatalog = (library: Library, device: Device, itemId: ItemId) =>
  * the first it has in the type's formats, best first, or with `every`, all it has in them. A type
  * that takes every format (an instance) takes every file.
  */
-export function itemFiles(item: Item, device: Device, type: ConnectionType, every = false): FileRef[] {
-  const chosen = device.files?.[item.id];
-  if (chosen) return item.files.filter((file) => chosen.includes(file.hash));
-  const formats = type.formats(device);
-  if (!formats.length) return item.files;
-  const files = formats.flatMap((format) => item.files.filter((file) => file.format === format));
-  return every ? files : files.slice(0, 1);
-}
+export const itemFiles = (item: Item, device: Device, type: ConnectionType, every = false): FileRef[] =>
+  deviceItemFiles(item, device, type.formats(device), every);
 
 /** Each item in a connection's catalog with its files that go there (`itemFiles`); an item with none has none there. */
 export function catalogFiles(library: Library, device: Device, type: ConnectionType, every = type.access === 'export'): { item: Item; files: FileRef[] }[] {

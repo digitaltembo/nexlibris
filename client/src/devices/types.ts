@@ -196,12 +196,22 @@ export interface FeedType extends ConnectionTypeBase {
   searchTemplate?(device: Device): string | undefined;
 }
 
-export type ConnectionType = FilesType | ExportType | InstanceType | FeedType;
+/**
+ * An OPDS feed of the connection's catalog, served live by the nexlibris server whose account holds
+ * the library (`common/src/opdsServer.ts`, at `/opds/<id>/`): nothing is written or synced, as the
+ * server reads the account's library at every request. Active only while signed in to a server.
+ */
+export interface ServedType extends ConnectionTypeBase {
+  access: 'served';
+}
+
+export type ConnectionType = FilesType | ExportType | InstanceType | FeedType | ServedType;
 
 export const isFiles = (type: ConnectionType): type is FilesType => type.access === 'files';
 export const isExport = (type: ConnectionType): type is ExportType => type.access === 'export';
 export const isInstance = (type: ConnectionType): type is InstanceType => type.access === 'instance';
 export const isFeed = (type: ConnectionType): type is FeedType => type.access === 'feed';
+export const isServed = (type: ConnectionType): type is ServedType => type.access === 'served';
 
 /** Whether a connection type reads, writes, or takes single books. */
 export const reads = (type: ConnectionType) => !!type.read;

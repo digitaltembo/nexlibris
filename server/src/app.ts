@@ -8,6 +8,7 @@ import { authEndpoints } from './api/auth';
 import type { ApiSettings, Services } from './api/context';
 import { libraryEndpoints } from './api/library';
 import { apiMiddleware } from './api/middleware';
+import { OPDS_PREFIX, opdsMiddleware } from './api/opds';
 import { syncEndpoints, syncFileEndpoints } from './api/sync';
 import { createLibraries } from './libraries';
 import type { ObjectStore } from './objectStore';
@@ -19,7 +20,8 @@ import { createPairings } from './pairings';
  * with the library in the browser):
  * - the server API (`common/src/serverApi.ts`): accounts (`api/auth.ts`), and the signed-in
  *   account's library and its files (`api/library.ts`);
- * - the sync API (`common/src/syncApi.ts`) for each account's library, and its files (`api/sync.ts`).
+ * - the sync API (`common/src/syncApi.ts`) for each account's library, and its files (`api/sync.ts`);
+ * - and beside them, the signed-in account's OPDS catalogs at `/opds/`, live (`api/opds.ts`).
  *
  * `api/middleware.ts` works out who's calling (the session, or a pairing's key) and refuses
  * cross-site changes; `api/context.ts` is what endpoints are given. Every book's file is served
@@ -55,10 +57,12 @@ export function createApp(options: AppOptions) {
     // The endpoints read what `authenticate` and the middlewares put on the context, which the API's type can't say.
   } as unknown as ApiTypeOf<ApiContext, unknown, typeof meta>;
 
+  const middleware = apiMiddleware(services);
   const server = createApiServer(endpoints, meta, {
     ...(options.server && { server: options.server }),
     maxBodyBytes: MAX_JSON_BYTES,
-    ...apiMiddleware(services),
+    ...middleware,
+    restMiddleware: [...middleware.restMiddleware, opdsMiddleware(services)],
     ...(options.clientDir && { staticFiles: webApp(options.clientDir) }),
   });
 
@@ -95,7 +99,7 @@ const webApp = (clientDir: string) => ({
   fileRoot: clientDir,
   defaultFile: 'index.html',
   defaultCode: 200,
-  apiPrefixes: ['api/'],
+  apiPrefixes: ['api/', OPDS_PREFIX],
   headers: (file: string) => ({
     'Cache-Control': file.startsWith(join(clientDir, 'assets') + sep) ? 'public, max-age=31536000, immutable' : 'no-cache',
     'X-Content-Type-Options': 'nosniff',

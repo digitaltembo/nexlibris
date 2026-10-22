@@ -1,5 +1,7 @@
-import { pickedChoices, type ExportType, type FeedType, type SettingField } from '../devices/types';
+import { OPDS_SERVED_TYPE, type Device } from '@nexlibris/common';
+import { pickedChoices, type ExportType, type FeedType, type ServedType, type SettingField } from '../devices/types';
 import { FORMATS, type FormatId } from '@nexlibris/tools/formats/formats';
+import { serverSession, serverUrl } from '../library/account';
 
 /** Where a catalog is hosted, for showing it; nothing is uploaded there. */
 export const HOSTED_AT: SettingField = {
@@ -94,4 +96,36 @@ export const opdsServer: FeedType = {
   settings: [CATALOG_URL, SEARCH_TEMPLATE],
   url: (device) => String(device.settings?.url ?? '').trim(),
   searchTemplate: (device) => String(device.settings?.search ?? '').trim() || undefined,
+};
+
+/** Which formats of each book a served feed offers (`servedFormats` in `common/src/opdsServer.ts` reads it). */
+const SERVED_FORMATS: SettingField = {
+  key: 'formats',
+  label: 'Formats',
+  kind: 'some',
+  default: '',
+  choices: (Object.keys(FORMATS) as FormatId[]).map((format) => ({ value: format, label: FORMATS[format].label })),
+  help: 'Each book is offered in every format it has, or, if you pick some, in every one of those it has; a book with none of them is left out.',
+};
+
+/** Where the server serves a feed, while signed in to one. */
+export function servedFeedUrl(device: Device): string | undefined {
+  const server = serverUrl();
+  return server && `${server.replace(/\/$/, '')}/opds/${encodeURIComponent(device.id)}/`;
+}
+
+/**
+ * An OPDS feed of the connection's catalog, served live by the nexlibris server the library's account
+ * is on, as OPDS 1.2 (XML) or 2.0 (JSON), for OPDS readers signing in with the account's name and
+ * password. Nothing is sent or synced: the server reads the library as it is. Active only while
+ * signed in to a server, as only there is it served.
+ */
+export const opdsServed: ServedType = {
+  access: 'served',
+  id: OPDS_SERVED_TYPE,
+  label: 'OPDS feed on your server',
+  write: { single: false },
+  formats: (device) => pickedChoices(device, SERVED_FORMATS) as FormatId[],
+  settings: [SERVED_FORMATS],
+  activation: async () => ((await serverSession())?.account ? undefined : 'Sign in to a nexlibris server (Account…) to serve it'),
 };

@@ -1,0 +1,12 @@
+**/node_modules
+**/dist
+**/*.tsbuildinfo
+**/.DS_Store
+.git
+android
+ios
+desktop/.app
+client/storybook-static
+data
+Dockerfile
+compose.yaml

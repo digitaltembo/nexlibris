@@ -1,4 +1,4 @@
-import type { MetadataValue } from '@nexlibris/common';
+import type { MetadataValue } from './types';
 
 /**
  * Metadata values are edited as text. Lists of strings are shown

@@ -1,5 +1,4 @@
-import type { Item } from '@nexlibris/common';
-import type { SortKey } from './search';
+import type { Item, SortKey } from '@nexlibris/common';
 
 export type BuiltinColumn =
   | 'cover'

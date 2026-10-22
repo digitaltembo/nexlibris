@@ -1,4 +1,15 @@
-import { createItem, peerOffer, readPairings, requestFromPeer, type Device, type Item, type ItemId, type Pairing } from '@nexlibris/common';
+import {
+  createItem,
+  type Device,
+  type Item,
+  type ItemId,
+  type Pairing,
+  peerOffer,
+  readPairings,
+  requestFromPeer,
+  type Sort,
+  sortItems,
+} from '@nexlibris/common';
 import { useCallback, useEffect, useState } from 'react';
 import styled from 'styled-components';
 import { connectionType } from '../connections';
@@ -7,7 +18,6 @@ import { listDevice } from '../devices/plan';
 import { isFiles, isInstance, type Inventory, type RemoteBook } from '../devices/types';
 import { availableFields, DEFAULT_COLUMNS, visibleColumns } from '../library/columns';
 import { useLibrary } from '../library/LibraryContext';
-import { sortItems, type Sort } from '../library/search';
 import { viewType } from '../plugins';
 import { Button, Muted, Spacer } from '../styles/ui';
 import { connectHub } from '../sync/connect';

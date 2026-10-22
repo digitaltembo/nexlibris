@@ -43,7 +43,7 @@ export interface PairResult {
   hub: PeerInfo;
   /**
    * The books whose files the pairing instance keeps, as the hub chose when it showed the code: a
-   * search (`client/src/library/search.ts`), which becomes the rules of that instance's connection.
+   * search (`common/src/search.ts`), which becomes the rules of that instance's connection.
    */
   keepFiles?: string;
 }

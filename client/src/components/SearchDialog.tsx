@@ -1,9 +1,8 @@
-import type { FileRef, Item, ItemId } from '@nexlibris/common';
+import { type FileRef, filterItems, type Item, type ItemId } from '@nexlibris/common';
 import { useDeferredValue, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import styled from 'styled-components';
 import type { Passage } from '@nexlibris/tools/fulltext/match';
 import { useTextSearch, type TextHit } from '../fulltext/TextIndexContext';
-import { filterItems } from '../library/search';
 import { suggest, type SearchField } from '../library/suggest';
 import { usePersistentState } from '../library/usePersistentState';
 import { NARROW } from '../styles/GlobalStyle';

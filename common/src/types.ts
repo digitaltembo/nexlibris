@@ -163,7 +163,7 @@ export interface Library {
 /**
  * A browse category of the user's own, as calibre3opds's customization: a name for a list of
  * named searches, each opening the books it matches. A category with one entry opens its books
- * directly. Searches use the search box's syntax (`client/src/library/search.ts`), so an entry
+ * directly. Searches use the search box's syntax (`search.ts`), so an entry
  * can be one tag (`tag:Fantasy`), as in calibre3opds, or anything else that can be searched for.
  */
 export interface Category {

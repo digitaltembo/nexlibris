@@ -1,0 +1,35 @@
+# The nexlibris server: `docker compose up -d`, then open http://localhost:8080 and sign up (the first
+# account only, unless NEXLIBRIS_SIGNUP says otherwise). estuary-rpc and epubierjs must be checked out
+# beside this repository, as for development. Accounts from the command line:
+#   docker compose run --rm nexlibris add-account <name>
+# Every option is an environment variable (`docker compose run --rm nexlibris --help`).
+services:
+  nexlibris:
+    build:
+      context: .
+      additional_contexts:
+        estuary-rpc: ../estuary-rpc
+        epubierjs: ../epubierjs
+    image: nexlibris
+    restart: unless-stopped
+    ports:
+      - "${NEXLIBRIS_PUBLISH:-8080}:8080"
+    volumes:
+      # Accounts, libraries and, with the default fs storage, books' files.
+      - nexlibris-data:/data
+    environment:
+      NEXLIBRIS_NAME: ${NEXLIBRIS_NAME:-nexlibris cloud}
+      NEXLIBRIS_SIGNUP: ${NEXLIBRIS_SIGNUP:-first}
+      # Behind a reverse proxy that terminates https (Caddy, Traefik, nginx), set this to 1.
+      NEXLIBRIS_TRUST_PROXY: ${NEXLIBRIS_TRUST_PROXY:-0}
+      # Books' files in a bucket rather than the volume: s3, gcs or b2, with the bucket and its keys.
+      NEXLIBRIS_STORAGE: ${NEXLIBRIS_STORAGE:-fs}
+      NEXLIBRIS_BUCKET: ${NEXLIBRIS_BUCKET:-}
+      NEXLIBRIS_REGION: ${NEXLIBRIS_REGION:-}
+      NEXLIBRIS_ENDPOINT: ${NEXLIBRIS_ENDPOINT:-}
+      NEXLIBRIS_PREFIX: ${NEXLIBRIS_PREFIX:-}
+      NEXLIBRIS_ACCESS_KEY_ID: ${NEXLIBRIS_ACCESS_KEY_ID:-}
+      NEXLIBRIS_SECRET_ACCESS_KEY: ${NEXLIBRIS_SECRET_ACCESS_KEY:-}
+
+volumes:
+  nexlibris-data:

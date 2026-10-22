@@ -1,4 +1,4 @@
-import { savePairing, type Pairing } from '@nexlibris/common';
+import { createDevice, OPDS_SERVED_TYPE, savePairing, type Pairing } from '@nexlibris/common';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useEffect, useState } from 'react';
 import { fn } from 'storybook/test';
@@ -125,3 +125,18 @@ function WithInstances({ onClose }: { onClose(): void }) {
  * its classics' files), two paired from here, and one that isn't. Adding one shows the ways to pair.
  */
 export const WithOtherInstances: Story = { render: (args) => <WithInstances {...args} /> };
+
+function WithServedFeed({ onClose }: { onClose(): void }) {
+  const { apply } = useLibrary();
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    void apply([{ type: 'addDevice', device: createDevice({ name: 'For KOReader', type: OPDS_SERVED_TYPE, query: 'tag:Classic' }) }]).then(() => setReady(true));
+  }, [apply]);
+  return ready ? <ConnectionsDialog onClose={onClose} /> : null;
+}
+
+/**
+ * An OPDS feed the server serves, beside the reader and catalog: with no server here it's inactive,
+ * saying to sign in; signed in, it gives the address readers open instead, and has nothing to sync.
+ */
+export const ServedFeed: Story = { render: (args) => <WithServedFeed {...args} /> };

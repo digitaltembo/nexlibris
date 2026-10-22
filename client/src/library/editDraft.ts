@@ -1,6 +1,17 @@
-import { LOCAL_USER, normalizeValue, type Creator, type FileRef, type Item, type Operation, type UserId } from '@nexlibris/common';
-import { BOOK_FIELDS, fieldText, isFixedField } from './bookFields';
-import { metadataToText, textToMetadata } from './metadataText';
+import {
+  BOOK_FIELDS,
+  type Creator,
+  fieldText,
+  type FileRef,
+  isFixedField,
+  type Item,
+  LOCAL_USER,
+  metadataToText,
+  normalizeValue,
+  type Operation,
+  textToMetadata,
+  type UserId,
+} from '@nexlibris/common';
 
 /** An item's editable fields as plain form state, until the user saves. */
 export interface ItemDraft {

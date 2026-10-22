@@ -8,7 +8,7 @@ import type { Device, Item, ItemId, Library, UserData } from './types';
  * reviews, positions, devices' items and placed files) is cut down to those books, and so are the
  * changes the hub sends, so an instance never sees the details of a book it doesn't keep.
  *
- * Which items a connection's rules pick is up to the client (`library/search.ts`), so the hub's
+ * Which items a connection's rules pick is up to the client (`common/src/search.ts`), so the hub's
  * host passes it in as a {@link ScopeRule}.
  */
 

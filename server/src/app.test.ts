@@ -1,4 +1,5 @@
 import {
+  createDevice,
   createLibrary,
   hashBlob,
   httpHubFiles,
@@ -10,6 +11,7 @@ import {
   serverClient,
   ServerLibraryBackend,
   isSignedOut,
+  OPDS_SERVED_TYPE,
   StoredLibraryBackend,
   type Item,
 } from '@nexlibris/common';
@@ -278,6 +280,8 @@ describe('the account’s library', () => {
     // Nothing outside the app's folder: that's the app too.
     expect(await (await fetch(`${base}/..%2f..%2fdata/accounts.json`)).text()).toContain('<title>nexlibris</title>');
     expect((await fetch(`${base}/api/nothing`)).status).toBe(404);
+    // The catalogs aren't the app either.
+    expect((await fetch(`${base}/opds/`)).status).toBe(401);
   });
 });
 
@@ -359,5 +363,69 @@ describe('sync with the account', () => {
     await expect(hub.pair({ code: '', peer: { origin: 'x', name: 'y' } })).rejects.toThrow('signed out');
     const keyless = httpSyncClient(base, 'made-up');
     await expect(keyless.hello(null)).rejects.toThrow('isn’t paired');
+  });
+});
+
+describe('OPDS feeds', () => {
+  /** An account whose library has a served feed holding Dune, as an EPUB. */
+  async function withCatalog() {
+    const { fetchImpl, backend } = await signedUp();
+    const { hash, size } = await backend.putFile(new Blob(['dune epub']));
+    const shelf = { ...createDevice({ name: 'Shelf', type: OPDS_SERVED_TYPE }), items: ['dune'] };
+    await backend.apply([
+      { type: 'addItem', item: book('dune', 'Dune') },
+      { type: 'attachFile', id: 'dune', file: { hash, size, format: 'epub' } },
+      { type: 'addItem', item: book('other', 'Not in it') },
+      { type: 'addDevice', device: shelf },
+    ]);
+    return { fetchImpl, shelf, hash };
+  }
+  const basic = (name: string, password: string) => ({ Authorization: `Basic ${Buffer.from(`${name}:${password}`).toString('base64')}` });
+
+  it('asks readers to sign in with Basic, and serves the account’s catalogs to its name and password', async () => {
+    const { shelf, hash } = await withCatalog();
+    const anonymous = await fetch(`${base}/opds/`);
+    expect(anonymous.status).toBe(401);
+    expect(anonymous.headers.get('www-authenticate')).toBe('Basic realm="Test cloud", charset="UTF-8"');
+    expect((await fetch(`${base}/opds/`, { headers: basic('ada', 'wrong horse') })).status).toBe(401);
+
+    const root = await fetch(`${base}/opds/index.json`, { headers: basic('ada', 'correct horse') });
+    expect(root.headers.get('content-type')).toBe('application/opds+json; charset=utf-8');
+    expect((await root.json()).navigation).toEqual([
+      { href: `/opds/${shelf.id}/index.json`, title: 'Shelf', type: 'application/opds+json', rel: 'subsection' },
+    ]);
+
+    const titles = await fetch(`${base}/opds/${shelf.id}/titles.xml`, { headers: basic('ada', 'correct horse') });
+    expect(titles.headers.get('content-type')).toBe('application/atom+xml;profile=opds-catalog;kind=acquisition; charset=utf-8');
+    const feed = await titles.text();
+    expect(feed).toContain('<title>Dune</title>');
+    expect(feed).not.toContain('Not in it');
+    const href = /rel="http:\/\/opds-spec.org\/acquisition" href="([^"]+)"/.exec(feed)![1]!;
+    expect(href).toBe(`/opds/${shelf.id}/files/${hash}/Dune%20-%20Frank%20Herbert.epub`);
+
+    // Unchanged feeds are answered from the reader's cache.
+    const again = await fetch(`${base}/opds/${shelf.id}/titles.xml`, {
+      headers: { ...basic('ada', 'correct horse'), 'If-None-Match': titles.headers.get('etag')! },
+    });
+    expect(again.status).toBe(304);
+
+    const download = await fetch(base + href, { headers: basic('ada', 'correct horse') });
+    expect(download.status).toBe(200);
+    expect(download.headers.get('content-type')).toBe('application/epub+zip');
+    expect(download.headers.get('content-disposition')).toBe(`attachment; filename*=UTF-8''Dune%20-%20Frank%20Herbert.epub`);
+    expect(download.headers.get('content-security-policy')).toBe("default-src 'none'; sandbox");
+    expect(await download.text()).toBe('dune epub');
+  });
+
+  it('serves the server’s own pages by their session, and only the account’s own catalogs', async () => {
+    const { fetchImpl, shelf } = await withCatalog();
+    const index = await fetchImpl(`/opds/${shelf.id}/`, { headers: { Accept: 'application/opds+json' } });
+    expect((await index.json()).metadata.title).toBe('Shelf');
+    const search = await fetchImpl(`/opds/${shelf.id}/search.json?query=dune`);
+    expect((await search.json()).publications.map((p: { metadata: { title: string } }) => p.metadata.title)).toEqual(['Dune']);
+
+    await signedUp('bob', browser());
+    expect((await fetch(`${base}/opds/${shelf.id}/index.xml`, { headers: basic('bob', 'correct horse') })).status).toBe(404);
+    expect((await fetch(`${base}/opds/${shelf.id}/index.xml`, { method: 'POST', headers: basic('ada', 'correct horse') })).status).toBe(405);
   });
 });

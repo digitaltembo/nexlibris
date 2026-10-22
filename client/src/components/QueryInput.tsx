@@ -1,7 +1,6 @@
-import { userData } from '@nexlibris/common';
+import { filterItems, userData } from '@nexlibris/common';
 import styled from 'styled-components';
 import { useLibrary } from '../library/LibraryContext';
-import { filterItems } from '../library/search';
 import { Muted } from '../styles/ui';
 
 const Input = styled.input`
@@ -17,7 +16,7 @@ export function useMatchCount(query: string): number | undefined {
 }
 
 /**
- * A search in the search box's syntax (`library/search.ts`: words, `tag:Recommended`, `rating:4+`,
+ * A search in the search box's syntax (common's `search.ts`: words, `tag:Recommended`, `rating:4+`,
  * `or`, `has:cover`), typed as text, with how many books match it now. What connections' catalogs
  * and the books another instance keeps are chosen by.
  */

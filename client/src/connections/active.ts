@@ -1,5 +1,6 @@
 import type { Device, LibraryBackend } from '@nexlibris/common';
 import { useEffect, useMemo, useSyncExternalStore } from 'react';
+import { onSessionChange } from '../library/account';
 import { useLibrary } from '../library/LibraryContext';
 import { connectionType } from '.';
 
@@ -7,7 +8,8 @@ import { connectionType } from '.';
  * Whether each connection is active on this device: only active ones are in the Library and can
  * be sent to. A type says how (`ConnectionTypeBase.activation`): always (OPDS servers, the static
  * export), by hand (a reader, another instance: activated while it's around, kept in local state,
- * so per device and not synced), or checked (a folder: chosen here, and still there).
+ * so per device and not synced), or checked (a folder: chosen here, and still there; a served feed:
+ * signed in to a server, checked again as people sign in and out).
  */
 
 const KEY = 'active-connections';
@@ -93,7 +95,12 @@ export function useConnectionStatus(): { status(device: Device): ConnectionStatu
   const { library, backend } = useLibrary();
   const state = useSyncExternalStore(subscribe, () => snapshot);
   useEffect(() => void load(backend), [backend]);
-  useEffect(() => void recheckConnections(Object.values(library.devices ?? {})), [library.devices]);
+  useEffect(() => {
+    const recheck = () => void recheckConnections(Object.values(library.devices ?? {}));
+    recheck();
+    // A served feed is active while signed in.
+    return onSessionChange(recheck);
+  }, [library.devices]);
   return useMemo(
     () => ({ status: (device: Device) => statusIn(state, device), isActive: (device: Device) => statusIn(state, device).active }),
     [state],

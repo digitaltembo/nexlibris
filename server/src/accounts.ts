@@ -31,6 +31,8 @@ const MAX_PASSWORD = 1024;
 /** Failed sign-ins allowed per name (and per address) in a window, before more are refused until it passes. */
 const MAX_FAILURES = 10;
 const FAILURE_WINDOW_MS = 15 * 60_000;
+/** How long a name and password `verify` passed are taken as good without hashing again. */
+const VERIFIED_MS = 5 * 60_000;
 
 const sha256 = (text: string) => createHash('sha256').update(text).digest('hex');
 
@@ -84,6 +86,8 @@ export function createAccounts(dataDir: string, options: { signup: SignupPolicy;
   const accounts = jsonFile<{ accounts: StoredAccount[] }>(join(dataDir, 'accounts.json'), () => ({ accounts: [] }));
   const sessions = jsonFile<{ sessions: StoredSession[] }>(join(dataDir, 'sessions.json'), () => ({ sessions: [] }));
   const failures = new Map<string, number[]>();
+  /** Names and passwords `verify` passed lately (by hash), until when. */
+  const verified = new Map<string, { accountId: string; until: number }>();
 
   const public_ = ({ id, name }: StoredAccount): Account => ({ id, name });
   const same = (a: string, b: string) => a.localeCompare(b, undefined, { sensitivity: 'accent' }) === 0;
@@ -97,6 +101,21 @@ export function createAccounts(dataDir: string, options: { signup: SignupPolicy;
   function failed(keys: string[]) {
     const since = now().getTime() - FAILURE_WINDOW_MS;
     for (const key of keys) failures.set(key, [...(failures.get(key) ?? []).filter((t) => t > since), now().getTime()]);
+  }
+
+  /** Checks a name and password, counting failures against both the name and where they came from. */
+  async function check(name: unknown, password: unknown, from: string): Promise<Account> {
+    const tidy = typeof name === 'string' ? name.normalize('NFKC').trim() : '';
+    const keys = [`name:${tidy.toLowerCase()}`, ...(from ? [`from:${from}`] : [])];
+    if (limited(keys)) throw new SignInError('Too many tries. Wait a few minutes, then try again.');
+    const account = (await accounts.read()).accounts.find((a) => same(a.name, tidy));
+    // A made-up hash when there's no such account, so the reply takes as long either way.
+    const ok = await verifyPassword(typeof password === 'string' ? password : '', account?.password ?? (await dummyHash()));
+    if (!account || !ok) {
+      failed(keys);
+      throw new SignInError();
+    }
+    return public_(account);
   }
 
   async function startSession(accountId: string): Promise<string> {
@@ -138,17 +157,26 @@ export function createAccounts(dataDir: string, options: { signup: SignupPolicy;
 
     /** Checks a name and password, returning the account and a new session's token. */
     async signIn(name: unknown, password: unknown, from = ''): Promise<{ account: Account; token: string }> {
-      const tidy = typeof name === 'string' ? name.normalize('NFKC').trim() : '';
-      const keys = [`name:${tidy.toLowerCase()}`, ...(from ? [`from:${from}`] : [])];
-      if (limited(keys)) throw new SignInError('Too many tries. Wait a few minutes, then try again.');
-      const account = (await accounts.read()).accounts.find((a) => same(a.name, tidy));
-      // A made-up hash when there's no such account, so the reply takes as long either way.
-      const ok = await verifyPassword(typeof password === 'string' ? password : '', account?.password ?? (await dummyHash()));
-      if (!account || !ok) {
-        failed(keys);
-        throw new SignInError();
+      const account = await check(name, password, from);
+      return { account, token: await startSession(account.id) };
+    },
+
+    /**
+     * Checks a name and password without starting a session, for clients that send them with every
+     * request (OPDS readers, by HTTP Basic). Names and passwords that passed are remembered for a few
+     * minutes, so a feed's covers don't each cost a password hash.
+     */
+    async verify(name: string, password: string, from = ''): Promise<Account> {
+      const key = sha256(`${name.normalize('NFKC').trim().toLowerCase()}\0${password}`);
+      const known = verified.get(key);
+      if (known && known.until > now().getTime()) {
+        const account = (await accounts.read()).accounts.find((a) => a.id === known.accountId);
+        if (account) return public_(account);
       }
-      return { account: public_(account), token: await startSession(account.id) };
+      verified.delete(key);
+      const account = await check(name, password, from);
+      verified.set(key, { accountId: account.id, until: now().getTime() + VERIFIED_MS });
+      return account;
     },
 
     startSession,
@@ -181,6 +209,7 @@ export function createAccounts(dataDir: string, options: { signup: SignupPolicy;
       if (!account) throw new Error('No such account.');
       if (current !== undefined && !(await verifyPassword(current, account.password))) throw new SignInError('That isn’t your current password.');
       await accounts.update(() => void (account.password = next));
+      for (const [key, known] of verified) if (known.accountId === accountId) verified.delete(key);
       const kept = keepToken && sha256(keepToken);
       await sessions.update((s) => void (s.sessions = s.sessions.filter((session) => session.accountId !== accountId || session.tokenHash === kept)));
     },

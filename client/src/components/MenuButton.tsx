@@ -55,10 +55,10 @@ export const MenuEntry = styled.button.attrs({ type: 'button' })<{ $danger?: boo
 `;
 
 /**
- * A "⋮" button opening a menu of actions. The menu is fixed to the viewport beside the button, so
+ * A "⋮" button opening a menu of actions, or with `text`, a button saying it with a caret. The menu is fixed to the viewport beside the button, so
  * a scrolling panel doesn't clip it, and closes on choosing, Escape, a click elsewhere or scrolling.
  */
-export function MenuButton({ label, actions }: { label: string; actions: MenuAction[] }) {
+export function MenuButton({ label, text, actions }: { label: string; text?: string; actions: MenuAction[] }) {
   const [open, setOpen] = useState(false);
   const [place, setPlace] = useState<{ top: number; right: number }>();
   const button = useRef<HTMLButtonElement>(null);
@@ -116,14 +116,14 @@ export function MenuButton({ label, actions }: { label: string; actions: MenuAct
     <>
       <Button
         ref={button}
-        $variant="icon"
+        $variant={text ? 'secondary' : 'icon'}
         aria-label={label}
         title={label}
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => (open ? close(false) : setOpen(true))}
       >
-        ⋮
+        {text ? `${text} ▾` : '⋮'}
       </Button>
       {open && (
         <MenuPanel

@@ -1,5 +1,4 @@
-import { formatYear, type Item } from '@nexlibris/common';
-import { authorSortKey, firstPublished, titleSortKey } from '../library/bookFields';
+import { authorSortKey, firstPublished, formatYear, type Item, titleSortKey } from '@nexlibris/common';
 
 /**
  * Where a book goes on a device, as a path template: `/Books/<author>/<title>/`, with the file

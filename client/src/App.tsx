@@ -1,4 +1,16 @@
-import { createItem, userData, type FileRef, type Item, type ItemId } from '@nexlibris/common';
+import {
+  createItem,
+  DEFAULT_DESC,
+  type FileRef,
+  filterItems,
+  formatTerm,
+  type Item,
+  type ItemId,
+  type Sort,
+  sortItems,
+  type SortKey,
+  userData,
+} from '@nexlibris/common';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import styled from 'styled-components';
 import { BulkConvertDialog } from './components/BulkConvertDialog';
@@ -44,7 +56,6 @@ import { followTitleBar } from './backends/desktopBridge';
 import { clickItem, NO_SELECTION, toggleItem, type SelectionState } from './library/selection';
 import { useBackToClose } from './library/useBackToClose';
 import { useLibrary } from './library/LibraryContext';
-import { DEFAULT_DESC, filterItems, formatTerm, sortItems, type Sort, type SortKey } from './library/search';
 import { searchFields } from './library/suggest';
 import { usePersistentState } from './library/usePersistentState';
 import { APPEARANCE_KEY, APPEARANCES, applyAppearance, type Appearance } from './styles/appearance';

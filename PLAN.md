@@ -4,7 +4,7 @@ What's next, and the decisions that shape it. How things are built is in the [RE
 
 ## TLDR
 
-Status as of 2026-10-20. Milestones are listed in the order they're planned; numbers are stable names (code refers to M4 and M6), not an order.
+Status as of 2026-10-21. Milestones are listed in the order they're planned; numbers are stable names (code refers to M4 and M6), not an order.
 
 | Milestone | Status |
 |---|---|
@@ -13,7 +13,7 @@ Status as of 2026-10-20. Milestones are listed in the order they're planned; num
 | **M6 Sync** | Works over LAN, Bluetooth and a USB folder; a phone sees only the books chosen for it, and deleting there leaves the hub's copy. **Left:** matching books on a first sync, a real phone. |
 | **M13 Connections** | Built: connections that read, write or both, each writer with a catalog (Add to…, Send to…, search); additive syncs; files behind their details; OPDS, static export (Cloudflare), instances and folders built in; CrossPoint a plugin with the X4/X3 formats. **Left:** folders in the apps, browsing connections by author/series, exposure on the folder hub and server, checking it by hand. |
 | **M7 Apps** | Android and desktop both work; an iOS app, the same shell as Android's, is written and its native side tested on macOS. **Left:** running iOS on a device, packaging and signing, native restore, a real X4. |
-| **M4 Server** | Started: accounts, a library per account (books' files on disk or in S3, GCS or B2), moving a browser's library there and back, or syncing with it; the desktop and phone apps sign in to a server at an address the user gives, and open the account's library or sync with it. **Left:** scoping, catalogs, Docker. |
+| **M4 Server** | Started: accounts, a library per account (books' files on disk or in S3, GCS or B2), moving a browser's library there and back, or syncing with it; the desktop and phone apps sign in to a server at an address the user gives, and open the account's library or sync with it; OPDS feeds served live, as OPDS 1.2 XML or 2.0 JSON. a Docker image. **Left:** scoping, the calibre3opds web client, publishing the image. |
 | **M8 Background work** | Full-text search done, its work in a worker with the text stored compressed. **Left:** jobs manager, OCR, Kindle books' text. |
 | **M9 Loans** | Researched, not started. |
 | **M10 Reader devices** | Not started. |
@@ -90,14 +90,14 @@ Android and desktop already run on real hardware (Android on a Pixel 7a, the des
 Built: `server/` serves the web app, accounts (sign-in by a session cookie; sign-up open, first account only, or closed), the library per account over estuary-rpc-server (books' files on disk or in an S3-style bucket: AWS, GCS, Backblaze B2, MinIO, R2), and the sync API per account. Signed out, the page works as before; signed in, the library moves to the account and back (Library folder), or stays and syncs with it (Connections). The desktop and Android apps choose a server by its address (self-hosting) and sign in for a bearer token; they open the account's library instead of the device's (copied there first, the device's kept), or sync with it.
 - **Left in the sync:** scoping what each device sees, as the other hubs do; listing and forgetting an account's paired devices; carrying a browser's pairings when its library moves.
 - **Accounts:** a hidden password prompt in the CLI; Android servers under a path (its sync relay, `PeerService.kt`, calls origins only); the apps' token kept in local storage, rather than the system's keychain; resetting a password from the web; deleting an account and its files.
-- **Catalogs:**
-  - serves OPDS catalogs;
-  - ports calibre3opds's `index.html` browser client and reader.
+- **Catalogs:** "OPDS feed on your server" connections are served live at `/opds/` (OPDS 1.2 or 2.0, readers signing in with HTTP Basic). Left:
+  - ports calibre3opds's `index.html` browser client and reader;
+  - the desktop app serving feeds on the LAN the same way (common's `serveOpds`, beside the sync host).
 - **What needs a server:**
   - API keys for metadata lookups, including ISBN sources beyond Open Library;
   - optional Calibre CLI (`ebook-convert`) for formats with no TS converter;
   - reaching CrossPoint readers for `https://` browser clients (the Android app relays its own calls).
-- **Deployment:** Docker image.
+- **Deployment:** a Docker image is built from the repo (`Dockerfile`, `compose.yaml`), with estuary-rpc and epubierjs beside it; publishing one (to a registry, from CI) needs those released, or vendored, first.
 - **estuary-rpc:** nexlibris links `../estuary-rpc` (`file:`) for fixes made there (endpoint errors with statuses, async authentication, raw transport and path parameters, a fetch client, a safer static server); publish them and depend on the release again.
 
 **Done when:** a browser and the phone each sync with the server, and it serves a catalog.

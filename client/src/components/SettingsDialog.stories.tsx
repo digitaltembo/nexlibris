@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useLayoutEffect, useState } from 'react';
 import { fn } from 'storybook/test';
 import { availableFields, DEFAULT_COLUMNS } from '../library/columns';
-import type { Sort } from '../library/search';
+import type { Sort } from '@nexlibris/common';
 import { sampleItems } from '../stories/sampleLibrary';
 import { applyAppearance, type Appearance } from '../styles/appearance';
 import { SettingsDialog, type View } from './SettingsDialog';

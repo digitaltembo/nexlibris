@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import styled from 'styled-components';
 import { connectionType } from '../connections';
 import { addToDevice, inCatalog } from '../devices/selection';
-import { isFiles, isInstance, takesSingle, writes } from '../devices/types';
+import { isFiles, isInstance, isServed, takesSingle, writes } from '../devices/types';
 import { instanceName } from '../sync/hub';
 import { SyncInstance } from './InstanceSync';
 import { useConnectionStatus } from '../connections/active';
@@ -34,7 +34,7 @@ export const writableConnections = (library: Library) =>
  * A reader or folder is connected to and gets just these books (`SyncDevice`'s `only`, which asks first
  * about formats it prefers); another instance paired from here gets them by a sync of just them. One
  * that only syncs whole (a static catalog), or an instance not paired from here, gets them in its
- * catalog, for its next sync.
+ * catalog, for its next sync; a feed the server serves, in its catalog, served at once.
  */
 export function SendTo({ items, onClose }: { items: Item[]; onClose(): void }) {
   const { library, backend, apply } = useLibrary();
@@ -120,10 +120,10 @@ export function SendTo({ items, onClose }: { items: Item[]; onClose(): void }) {
               <Button
                 $variant="secondary"
                 $size="small"
-                title="Added to its catalog: it goes with the connection’s next sync."
+                title={isServed(type) ? 'Added to its catalog: the server serves it at once.' : 'Added to its catalog: it goes with the connection’s next sync.'}
                 onClick={() => void apply(addToDevice(device, missing.map((item) => item.id)))}
               >
-                Add for next sync
+                {isServed(type) ? 'Add' : 'Add for next sync'}
               </Button>
             ) : (
               <Muted>In its catalog</Muted>

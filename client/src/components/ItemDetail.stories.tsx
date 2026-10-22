@@ -16,7 +16,7 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** Series, identifiers, two files and a rating; Read, with the rest behind its "⋮" menu. */
+/** Series, identifiers, two files and a rating; Read, and the rest under Actions. */
 export const Dune: Story = {};
 
 /** A description, shown with `RichText`. */

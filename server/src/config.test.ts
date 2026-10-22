@@ -37,6 +37,14 @@ describe('parseConfig', () => {
     });
   });
 
+  it('takes empty variables as unset, as Docker Compose passes them', () => {
+    const env = { NEXLIBRIS_PORT: '', PORT: '7000', NEXLIBRIS_REGION: '', AWS_REGION: 'eu-west-2', NEXLIBRIS_ACCESS_KEY_ID: '', NEXLIBRIS_SECRET_ACCESS_KEY: '' };
+    const config = parseConfig(['--storage', 's3', '--bucket', 'b'], { ...env, AWS_ACCESS_KEY_ID: 'a', AWS_SECRET_ACCESS_KEY: 's' });
+    expect(config.port).toBe(7000);
+    expect(config.storage).toMatchObject({ region: 'eu-west-2', accessKeyId: 'a' });
+    expect(parseConfig([], { NEXLIBRIS_PREFIX: '', NEXLIBRIS_STORAGE: '' }).storage.kind).toBe('fs');
+  });
+
   it('says what’s missing', () => {
     expect(() => parseConfig(['--storage', 's3'], keys)).toThrow('--bucket');
     expect(() => parseConfig(['--storage', 's3', '--bucket', 'b'], {})).toThrow('credentials');

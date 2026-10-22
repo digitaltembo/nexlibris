@@ -1,14 +1,25 @@
-import { LOCAL_USER, userData, type FileRef, type Item, type MetadataValue } from '@nexlibris/common';
+import {
+  BOOK_FIELDS,
+  type BookField,
+  bookSize,
+  fieldLabel,
+  fieldText,
+  type FileRef,
+  isFixedField,
+  type Item,
+  LOCAL_USER,
+  metadataToText,
+  type MetadataValue,
+  userData,
+} from '@nexlibris/common';
 import { useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import styled from 'styled-components';
-import { BOOK_FIELDS, bookSize, fieldLabel, fieldText, isFixedField, type BookField } from '../library/bookFields';
 import { coverOperations, type NewCover } from '../library/editCover';
 import { diffDraft, draftFromItem, type ItemDraft } from '../library/editDraft';
 import { savedPosition } from '../library/useReadingPosition';
 import { deleteItems, freeFiles } from '../library/freeFiles';
 import { useLibrary } from '../library/LibraryContext';
-import { metadataToText } from '../library/metadataText';
 import { roleLabel } from '../library/roles';
 import { isReadable, preferredReadable } from '../reader/Reader';
 import { Cover } from './Cover';
@@ -96,9 +107,10 @@ const Line = styled.p`
   margin: 0 0 4px;
 `;
 
-const Actions = styled.div`
+const Actions = styled.div<{ $end?: boolean }>`
   display: flex;
   flex-wrap: wrap;
+  justify-content: ${(p) => (p.$end ? 'flex-end' : 'flex-start')};
   align-items: center;
   gap: 8px;
   margin-top: 10px;
@@ -252,7 +264,7 @@ function LibraryItemDetail({ item, onClose, onSelectTag, onRead = () => undefine
             onChange={(r) => void apply([{ type: 'setRating', userId: LOCAL_USER, itemId: item.id, rating: r }])}
           />
           {!draft && (
-            <Actions>
+            <Actions $end>
               {confirming ? (
                 <>
                   <Button
@@ -272,7 +284,7 @@ function LibraryItemDetail({ item, onClose, onSelectTag, onRead = () => undefine
               ) : (
                 <>
                   {readable && <Button onClick={() => onRead(readable)}>{resume ? `Continue${progress}` : 'Read'}</Button>}
-                  <MenuButton label={`Actions for ${item.title}`} actions={actions} />
+                  <MenuButton label={`Actions for ${item.title}`} text="Actions" actions={actions} />
                 </>
               )}
             </Actions>

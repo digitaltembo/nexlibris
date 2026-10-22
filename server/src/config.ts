@@ -75,6 +75,8 @@ export type StorageConfig =
 const COMMANDS = ['serve', 'add-account', 'set-password', 'accounts', 'help'] as const;
 
 export function parseConfig(argv: string[], env: Record<string, string | undefined>, defaults: { clientDir?: string } = {}): ServerConfig {
+  // An empty variable is unset, as Docker Compose passes one it was given none for.
+  env = Object.fromEntries(Object.entries(env).filter(([, value]) => value !== ''));
   const { values, positionals } = parseArgs({
     args: argv,
     allowPositionals: true,

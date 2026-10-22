@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useState } from 'react';
 import { fn } from 'storybook/test';
 import { availableFields, DEFAULT_COLUMNS, visibleColumns } from '../library/columns';
-import { sortItems, type Sort } from '../library/search';
+import { sortItems, type Sort } from '@nexlibris/common';
 import { sampleItems } from '../stories/sampleLibrary';
 import { LibraryList } from './LibraryList';
 

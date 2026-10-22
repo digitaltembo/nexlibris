@@ -3,10 +3,10 @@ import { isFeed, type ConnectionType } from '../devices/types';
 import { PLUGINS } from '../plugins';
 import { folderType } from './folder';
 import { instanceType } from './instance';
-import { opdsExport, opdsServer } from './opds';
+import { opdsExport, opdsServed, opdsServer } from './opds';
 
 /** The connection types built into nexlibris, whatever plugins there are. */
-export const BUILT_IN_CONNECTIONS: ConnectionType[] = [instanceType, folderType, opdsServer, opdsExport];
+export const BUILT_IN_CONNECTIONS: ConnectionType[] = [instanceType, folderType, opdsServer, opdsExport, opdsServed];
 
 /** Every connection type: the built-ins, then the plugins'. */
 export const CONNECTION_TYPES: ConnectionType[] = [...BUILT_IN_CONNECTIONS, ...PLUGINS.flatMap((p) => p.connectionTypes)];

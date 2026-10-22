@@ -26,6 +26,7 @@ import {
   isFeed,
   isFiles,
   isInstance,
+  isServed,
   settingOf,
   type ConnectionType,
   type ExportType,
@@ -36,7 +37,8 @@ import {
 } from '../devices/types';
 import { folderKey as connectionFolderKey, FOLDER_NAME } from '../connections/folder';
 import { SendCheckStep } from './SendCheck';
-import { BASIC_AUTH, SEARCH_ROUTING } from '../connections/opds';
+import { BASIC_AUTH, SEARCH_ROUTING, servedFeedUrl } from '../connections/opds';
+import { useServerSession } from '../library/account';
 import { formatLabel } from './ItemFiles';
 import { useLibrary } from '../library/LibraryContext';
 import { CONNECTION_TYPES, connectionType } from '../connections';
@@ -366,6 +368,25 @@ export function ConnectionsDialog({ onClose, pair }: { onClose(): void; /** Open
               );
             }
             const type = connectionType(device.type);
+            if (type && isServed(type)) {
+              // Served by the server as it is: nothing to sync, only its address to give readers.
+              const url = active ? servedFeedUrl(device) : undefined;
+              return (
+                <DeviceRow key={device.id}>
+                  <div>
+                    <strong>{device.name}</strong>
+                    <Muted>
+                      {type.label} · {books} in its catalog
+                      {device.query && ` (adds “${device.query}”)`} · {url ? `at ${url}` : statusText(device)}
+                    </Muted>
+                  </div>
+                  <Spacer />
+                  <Button $variant="secondary" $size="small" onClick={() => setScreen({ kind: 'edit', device })}>
+                    Edit
+                  </Button>
+                </DeviceRow>
+              );
+            }
             const folderName = type && isFiles(type) && type.pickFolder && device.settings[FOLDER_NAME];
             return (
               <DeviceRow key={device.id}>
@@ -424,8 +445,14 @@ export function ConnectionsDialog({ onClose, pair }: { onClose(): void; /** Open
   );
 }
 
-/** The types offered when adding a connection, as one list: readers and folders, the export, other instances, servers. */
-const TYPE_CHOICES = [...CONNECTION_TYPES.filter(isFiles), ...CONNECTION_TYPES.filter(isExport), ...CONNECTION_TYPES.filter(isInstance), ...CONNECTION_TYPES.filter(isFeed)];
+/** The types offered when adding a connection, as one list: readers and folders, the export, other instances, servers, feeds served. */
+const TYPE_CHOICES = [
+  ...CONNECTION_TYPES.filter(isFiles),
+  ...CONNECTION_TYPES.filter(isExport),
+  ...CONNECTION_TYPES.filter(isInstance),
+  ...CONNECTION_TYPES.filter(isFeed),
+  ...CONNECTION_TYPES.filter(isServed),
+];
 
 /** What a kind of connection's search is called. */
 const SEARCH_LABEL = { device: 'Add books by search', catalog: 'Add books by search', instance: 'Books it sees' };
@@ -452,7 +479,10 @@ function EditConnection({
   const instance = !!type && isInstance(type);
   // A catalog that's browsed takes no books, so has no catalog or search.
   const source = !!type && isFeed(type);
-  const kind = !type ? 'device' : isExport(type) ? 'catalog' : instance ? 'instance' : 'device';
+  const kind = !type ? 'device' : isExport(type) || isServed(type) ? 'catalog' : instance ? 'instance' : 'device';
+  // A feed the server serves is offered only while signed in to one.
+  const signedIn = !!useServerSession()?.account;
+  const choices = TYPE_CHOICES.filter((t) => !isServed(t) || signedIn || t.id === device?.type);
   const pickFolder = !!type && isFiles(type) && !!type.pickFolder;
   /** A folder connection's folder, picked here: kept on this computer only. */
   const [folder, setFolder] = useState<FileSystemDirectoryHandle>();
@@ -533,7 +563,7 @@ function EditConnection({
         <Field>
           Type
           <SmallSelect value={typeId} disabled={!!device} onChange={(e) => setTypeId(e.target.value)}>
-            {TYPE_CHOICES.map((t) => (
+            {choices.map((t) => (
               <option key={t.id} value={t.id}>
                 {t.label}
               </option>

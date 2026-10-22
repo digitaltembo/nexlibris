@@ -1,4 +1,4 @@
-import { LOCAL_USER, userData, type Device, type Item, type Operation } from '@nexlibris/common';
+import { type Device, type Item, LOCAL_USER, type Operation, textToMetadata, userData } from '@nexlibris/common';
 import { useMemo, useState } from 'react';
 import styled from 'styled-components';
 import { addToDevice, deviceItems, takeOutOfDevice } from '../devices/selection';
@@ -8,7 +8,6 @@ import { deleteItems, removeFormat } from '../library/freeFiles';
 import { useLibrary } from '../library/LibraryContext';
 import { addCreatorOps, parseTags, removeCreatorOps, removeTagsOps } from '../library/bulkEdit';
 import { creatorsIn, tagsIn } from '../library/completion';
-import { textToMetadata } from '../library/metadataText';
 import { DeleteButton } from './DeleteButton';
 import { formatLabel } from './ItemFiles';
 import { SyncDevice } from './ConnectionsDialog';

@@ -11,7 +11,7 @@ import {
   type Pairing,
 } from '@nexlibris/common';
 import { inMobileApp, mobileTransport } from '../backends/mobileBridge';
-import { filterItems } from '../library/search';
+import { filterItems } from '@nexlibris/common';
 import { hubClient, isOwnServer } from './hub';
 import { inDesktopApp } from '../backends/desktopBridge';
 import { serverConnection } from '../library/account';

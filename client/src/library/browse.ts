@@ -1,6 +1,5 @@
-import type { Category, Item, ItemId } from '@nexlibris/common';
+import { type Category, filterItems, type Item, type ItemId, type SearchContext, type Sort } from '@nexlibris/common';
 import { stepTitle } from '../catalogs/titles';
-import { filterItems, type SearchContext, type Sort } from './search';
 
 /**
  * Browsing the library by category, as calibre3opds's catalog navigation does: from the Library,

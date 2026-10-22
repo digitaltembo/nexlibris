@@ -1,4 +1,4 @@
-import { createItem, type Device, type Item, type LibraryBackend } from '@nexlibris/common';
+import { createItem, type Device, type Item, type LibraryBackend, type Sort, sortItems } from '@nexlibris/common';
 import { useEffect, useMemo, useState } from 'react';
 import styled from 'styled-components';
 import { addFromCatalog, inLibrary } from '../catalogs/addBook';
@@ -14,7 +14,6 @@ import { useLibrary } from '../library/LibraryContext';
 import { Button, Muted } from '../styles/ui';
 import { catalogItemId, opdsItem } from '../catalogs/asItem';
 import { availableFields, DEFAULT_COLUMNS, visibleColumns } from '../library/columns';
-import { sortItems, type Sort } from '../library/search';
 import { viewType } from '../plugins';
 import type { View } from '../views/views';
 import { CollectionDecorContext, type CollectionDecor } from './CollectionDecor';

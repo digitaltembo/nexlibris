@@ -1,11 +1,21 @@
-import { userData, type Item } from '@nexlibris/common';
+import {
+  authorSortKey,
+  bookSize,
+  DEFAULT_DESC,
+  fieldLabel,
+  fieldText,
+  type Item,
+  sizeInMB,
+  type Sort,
+  type SortKey,
+  titleSortKey,
+  userData,
+} from '@nexlibris/common';
 import type { ReactNode } from 'react';
 import styled, { css } from 'styled-components';
-import { authorSortKey, bookSize, fieldLabel, fieldText, sizeInMB, titleSortKey } from '../library/bookFields';
 import { BUILTIN_COLUMNS, fieldKey, type BuiltinColumn, type ColumnId } from '../library/columns';
 import { useLibrary } from '../library/LibraryContext';
 import { useLongPress } from '../library/useLongPress';
-import { DEFAULT_DESC, type Sort, type SortKey } from '../library/search';
 import { Cover, PlaceholderTitle } from './Cover';
 import { formatLabel } from './ItemFiles';
 import { seriesLabel } from './ItemDetail';

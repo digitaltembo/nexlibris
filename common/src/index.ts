@@ -5,6 +5,12 @@ export * from './backend';
 export * from './placedLibrary';
 export * from './migrate';
 export * from './metadata';
+export * from './metadataText';
+export * from './bookFields';
+export * from './search';
+export * from './catalog';
+export * from './opds';
+export * from './opdsServer';
 export {
   operationTargets,
   planMerge,

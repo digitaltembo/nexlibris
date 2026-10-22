@@ -1,6 +1,4 @@
-import type { Item } from '@nexlibris/common';
-import { fieldLabel } from './bookFields';
-import { formatTerm, metadataKeys } from './search';
+import { fieldLabel, formatTerm, type Item, metadataKeys } from '@nexlibris/common';
 
 /**
  * Completions for the search box: the word being typed (the one at the caret) becomes a field

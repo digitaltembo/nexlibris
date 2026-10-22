@@ -1,8 +1,15 @@
-import { createCategory, same, userData, type Category, type Operation } from '@nexlibris/common';
+import {
+  type Category,
+  createCategory,
+  filterItems,
+  formatTerm,
+  type Operation,
+  same,
+  userData,
+} from '@nexlibris/common';
 import { useId, useMemo, useState } from 'react';
 import styled from 'styled-components';
 import { useLibrary } from '../library/LibraryContext';
-import { filterItems, formatTerm } from '../library/search';
 import { Button, Muted, Spacer } from '../styles/ui';
 import { Modal, ModalFooter } from './Modal';
 

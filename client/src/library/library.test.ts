@@ -1,11 +1,19 @@
-import { createItem, LOCAL_USER, MemoryStorage, StoredLibraryBackend } from '@nexlibris/common';
+import {
+  bookSize,
+  createItem,
+  filterItems,
+  LOCAL_USER,
+  MemoryStorage,
+  metadataToText,
+  sizeInMB,
+  sortItems,
+  StoredLibraryBackend,
+  textToMetadata,
+} from '@nexlibris/common';
 import JSZip from 'jszip';
 import { describe, expect, it, vi } from 'vitest';
 import { importFiles, type ImportSource } from './importFiles';
-import { metadataToText, textToMetadata } from './metadataText';
 import { availableFields, visibleColumns } from './columns';
-import { filterItems, sortItems } from './search';
-import { bookSize, sizeInMB } from './bookFields';
 
 async function epubFile(name: string, title: string, extra = ''): Promise<File> {
   const zip = new JSZip();

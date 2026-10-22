@@ -1,4 +1,5 @@
-import { compareDates, DATE_FIELDS, dateYear, datePrecision, normalizeDate, type Item, type MetadataValue } from '@nexlibris/common';
+import { compareDates, DATE_FIELDS, dateYear, datePrecision, normalizeDate } from './metadata';
+import type { Item, MetadataValue } from './types';
 import { authorSortKey, bookSize, firstPublished, titleSortKey } from './bookFields';
 
 function flatten(value: MetadataValue | undefined): string {

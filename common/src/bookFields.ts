@@ -1,4 +1,5 @@
-import { authorSortOf, DATE_FIELDS, formatDate, titleSortOf, type BookMetadata, type Item, type MetadataValue } from '@nexlibris/common';
+import { authorSortOf, DATE_FIELDS, formatDate, titleSortOf } from './metadata';
+import type { BookMetadata, Item, MetadataValue } from './types';
 import { metadataToText } from './metadataText';
 
 /**

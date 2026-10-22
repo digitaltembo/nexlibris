@@ -1,7 +1,6 @@
-import { createItem, type Item } from '@nexlibris/common';
+import { createItem, filterItems, formatQuery, type Item, parseQuery } from '@nexlibris/common';
 import { describe, expect, it } from 'vitest';
 import { searchFields } from './suggest';
-import { filterItems, formatQuery, parseQuery } from './search';
 
 const item = (title: string, extra: Partial<Item> = {}, addedAt = '2026-09-20T00:00:00Z'): Item => ({
   ...createItem({ title, ...extra }),
