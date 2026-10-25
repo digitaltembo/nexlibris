@@ -21,9 +21,10 @@ export interface CollectionProps {
 
 export const clickModifiers = (e: MouseEvent) => ({ shiftKey: e.shiftKey, metaKey: e.metaKey, ctrlKey: e.ctrlKey });
 
+/** Columns of a fixed width, so covers keep their size when the detail pane opens beside the books; a phone's fill it. */
 const Grid = styled.ul`
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  grid-template-columns: repeat(auto-fill, 150px);
   gap: 16px;
   margin: 0;
   padding: 0;
@@ -50,6 +51,7 @@ const Card = styled.button.attrs({ type: 'button' })<{ $selected: boolean }>`
   box-shadow: ${(p) => (p.$selected ? 'inset 0 0 0 2px var(--highlight)' : 'none')};
   color: inherit;
   text-align: left;
+  scroll-margin: var(--header-height, 0px) 0 16px;
 
   &:hover {
     background: ${(p) => (p.$selected ? 'var(--soft)' : 'var(--hover)')};
@@ -94,6 +96,7 @@ export function LibraryGrid({ items, selection, onActivate, onLongPress }: Colle
           <li key={item.id}>
             <Card
               $selected={selected}
+              data-item={item.id}
               aria-pressed={selected}
               onClick={(e) => onActivate(item.id, clickModifiers(e))}
               {...longPress(item.id)}

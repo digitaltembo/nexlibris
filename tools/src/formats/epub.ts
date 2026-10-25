@@ -55,25 +55,38 @@ async function readXml(zip: JSZip, path: string): Promise<Document | undefined> 
   return parseXml(await file.async('string'));
 }
 
-async function readCover(zip: JSZip, opf: Document, opfPath: string, coverMetaId: string | undefined) {
+/**
+ * The manifest item of an EPUB's cover image: the one marked `cover-image` (EPUB 3), else the one its `<meta
+ * name="cover">` names (EPUB 2), else an image named like a cover. `writeEpubMetadata` replaces the same one.
+ */
+export function coverManifestItem(opf: Document, coverMetaId?: string): Element | undefined {
   const items = byLocalName(opf, 'item');
   const isImage = (el: Element) => el.getAttribute('media-type')?.startsWith('image/') ?? false;
-  const coverItem =
+  const metaId = coverMetaId ?? byLocalName(opf, 'meta').find((el) => el.getAttribute('name') === 'cover')?.getAttribute('content') ?? undefined;
+  return (
     items.find((el) => el.getAttribute('properties')?.split(/\s+/).includes('cover-image')) ??
-    (coverMetaId ? items.find((el) => el.getAttribute('id') === coverMetaId && isImage(el)) : undefined) ??
-    items.find((el) => isImage(el) && /cover/i.test(`${el.getAttribute('id')} ${el.getAttribute('href')}`));
+    (metaId ? items.find((el) => el.getAttribute('id') === metaId && isImage(el)) : undefined) ??
+    items.find((el) => isImage(el) && /cover/i.test(`${el.getAttribute('id')} ${el.getAttribute('href')}`))
+  );
+}
+
+/** The folder of the package document, which its hrefs are relative to (`OEBPS/`, or `` at the root). */
+export const opfFolder = (opfPath: string) => (opfPath.includes('/') ? opfPath.slice(0, opfPath.lastIndexOf('/') + 1) : '');
+
+async function readCover(zip: JSZip, opf: Document, opfPath: string, coverMetaId: string | undefined) {
+  const coverItem = coverManifestItem(opf, coverMetaId);
   const href = coverItem?.getAttribute('href');
   if (!coverItem || !href) return undefined;
 
-  const opfDir = opfPath.includes('/') ? opfPath.slice(0, opfPath.lastIndexOf('/') + 1) : '';
-  const path = resolvePath(opfDir, decodeURIComponent(href));
+  const path = resolvePath(opfFolder(opfPath), decodeURIComponent(href));
   const file = zip.file(path);
   if (!file) return undefined;
   const mediaType = coverItem.getAttribute('media-type') ?? 'image/jpeg';
   return { data: new Blob([await file.async('blob')], { type: mediaType }), mediaType };
 }
 
-function resolvePath(base: string, href: string): string {
+/** A path in the zip from a folder and an href relative to it. */
+export function resolvePath(base: string, href: string): string {
   const parts: string[] = [];
   for (const segment of (base + href).split('/')) {
     if (segment === '..') parts.pop();

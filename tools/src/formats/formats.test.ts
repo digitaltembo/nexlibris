@@ -10,7 +10,7 @@ describe('registerFormats', () => {
     expect(FORMATS['r1.epub' as FormatId].label).toBe('EPUB (R1)');
     expect(isEpub('r1.epub')).toBe(true);
     expect(EPUB_FORMATS).toEqual(['epub', 'r1.epub']);
-    expect(READ_PREFERENCE.slice(0, 3)).toEqual(['epub', 'r1.epub', 'pdf']);
+    expect(READ_PREFERENCE.slice(0, 3)).toEqual(['epub', 'r1.epub', 'azw3']);
   });
 });
 

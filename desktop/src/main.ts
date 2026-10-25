@@ -276,6 +276,11 @@ ipcMain.on('nexlibris:menu', (event, menus: unknown) => {
   if (fromAppPage(event)) setMenu(parseMenus(menus));
 });
 
+// The page's own full screen (epubier's) is the window's.
+ipcMain.on('nexlibris:set-full-screen', (event, on: unknown) => {
+  if (fromAppPage(event)) BrowserWindow.fromWebContents(event.sender)?.setFullScreen(on === true);
+});
+
 ipcMain.on('nexlibris:peer-response', (event, { id, response }: { id: number; response: RpcResponse }) => {
   if (fromAppPage(event)) peerCalls.get(id)?.(response);
 });
@@ -312,7 +317,16 @@ function guard(window: BrowserWindow) {
   window.on('leave-full-screen', () => window.webContents.send('nexlibris:full-screen', false));
   window.webContents.setWindowOpenHandler(({ url }) => {
     if (isReaderUrl(url)) {
-      return { action: 'allow', overrideBrowserWindowOptions: { ...windowOptions(), width: 960, height: 1100 } };
+      return {
+        action: 'allow',
+        overrideBrowserWindowOptions: {
+          ...windowOptions(),
+          // In line with epubier's toolbar, which is a little shorter than the library's top bar.
+          ...(process.platform === 'darwin' && { trafficLightPosition: { x: 18, y: 18 } }),
+          width: 960,
+          height: 1100,
+        },
+      };
     }
     // Links out of the app (a book's website, say) open in the browser.
     if (/^https?:/.test(url)) void shell.openExternal(url);

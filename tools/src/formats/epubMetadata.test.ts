@@ -128,6 +128,43 @@ describe('writeEpubMetadata', () => {
   });
 });
 
+describe('writeEpubMetadata with a cover', () => {
+  const JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0]);
+  const book = { title: 'Dune', creators: [] };
+  const bytes = async (blob: Blob | undefined) => [...new Uint8Array(await blob!.arrayBuffer())];
+  const files = async (blob: Blob) => Object.keys((await JSZip.loadAsync(await blob.arrayBuffer())).files).sort();
+  const text = async (blob: Blob, path: string) => (await JSZip.loadAsync(await blob.arrayBuffer())).file(path)!.async('string');
+
+  it('replaces a cover of the same type in place', async () => {
+    const out = await writeEpubMetadata(await epub2(), book, { data: new Blob([new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1])]), mediaType: 'image/png' });
+    const parsed = await parseEpub(out);
+    expect(await bytes(parsed.cover?.data)).toEqual([0x89, 0x50, 0x4e, 0x47, 1]);
+    expect(await files(out)).toEqual(['META-INF/', 'META-INF/container.xml', 'content.opf', 'cover.png', 'mimetype']);
+  });
+
+  it('renames a cover of another type, and the pages naming it', async () => {
+    const zip = await JSZip.loadAsync(await (await epub2()).arrayBuffer());
+    zip.file('titlepage.xhtml', '<html><body><img src="cover.png"/></body></html>');
+    const out = await writeEpubMetadata(await zip.generateAsync({ type: 'blob' }), book, { data: new Blob([JPEG]), mediaType: 'image/jpeg' });
+    const parsed = await parseEpub(out);
+    expect(parsed.cover?.mediaType).toBe('image/jpeg');
+    expect(await bytes(parsed.cover?.data)).toEqual([...JPEG]);
+    expect(await files(out)).toContain('cover.jpg');
+    expect(await files(out)).not.toContain('cover.png');
+    expect(await text(out, 'titlepage.xhtml')).toContain('src="cover.jpg"');
+  });
+
+  it('adds one, marked both ways, to a book without', async () => {
+    const plain = await buildEpub({ title: 'Dune', creators: [], chapters: [{ id: 'c1', title: 'One', body: '<p>Hi</p>' }] });
+    expect((await parseEpub(plain)).cover).toBeUndefined();
+    const out = await writeEpubMetadata(plain, book, { data: new Blob([JPEG]), mediaType: 'image/jpeg' });
+    expect(await bytes((await parseEpub(out)).cover?.data)).toEqual([...JPEG]);
+    const opf = await text(out, 'OEBPS/content.opf');
+    expect(opf).toMatch(/<item id="nexlibris-cover" href="cover.jpg" media-type="image\/jpeg" properties="cover-image"\/>/);
+    expect(opf).toContain('<meta name="cover" content="nexlibris-cover"/>');
+  });
+});
+
 describe('epubMetadataChanges', () => {
   const file = { title: 'Dune', creators: [{ name: 'Frank Herbert', role: 'aut' }], identifiers: {}, tags: ['SF', 'Classic'], metadata: { series: 'Dune', seriesIndex: 1 } };
 

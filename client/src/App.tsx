@@ -25,12 +25,8 @@ import { readableConnections } from './connections';
 import { useConnectionStatus } from './connections/active';
 import { onTitles, rememberTitle, SEARCH_STEP, titlesVersion } from './catalogs/titles';
 import { BulkEditor } from './components/BulkEditor';
-import { CategoriesDialog } from './components/CategoriesDialog';
 import { CleanupDialog } from './components/CleanupDialog';
-import { BackupDialog } from './components/BackupDialog';
-import { LibraryFolderDialog } from './components/LibraryFolderDialog';
 import { AppMenu, MenuButton, type MenuEntry } from './components/AppMenu';
-import { ConnectionsDialog } from './components/ConnectionsDialog';
 import { IsbnDialog } from './components/IsbnDialog';
 import { MenuIcon } from './components/icons';
 import { ItemDetail } from './components/ItemDetail';
@@ -40,7 +36,7 @@ import { SearchBox } from './components/SearchBox';
 import { SearchDialog, type SearchMode } from './components/SearchDialog';
 import { TextResults } from './components/TextResults';
 import { useTextIndex } from './fulltext/TextIndexContext';
-import { SettingsDialog, SORT_LABELS } from './components/SettingsDialog';
+import { SettingsDialog, SORT_LABELS, type SettingsTab } from './components/SettingsDialog';
 import { ViewSwitcher } from './components/ViewSwitcher';
 import { viewType } from './plugins';
 import { knownView, VIEWS, type View } from './views/views';
@@ -67,8 +63,7 @@ import { besidePanel, Button, Muted, NoticeBox } from './styles/ui';
 import { followWindowColors } from './styles/windowColors';
 import { openReaderWindow, readsInWindows, serveReaderWindows } from './library/readerWindow';
 import { choosesServer, useServerSession } from './library/account';
-import { AccountDialog } from './components/AccountDialog';
-import type { PairHow } from './components/InstanceSync';
+import { bookElement, restoreAnchor, topAnchor, type ScrollAnchor } from './library/scrollAnchor';
 
 /**
  * The top bar and the breadcrumbs, held at the top while the books scroll under them. Its height is
@@ -216,7 +211,9 @@ export function App() {
     desc: false,
   });
   const [listColumns, setListColumns] = usePersistentState<string[]>('nexlibris:listColumns', DEFAULT_COLUMNS);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  /** The settings, open: the tab last asked for (`SettingsDialog` keeps the one shown). */
+  const [settings, setSettings] = useState<{ tab: SettingsTab }>();
+  const openSettings = (tab: SettingsTab = 'appearance') => setSettings({ tab });
   const [cleaningUp, setCleaningUp] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuBar = hasMenuBar();
@@ -224,10 +221,6 @@ export function App() {
   const [searching, setSearching] = useState<SearchMode | false>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
-  const [backingUp, setBackingUp] = useState(false);
-  const [choosingFolder, setChoosingFolder] = useState(false);
-  const [managingConnections, setManagingConnections] = useState<boolean | PairHow>(false);
-  const [accountOpen, setAccountOpen] = useState(false);
   /** The account on this instance's server: the one the page came from, or in the apps the one chosen (none from a static host). */
   const session = useServerSession();
   // The apps can always choose a server; a page has accounts only if it came from one.
@@ -251,7 +244,6 @@ export function App() {
   const [path, setPath] = usePersistentState<BrowsePath>('nexlibris:browse', ALL_BOOKS);
   /** A sort chosen in the list's headers for a level with an order of its own; forgotten on leaving it. */
   const [leafSort, setLeafSort] = useState<Sort>();
-  const [editingCategories, setEditingCategories] = useState(false);
 
   const allItems = Object.values(library.items);
   const { ratings } = userData(library);
@@ -353,13 +345,8 @@ export function App() {
   useBackToClose(showDetail, clearSelection);
   useBackToClose(bulkConverting, () => setBulkConverting(false));
   useBackToClose(menuOpen, () => setMenuOpen(false));
-  useBackToClose(settingsOpen, () => setSettingsOpen(false));
-  useBackToClose(editingCategories, () => setEditingCategories(false));
+  useBackToClose(settings !== undefined, () => setSettings(undefined));
   useBackToClose(cleaningUp, () => setCleaningUp(false));
-  useBackToClose(backingUp, () => setBackingUp(false));
-  useBackToClose(choosingFolder, () => setChoosingFolder(false));
-  useBackToClose(managingConnections !== false, () => setManagingConnections(false));
-  useBackToClose(accountOpen, () => setAccountOpen(false));
   useBackToClose(searching !== false, () => setSearching(false));
   useBackToClose(reading !== undefined, closeReader);
 
@@ -442,7 +429,7 @@ export function App() {
   const selectAll = () => setSelectionState({ selection: new Set(items.map((i) => i.id)) });
   const selectAllRef = useRef(selectAll);
   selectAllRef.current = selectAll;
-  const overlayOpen = reading !== undefined || settingsOpen || menuOpen || backingUp || choosingFolder || managingConnections !== false || accountOpen || editingCategories || searching;
+  const overlayOpen = reading !== undefined || settings !== undefined || menuOpen || searching;
 
   // Cmd/Ctrl+A selects all visible items, except where it should select text.
   useEffect(() => {
@@ -552,14 +539,14 @@ export function App() {
     'separator',
     { label: 'Select all', onSelect: selectAll, disabled: items.length === 0 },
     'separator',
-    { label: 'Connections…', onSelect: () => setManagingConnections(true) },
-    { label: 'Backup…', onSelect: () => setBackingUp(true) },
-    { label: 'Library folder…', onSelect: () => setChoosingFolder(true) },
-    ...(hasAccounts ? [{ label: accountLabel, onSelect: () => setAccountOpen(true) }] : []),
+    { label: 'Connections…', onSelect: () => openSettings('connections') },
+    { label: 'Backup…', onSelect: () => openSettings('backup') },
+    { label: 'Library folder…', onSelect: () => openSettings('folder') },
+    ...(hasAccounts ? [{ label: accountLabel, onSelect: () => openSettings('account') }] : []),
     'separator',
-    { label: 'Browse categories…', onSelect: () => setEditingCategories(true) },
+    { label: 'Browse categories…', onSelect: () => openSettings('categories') },
     { label: 'Clean up library…', onSelect: () => setCleaningUp(true) },
-    { label: 'Settings…', onSelect: () => setSettingsOpen(true) },
+    { label: 'Settings…', onSelect: () => openSettings() },
   ];
 
   const menuBarMenus: MenuBar[] = [
@@ -571,11 +558,11 @@ export function App() {
         { id: 'newItem', label: 'New Item', accelerator: 'CmdOrCtrl+N', run: () => void addBlankItem() },
         { id: 'addByIsbn', label: 'Add by ISBN…', run: () => setAddingByIsbn(true) },
         { type: 'separator' },
-        { id: 'backup', label: 'Backup…', run: () => setBackingUp(true) },
-        { id: 'libraryFolder', label: 'Library Folder…', run: () => setChoosingFolder(true) },
-        ...(hasAccounts ? [{ id: 'account', label: accountLabel.replace('Sign in', 'Sign In'), run: () => setAccountOpen(true) }] : []),
+        { id: 'backup', label: 'Backup…', run: () => openSettings('backup') },
+        { id: 'libraryFolder', label: 'Library Folder…', run: () => openSettings('folder') },
+        ...(hasAccounts ? [{ id: 'account', label: accountLabel.replace('Sign in', 'Sign In'), run: () => openSettings('account') }] : []),
         { type: 'separator' },
-        { id: 'settings', label: 'Settings…', accelerator: 'CmdOrCtrl+,', appMenu: true, run: () => setSettingsOpen(true) },
+        { id: 'settings', label: 'Settings…', accelerator: 'CmdOrCtrl+,', appMenu: true, run: () => openSettings() },
       ],
     },
     {
@@ -626,7 +613,7 @@ export function App() {
           label: 'Columns…',
           run: () => {
             setView('list');
-            setSettingsOpen(true);
+            openSettings();
           },
         },
         {
@@ -675,9 +662,9 @@ export function App() {
         { id: 'bulkEdit', label: 'Bulk Edit…', enabled: selectedItems.length > 0, run: () => setBulkEditing(true) },
         { id: 'bulkConvert', label: 'Bulk Convert…', enabled: selectedItems.length > 0, run: () => setBulkConverting(true) },
         { type: 'separator' },
-        { id: 'categories', label: 'Browse Categories…', run: () => setEditingCategories(true) },
+        { id: 'categories', label: 'Browse Categories…', run: () => openSettings('categories') },
         { id: 'cleanup', label: 'Clean Up Library…', run: () => setCleaningUp(true) },
-        { id: 'connections', label: 'Connections…', run: () => setManagingConnections(true) },
+        { id: 'connections', label: 'Connections…', run: () => openSettings('connections') },
       ],
     },
   ];
@@ -693,11 +680,34 @@ export function App() {
   };
 
   const withPanel = showBulk || showDetail || remotePane;
+  // Making room for the pane moves the books: as it opens, the book opened is scrolled back into view; as it closes,
+  // the books that were in view stay so, the top one (noted while the pane is open) kept where it was.
+  const activeId = showDetail ? active?.id : undefined;
+  const hadPanel = useRef(withPanel);
+  const anchor = useRef<ScrollAnchor | undefined>(undefined);
+  useLayoutEffect(() => {
+    if (withPanel && !hadPanel.current && activeId) bookElement(activeId)?.scrollIntoView({ block: 'nearest' });
+    if (!withPanel && hadPanel.current && anchor.current) restoreAnchor(anchor.current);
+    if (!withPanel) anchor.current = undefined;
+    hadPanel.current = withPanel;
+  }, [withPanel, activeId]);
+  useEffect(() => {
+    if (!withPanel) return;
+    const note = () => (anchor.current = topAnchor());
+    note();
+    window.addEventListener('scroll', note, { passive: true });
+    window.addEventListener('resize', note);
+    return () => {
+      window.removeEventListener('scroll', note);
+      window.removeEventListener('resize', note);
+    };
+  }, [withPanel]);
   const showReading = inProgress.length > 0 && !readingHidden && !textQuery && path[0] !== 'source' && path[0] !== 'reading';
 
   return (
     <>
-      <Header ref={headerHeight}>
+      {/* data-window-drag: where the Tauri app (tauri/src-tauri/src/bridge.js) moves the window from, as -webkit-app-region does in Electron. */}
+      <Header ref={headerHeight} data-window-drag>
         <Toolbar $withPanel={withPanel}>
           {!menuBar && (
             <MenuButton onClick={() => setMenuOpen(true)}>
@@ -789,9 +799,9 @@ export function App() {
           >
             {!textQuery && <CrumbCount>{viewCount(browsed)}</CrumbCount>}
             {!textQuery && (path.length === 0 || path[0] === 'category') && (
-              <CrumbAction onClick={() => setEditingCategories(true)}>Edit categories…</CrumbAction>
+              <CrumbAction onClick={() => openSettings('categories')}>Edit categories…</CrumbAction>
             )}
-            {!textQuery && <ViewSwitcher view={view} onView={setView} onSettings={() => setSettingsOpen(true)} />}
+            {!textQuery && <ViewSwitcher view={view} onView={setView} onSettings={() => openSettings()} />}
           </Breadcrumbs>
         )}
       </Header>
@@ -916,23 +926,6 @@ export function App() {
           onRead={(file) => read(active.id, file)}
         />
       )}
-      {backingUp && <BackupDialog onClose={() => setBackingUp(false)} />}
-      {choosingFolder && (
-        <LibraryFolderDialog
-          onClose={() => setChoosingFolder(false)}
-          onAccount={() => (setChoosingFolder(false), setAccountOpen(true))}
-          onSyncWithAccount={() => (setChoosingFolder(false), setManagingConnections('server'))}
-        />
-      )}
-      {managingConnections !== false && (
-        <ConnectionsDialog
-          onClose={() => setManagingConnections(false)}
-          {...(typeof managingConnections === 'string' && { pair: managingConnections })}
-        />
-      )}
-      {accountOpen && (
-        <AccountDialog onClose={() => setAccountOpen(false)} onLibraryFolder={() => (setAccountOpen(false), setChoosingFolder(true))} />
-      )}
       {searching && (
         <SearchDialog
           query={query}
@@ -977,8 +970,10 @@ export function App() {
           }}
         />
       )}
-      {settingsOpen && (
+      {settings && (
         <SettingsDialog
+          asked={settings}
+          accounts={hasAccounts}
           view={view}
           onView={setView}
           appearance={appearance}
@@ -988,11 +983,10 @@ export function App() {
           columns={listColumns}
           fields={fields}
           onColumns={setListColumns}
-          onClose={() => setSettingsOpen(false)}
+          onClose={() => setSettings(undefined)}
         />
       )}
       {bulkConverting && <BulkConvertDialog items={selectedItems} onClose={() => setBulkConverting(false)} />}
-      {editingCategories && <CategoriesDialog onClose={() => setEditingCategories(false)} />}
       {cleaningUp && (
         <CleanupDialog
           onClose={() => setCleaningUp(false)}

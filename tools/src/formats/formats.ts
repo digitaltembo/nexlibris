@@ -1,6 +1,6 @@
 import { mergeTags, type BookMetadata, type Creator } from '../metadata';
 
-type BaseFormatId = 'epub' | 'pdf' | 'cbz' | 'cbr' | 'txt' | 'rtf' | 'mobi' | 'azw3' | 'azw';
+type BaseFormatId = 'epub' | 'pdf' | 'cbz' | 'cbr' | 'cb7' | 'txt' | 'rtf' | 'mobi' | 'azw3' | 'azw';
 
 /**
  * The formats plugins add, by id (`x4.epub`, say). A plugin's package names its formats here by
@@ -24,6 +24,7 @@ const BASE_FORMATS: Record<BaseFormatId, FormatInfo> = {
   pdf: { label: 'PDF', mediaType: 'application/pdf' },
   cbz: { label: 'Comic (CBZ)', mediaType: 'application/vnd.comicbook+zip' },
   cbr: { label: 'Comic (CBR)', mediaType: 'application/vnd.comicbook-rar' },
+  cb7: { label: 'Comic (CB7)', mediaType: 'application/x-cb7' },
   txt: { label: 'Text', mediaType: 'text/plain' },
   rtf: { label: 'Rich Text', mediaType: 'application/rtf' },
   mobi: { label: 'MOBI', mediaType: 'application/x-mobipocket-ebook' },
@@ -47,14 +48,14 @@ export const EPUB_FORMATS: FormatId[] = [];
 /** Readers' EPUBs, made from an EPUB by a plugin's converter: every EPUB but `epub` itself. */
 export const READER_EPUBS: FormatId[] = [];
 
-/** Formats that are Kindle/Mobipocket files, read by converting to EPUB. */
+/** Formats that are Kindle/Mobipocket files. */
 export const KINDLE_FORMATS: FormatId[] = ['mobi', 'azw3', 'azw'];
 
 /** When an item has several files, the one opened by "Read", best first. */
 export const READ_PREFERENCE: FormatId[] = [];
 
 /** For `<input accept>`. */
-export const IMPORT_ACCEPT = '.epub,.pdf,.cbz,.cbr,.txt,.rtf,.mobi,.azw3,.azw';
+export const IMPORT_ACCEPT = '.epub,.pdf,.cbz,.cbr,.cb7,.txt,.rtf,.mobi,.azw3,.azw';
 
 /** Extensions of more than one part (`x4.epub`), longest first, which a file's name is checked for before its last one. */
 const COMPOUND: FormatId[] = [];
@@ -65,7 +66,7 @@ function derive() {
   const fill = (list: FormatId[], formats: FormatId[]) => list.splice(0, list.length, ...formats);
   fill(EPUB_FORMATS, ids.filter(isEpub));
   fill(READER_EPUBS, EPUB_FORMATS.filter((format) => format !== 'epub'));
-  fill(READ_PREFERENCE, [...EPUB_FORMATS, 'pdf', 'cbz', 'cbr', 'rtf', 'txt']);
+  fill(READ_PREFERENCE, [...EPUB_FORMATS, 'azw3', 'mobi', 'azw', 'pdf', 'cbz', 'cbr', 'cb7', 'rtf', 'txt']);
   fill(COMPOUND, ids.filter((f) => f.includes('.')).sort((a, b) => b.length - a.length));
 }
 derive();

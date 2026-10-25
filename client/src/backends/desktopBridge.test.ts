@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { desktopSend, followTitleBar, type DesktopInterface } from './desktopBridge';
+import { desktopSend, followTitleBar, watchFullScreen, type DesktopInterface } from './desktopBridge';
 
 describe('desktopSend', () => {
   it('passes requests to the app and unwraps its answers', async () => {
@@ -50,5 +50,25 @@ describe('followTitleBar', () => {
     followTitleBar(desktop(false).native);
     followTitleBar(undefined);
     expect(document.documentElement.dataset.titleBar).toBeUndefined();
+  });
+});
+
+describe('watchFullScreen', () => {
+  it('tells everyone watching, until each stops', () => {
+    let handler: ((on: boolean) => void) | undefined;
+    const native: DesktopInterface = { rpc: async () => ({ ok: true, value: null }), onFullScreen: (h) => (handler = h) };
+    const seen: string[] = [];
+    const stopA = watchFullScreen((on) => seen.push(`a ${on}`), native);
+    const stopB = watchFullScreen((on) => seen.push(`b ${on}`), native);
+    handler?.(true);
+    stopA();
+    handler?.(false);
+    expect(seen).toEqual(['a true', 'b true', 'b false']);
+    stopB();
+    expect(handler).toBeUndefined();
+  });
+
+  it('does nothing outside the desktop app', () => {
+    expect(() => watchFullScreen(() => undefined, undefined)()).not.toThrow();
   });
 });

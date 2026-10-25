@@ -17,13 +17,13 @@ Status as of 2026-10-21. Milestones are listed in the order they're planned; num
 | **M8 Background work** | Full-text search done, its work in a worker with the text stored compressed. **Left:** jobs manager, OCR, Kindle books' text. |
 | **M9 Loans** | Researched, not started. |
 | **M10 Reader devices** | Not started. |
-| **M11 Sharing**, **M12 Audio and video** | Long shots: not before M4. |
+| **M11 Sharing**, **M12 Other media** | Long shots: not before M4. M12 planned: audiobooks, music, video and images, after large-file groundwork. |
 
 **Next:** check M13 by hand and finish M1 and M6, then M7's packaging, then the rest of M4.
 
 ## Vision
 
-An application for managing libraries of content (ebooks first, then audio and video) that runs on the web, in private clouds and on phones. Short term it's mostly Calibre; longer term it's Calibre + Plex + Jellyfin, with multiple users, encrypted data, and "library cards" granted to other people. Near-term work keeps those long shots reachable without building them.
+An application for managing libraries of content (ebooks first, then audiobooks, music, video and images) that runs on the web, in private clouds and on phones. Short term it's mostly Calibre; longer term it's Calibre + Plex + Jellyfin, with multiple users, encrypted data, and "library cards" granted to other people. Near-term work keeps those long shots reachable without building them.
 
 ## Guiding decisions
 
@@ -97,8 +97,7 @@ Built: `server/` serves the web app, accounts (sign-in by a session cookie; sign
   - API keys for metadata lookups, including ISBN sources beyond Open Library;
   - optional Calibre CLI (`ebook-convert`) for formats with no TS converter;
   - reaching CrossPoint readers for `https://` browser clients (the Android app relays its own calls).
-- **Deployment:** a Docker image is built from the repo (`Dockerfile`, `compose.yaml`), with estuary-rpc and epubierjs beside it; publishing one (to a registry, from CI) needs those released, or vendored, first.
-- **estuary-rpc:** nexlibris links `../estuary-rpc` (`file:`) for fixes made there (endpoint errors with statuses, async authentication, raw transport and path parameters, a fetch client, a safer static server); publish them and depend on the release again.
+- **Deployment:** a Docker image is built from the repo (`Dockerfile`, `compose.yaml`); publish it (to a registry, from CI).
 
 **Done when:** a browser and the phone each sync with the server, and it serves a catalog.
 
@@ -137,8 +136,29 @@ More of M3, for readers beyond CrossPoint and for changes going both ways.
 - **Multi-user and library cards:** accounts, auth, sharing a library or part of one at a permission level. Needs M4.
 - **Encryption** of metadata and files at rest, perhaps end-to-end; designed together with key sharing between users.
 
-### M12 — Audio and video (long shot)
-- `kind: 'audio' | 'video'`: playback in the app, streaming, perhaps transcoding (ffmpeg, real server resources).
+### M12 — Other media (long shot)
+Audiobooks, music, video and images, in that order, as items beside books. Content addressing, operations, merge, sync, scoping, connections, search and browsing already ignore what a file holds; `Item.kind` exists (`'book' | 'audio' | 'video'`) but nothing reads it yet.
+
+- **Groundwork, for big files:**
+  - Hash files as a stream: `hashBlob` in `common/src/backend.ts` reads the whole file into memory (WebCrypto has no incremental digest, so a wasm or JS SHA-256 in a worker), and the native sides likewise.
+  - Serve `Range` on `/library/files/…` (desktop's `app://` handler, Android, the server's raw file endpoints; iOS has it) so players can seek.
+  - Keep sync, backups and freeing files streaming, and let phones keep media files only when asked (`keepFiles`). A browser's OPFS quota limits a media library there; the desktop app and M4 are its homes.
+- **Model (a schema bump):**
+  - `ItemKind` gains `'image'`; `FormatInfo` gains a `kind`, so imports sort files by medium.
+  - One metadata bag for every kind, its keys per kind in `bookFields.ts` (`duration`, `narrator` as a creator role, `trackNumber`, `disc`, `season`, `episode`, `taken`, `camera`, `location`…).
+  - An item's content across several files in order (`FileRef.part`), and per-file details (`FileRef.metadata`) for an album's tracks.
+  - Positions as seconds in `ReadingPosition.locator`.
+- **Parsing, in tools (`media/` beside `formats/`, browser and CLI alike):** `music-metadata` (ID3, m4b chapters, embedded art), `mp4box.js` or `mediainfo.js` for video, `exifr` for images; covers from embedded art, a poster, a frame of the video, or the image itself.
+- **Audiobooks:** an item per book, one m4b or ordered parts; Open Library, series and Currently Reading as for books; a player with chapters, speed and a sleep timer.
+- **Music:** an item per album, its tracks as files with their own titles, numbers and durations; series as the artist's discography where wanted; a play queue; MusicBrainz lookup on request.
+- **Video:** an item per film; a show's episodes as items in its series (`seriesIndex`, `season`); subtitles as files (`.srt` turned into WebVTT); TMDB lookup on request (needs a key); transcoding (mkv, HEVC) with ffmpeg on the M4 server, and in the browser only where ffmpeg.wasm is quick enough.
+- **Images:** an item per image, titled from its file until named; albums as tags and the user's categories (an image in many); browsing by date taken and place beside the usual levels; duplicates by perceptual hash as well as by file hash in `dedupe.ts`; HEIC converted to JPEG; thumbnails as covers already are; a lightbox viewer.
+- **Players and the apps:** `<audio>` and `<video>` in `reader/`, audio playing on while the library is browsed; background playback and lock-screen controls natively (Android's `MediaSession` service, iOS's `audio` background mode).
+- **Library:** a kind level above the browse path (Books, Audiobooks, Music, Video, Images), `kind:` in the search, fields shown by kind in a book's details and the list's columns.
+- **Text:** lyrics and subtitles indexed by `fulltext/`; transcripts of audio with M8's background jobs.
+- **Connections:** folders and players with their own templates and formats; Audiobookshelf; Subsonic (OpenSubsonic) served live as the OPDS feed is (`opdsServer.ts`), so music players stream from M4; Jellyfin or Plex libraries read; a phone's camera roll read into images.
+
+**Done when:** I import an audiobook in parts and listen on the phone from where I stopped on the desktop; import an album and play it through; watch a film with subtitles that seeks smoothly; import a folder of photos, browse them by date and find their duplicates.
 
 ## Unscheduled
 

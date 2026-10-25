@@ -1,0 +1,29 @@
+[package]
+name = "nexlibris"
+version = "0.0.0"
+description = "nexlibris as a desktop app: the web client in the system's web view, with the library in native files"
+edition = "2021"
+publish = false
+
+[build-dependencies]
+tauri-build = { version = "2.7", features = [] }
+
+[dependencies]
+tauri = { version = "2.12", features = [] }
+tauri-plugin-dialog = "2.8"
+tauri-plugin-opener = "2.7"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+base64 = "0.22"
+sha2 = "0.10"
+ureq = "3"
+percent-encoding = "2"
+tokio = { version = "1", features = ["sync"] }
+
+[profile.release]
+# Smaller over faster: the heavy work is in the page.
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true

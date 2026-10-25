@@ -122,6 +122,9 @@ export function useTextIndex(): TextIndexState {
   return value;
 }
 
+/** The text index where there is one (not in a book's own window, or a component rendered alone). */
+export const useOptionalTextIndex = (): TextIndexState | undefined => useContext(Context);
+
 export interface TextHit {
   item: Item;
   file: FileRef;

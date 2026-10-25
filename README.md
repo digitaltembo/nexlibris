@@ -19,6 +19,7 @@ crosspoint-tools/ CrossPoint readers' files: the X4/X3 optimizer, sleep images, 
 client/           React + Vite web app: UI, devices, search
 cli/              the nexlibris command: books' metadata, covers, conversion and metadata edits, over tools/
 desktop/          Electron shell: serves client/dist, native files, LAN sync hub
+tauri/            a prototype of the desktop app in the system's web view (Tauri, Rust): no sync hosting yet
 android/          Kotlin WebView shell: serves client/dist, native files, Bluetooth/USB sync
 ios/              Swift WKWebView shell, the same as Android's: serves client/dist, native files, Bluetooth/folder sync
 server/           Node server: the web app, accounts, a library per account, sync (M4)
@@ -52,15 +53,15 @@ server/           Node server: the web app, accounts, a library per account, syn
 - **Import** (`library/importFiles.ts`): files, folders and whole Calibre libraries. It groups formats of one book together and matches books already in the library.
 - **Search** (`common/src/search.ts`): a Gmail-style syntax (`tag:fantasy rating:4+ -has:file`). It's the one way of choosing books: the search box, connections' catalogs and browse categories all take search text, with no separate filters. Full-text search inside books (`fulltext/`, over the text `tools/src/fulltext/` extracts) indexes in the background into local state.
 - **Browsing** (`library/browse.ts`): calibre3opds's navigation (authors, series, tags, the user's categories). Books show as a grid, a list, or a view a plugin adds, such as the built-in 3D bookshelf (`plugins/bookshelf/`) and force graph (`plugins/graph/`, books drawn together by the authors, tags and series they share).
-- **Reading** (`reader/`): EPUB (through epubier, a wrapper around epub.js), PDF (pdf.js), comics and text.
+- **Reading** (`reader/`): EPUB, Kindle books (MOBI, AZW3, AZW), PDF and comics (CBZ, CBR and CB7) through epubier (over epub.js, pdf.js, mobi-parser and, for CBR and CB7, libarchive in a worker), with its table of contents, search, bookmarks and themes; text with viewers of nexlibris's own.
 - **Connections** (`devices/`, `connections/`, `plugins/`): a connection reads (lists a place's books and brings them into the library), writes (holds a catalog of books it's given), or both. OPDS servers, the static OPDS export, other instances and folders are built in; plugins add more, with formats, converters and views. A write connection's catalog is the books (or particular files) added to it by hand (Add to…, Send to…, Bulk edit) plus what its search matches; a book's details list the catalogs holding it. Syncs only add: books in the catalog are sent as stored, changed files replaced, and nothing is removed, except by the user. Before sending, books without a format the connection prefers can be converted, and files behind their book's details updated (`devices/send.ts`). A device type can add tools for what else is on the device; CrossPoint's manage its sleep images, StarDict dictionaries and fonts. Where books go on a reader or folder is a path template (`/library/<author>/<title>/`), and books move when it changes. Copies of chosen books already on the device (from Calibre, say) are kept, or moved into place, rather than sent again. A folder gets a manifest, `.nexlibris-library.json`, so another library reads its books back with their details. The static export writes an OPDS catalog in calibre3opds's layout, with its Cloudflare Pages files for search and sign-in.
 
 ### Formats
 
-- **Metadata read:** EPUB (and its variants, such as X4 and X3 EPUBs), MOBI, AZW3 and AZW (from their headers), PDF (its document info), RTF (its `\info`), CBZ and CBR (from ComicInfo.xml). TXT has none, so its title is its file name.
-- **Covers:** EPUB, MOBI, AZW3 and AZW, PDF (its first page drawn, which needs a canvas), CBZ and CBR (their first page). TXT and RTF have none.
+- **Metadata read:** EPUB (and its variants, such as X4 and X3 EPUBs), MOBI, AZW3 and AZW (from their headers), PDF (its document info), RTF (its `\info`), CBZ and CBR (from ComicInfo.xml). TXT and CB7 have none (the tools read no 7-Zip), so their title is their file name.
+- **Covers:** EPUB, MOBI, AZW3 and AZW, PDF (its first page drawn, which needs a canvas), CBZ and CBR (their first page). TXT, RTF and CB7 have none.
 - **Metadata written:** EPUB, MOBI, AZW3 and AZW (Kindle books hold no series or sorts).
-- **Read in the app:** EPUB, PDF, CBZ, CBR, TXT and RTF. Kindle books are converted to EPUB to be read.
+- **Read in the app:** EPUB, MOBI, AZW3, AZW, PDF, CBZ, CBR, CB7, TXT and RTF.
 - **Text for full-text search:** EPUB, PDF, TXT and RTF.
 - **Converted:** see Conversions, below.
 
@@ -68,19 +69,20 @@ server/           Node server: the web app, accounts, a library per account, syn
 
 Rows convert to columns. ● is one conversion; ○ is more than one, by way of EPUB, which the app marks as indirect. The app (a book's Convert…, and Bulk convert, which can pick each book's easiest file) and the CLI both run any of them (`nexlibris convert --help` prints this table from the converters registered). Each conversion says how much it keeps (`Converter.fidelity`, from 1 for everything of value to plain text's 0.1), a chain keeps the product of its steps' fidelities, and conversions chain by the most kept, the fewest steps between equals: so nothing goes through plain text where anything else reaches, and X4/X3 EPUBs go back to EPUB by way of AZW3. The X4/X3 formats and their converter come from the CrossPoint plugin (`crosspoint-tools/`).
 
-| from \ to | epub | pdf | cbz | cbr | txt | rtf | mobi | azw3 | azw | x4.epub | x3.epub |
-|---|---|---|---|---|---|---|---|---|---|---|---|
-| **epub** | — | ● | | | ● | ● | ● | ● | ● | ● | ● |
-| **pdf** | ● | — | | | ○ | ○ | ○ | ○ | ○ | ○ | ○ |
-| **cbz** | ● | ○ | — | ● | ○ | ○ | ○ | ○ | ○ | ○ | ○ |
-| **cbr** | ● | ○ | ● | — | ○ | ○ | ○ | ○ | ○ | ○ | ○ |
-| **txt** | ● | ○ | | | — | ○ | ○ | ○ | ○ | ○ | ○ |
-| **rtf** | ● | ○ | | | ○ | — | ○ | ○ | ○ | ○ | ○ |
-| **mobi** | ● | ○ | | | ○ | ○ | — | ○ | ○ | ○ | ○ |
-| **azw3** | ● | ○ | | | ○ | ○ | ○ | — | ○ | ○ | ○ |
-| **azw** | ● | ○ | | | ○ | ○ | ○ | ○ | — | ○ | ○ |
-| **x4.epub** | ○ | ● | | | ● | ● | ● | ● | ● | — | ○ |
-| **x3.epub** | ○ | ● | | | ● | ● | ● | ● | ● | ○ | — |
+| from \ to | epub | pdf | cbz | cbr | cb7 | txt | rtf | mobi | azw3 | azw | x4.epub | x3.epub |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| **epub** | — | ● | | | | ● | ● | ● | ● | ● | ● | ● |
+| **pdf** | ● | — | | | | ○ | ○ | ○ | ○ | ○ | ○ | ○ |
+| **cbz** | ● | ○ | — | ● | | ○ | ○ | ○ | ○ | ○ | ○ | ○ |
+| **cbr** | ● | ○ | ● | — | | ○ | ○ | ○ | ○ | ○ | ○ | ○ |
+| **cb7** | | | | | — | | | | | | | |
+| **txt** | ● | ○ | | | | — | ○ | ○ | ○ | ○ | ○ | ○ |
+| **rtf** | ● | ○ | | | | ○ | — | ○ | ○ | ○ | ○ | ○ |
+| **mobi** | ● | ○ | | | | ○ | ○ | — | ○ | ○ | ○ | ○ |
+| **azw3** | ● | ○ | | | | ○ | ○ | ○ | — | ○ | ○ | ○ |
+| **azw** | ● | ○ | | | | ○ | ○ | ○ | ○ | — | ○ | ○ |
+| **x4.epub** | ○ | ● | | | | ● | ● | ● | ● | ● | — | ○ |
+| **x3.epub** | ○ | ● | | | | ● | ● | ● | ● | ● | ○ | — |
 
 Some converters take options, asked for when converting (`--option key=value` in the CLI; `nexlibris formats` lists them): EPUB to PDF its page size, headers, and page and chapter numbers; PDF to EPUB where chapters come from, which side its first page is and each side's margins to ignore; EPUB to X4/X3 the optimizer's settings. PDF to EPUB reads a PDF's text layer and has no OCR, so a scanned PDF needs one first.
 
@@ -110,7 +112,7 @@ The sync API is `common/src/syncApi.ts`.
 
 ## Setup
 
-Needs Node 24 (`nvm use`) and a sibling checkout of [epubierjs](../epubierjs) at `../epubierjs`.
+Needs Node 24 (`nvm use`).
 
 ```sh
 npm install
@@ -163,13 +165,13 @@ Bucket keys come only from the environment (`NEXLIBRIS_ACCESS_KEY_ID`/`NEXLIBRIS
 
 ### Docker
 
-The image (`Dockerfile`) holds Node, the server bundled into one file, and the built web app; it runs as an unprivileged user, keeps everything in `/data`, and has a healthcheck. estuary-rpc and epubierjs must be checked out beside this repository, as for development: they come into the build as named contexts, and are built inside it.
+The image (`Dockerfile`) holds Node, the server bundled into one file, and the built web app; it runs as an unprivileged user, keeps everything in `/data`, and has a healthcheck.
 
 ```
 docker compose up -d                                            # builds and serves at http://localhost:8080, data in a volume
 docker compose run --rm nexlibris add-account ada              # NEXLIBRIS_PASSWORD, else asked (add -it)
 docker compose run --rm nexlibris --help                       # every option, each an environment variable
-docker build --build-context estuary-rpc=../estuary-rpc --build-context epubierjs=../epubierjs -t nexlibris .
+docker build -t nexlibris .
 ```
 
 `compose.yaml` passes the usual options from the environment or a `.env` file beside it (`NEXLIBRIS_NAME`, `NEXLIBRIS_SIGNUP`, `NEXLIBRIS_TRUST_PROXY` behind an https proxy, a bucket's `NEXLIBRIS_STORAGE`, `NEXLIBRIS_BUCKET` and keys; `NEXLIBRIS_PUBLISH` the host port). Unset ones are passed empty, which the server takes as unset.
@@ -208,3 +210,18 @@ npm start -w desktop -- --remote-debugging-port=9333              # attach Chrom
 ```
 
 The library lives in `<userData>/library` by default (on macOS, `~/Library/Application Support/nexlibris/library`). It isn't packaged as an installable app yet; it runs from the repo.
+
+## Desktop app (Tauri prototype)
+
+`tauri/` is a prototype of the desktop app in the system's web view (WebKit on macOS, WebView2 on Windows, WebKitGTK on Linux) instead of a bundled Chromium: the same web client and the same `window.NexlibrisDesktop` (`tauri/src-tauri/src/bridge.js`), answered in Rust (`tauri/src-tauri/src/`). Packaged for macOS it's a 25 MB app (an 11 MB DMG), against Electron's ~290 MB. It has the library as files on disk (storage, import, save, the menu bar, books in windows of their own, OPDS catalogs fetched past CORS, opening a library in another folder, Show in folder). It doesn't yet host sync, move the library between folders, or reach a nexlibris server through the app; nor does it do Bluetooth (WebKit has no Web Bluetooth). WebKit has no `-webkit-app-region`, so `bridge.js` finds where the window is dragged from: the top bar (`data-window-drag`), the strip above a reader, and epubier's toolbar.
+
+Needs Rust (`rustup`). Then:
+
+```sh
+npm run tauri                # builds the web client, then builds and launches the app (debug)
+npm start -w tauri           # launch without rebuilding the client
+npm run bundle -w tauri      # a release nexlibris.app and DMG in tauri/src-tauri/target/release/bundle/
+cd tauri/src-tauri && cargo test
+```
+
+`NEXLIBRIS_LIBRARY_DIR` picks the library folder, as for Electron. The library is otherwise in `~/Library/Application Support/app.nexlibris.desktop/library` (not Electron's), so try it against a copy of a library, or point it at Electron's while Electron isn't running.

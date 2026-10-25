@@ -67,6 +67,8 @@ export function useBackToClose(open: boolean, onClose: () => void) {
   useEffect(() => {
     if (!open) return;
     if (!listening) {
+      // Popping an entry would otherwise scroll the page back to where it was when the overlay opened.
+      history.scrollRestoration = 'manual';
       window.addEventListener('popstate', onPopState);
       listening = true;
       entries = depthOf(history.state);

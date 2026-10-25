@@ -123,6 +123,8 @@ const Td = styled.td<{ $col: ColumnKind }>`
 
 const Tr = styled.tr<{ $highlighted: boolean }>`
   cursor: pointer;
+  /* Below the column headers, which stick below the top bar. */
+  scroll-margin-top: calc(var(--header-height, 0px) + 2.5em);
   ${(p) => p.$highlighted && 'background: var(--soft);'}
 
   &:hover {
@@ -239,6 +241,7 @@ export function LibraryList({ items, selection, onActivate, onLongPress, columns
             <Tr
               key={item.id}
               $highlighted={isSelected}
+              data-item={item.id}
               tabIndex={0}
               aria-selected={isSelected}
               onClick={(e) => onActivate(item.id, clickModifiers(e))}

@@ -1,13 +1,15 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { fn } from 'storybook/test';
-import PdfViewer from './PdfViewer';
+import azw3Url from '../../../tools/src/formats/fixtures/sample.azw3?url';
+import cbrUrl from '../../../tools/src/formats/fixtures/sample.cbr?url';
+import cbzUrl from '../../../tools/src/formats/fixtures/sample.cbz?url';
+import EpubierViewer from './EpubierViewer';
 
-/** A small PDF made here: text, grey, and coloured shapes, to show how pages take the theme's colours. */
+/** A small PDF made here: text, grey, and coloured shapes. */
 function samplePdf(): Blob {
   const content = [
-    'BT /F1 28 Tf 72 720 Td (A Page in the Theme) Tj ET',
-    'BT /F1 14 Tf 72 690 Td (Paper takes the surface colour, ink the text colour.) Tj ET',
-    'BT /F1 14 Tf 72 670 Td (Colours keep roughly their hue; the dark scheme inverts the page first.) Tj ET',
+    'BT /F1 28 Tf 72 720 Td (A Sample Page) Tj ET',
+    'BT /F1 14 Tf 72 690 Td (Drawn by pdf.js in epubier, which colours the page by its theme.) Tj ET',
     '0.5 g 72 560 140 80 re f',
     '0.93 0.59 0.29 rg 232 560 140 80 re f',
     '0.05 0.23 0.4 rg 392 560 140 80 re f',
@@ -33,12 +35,36 @@ function samplePdf(): Blob {
 }
 
 const meta = {
-  component: PdfViewer,
-  args: { data: samplePdf(), format: 'pdf', storageKey: 'sample', onClose: fn(), options: { forcePdfjs: true } },
-  decorators: [(Story) => <div style={{ height: '100vh', overflow: 'auto', background: 'var(--bg)' }}><Story /></div>],
-} satisfies Meta<typeof PdfViewer>;
+  component: EpubierViewer,
+  args: { data: samplePdf(), format: 'pdf', storageKey: 'sample-pdf', onClose: fn() },
+  decorators: [(Story) => <div style={{ height: '100vh' }}><Story /></div>],
+} satisfies Meta<typeof EpubierViewer>;
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** pdf.js's rendering, as on Android, in the theme's colours (switch the colour scheme to see the dark one). */
-export const Themed: Story = {};
+/** A file fixture, fetched before the story renders. */
+const fixture = (url: string) => async () => ({ data: await (await fetch(url)).blob() });
+
+/** A PDF, drawn by pdf.js, with its pages, outline and search. */
+export const Pdf: Story = {};
+
+/** A Kindle book (AZW3), turned into an ePub in memory, so it reflows and takes the font and text settings. */
+export const Kindle: Story = {
+  args: { format: 'azw3', storageKey: 'sample-azw3' },
+  loaders: [fixture(azw3Url)],
+  render: (args, { loaded }) => <EpubierViewer {...args} data={loaded.data as Blob} />,
+};
+
+/** A CBZ comic, its images as pages. */
+export const Comic: Story = {
+  args: { format: 'cbz', storageKey: 'sample-cbz' },
+  loaders: [fixture(cbzUrl)],
+  render: (args, { loaded }) => <EpubierViewer {...args} data={loaded.data as Blob} />,
+};
+
+/** A CBR comic, read by libarchive in epubier's worker, a page at a time. */
+export const ComicRar: Story = {
+  args: { format: 'cbr', storageKey: 'sample-cbr' },
+  loaders: [fixture(cbrUrl)],
+  render: (args, { loaded }) => <EpubierViewer {...args} data={loaded.data as Blob} />,
+};

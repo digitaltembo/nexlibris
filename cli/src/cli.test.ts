@@ -120,7 +120,7 @@ describe('convert', () => {
 
   it('tabulates which formats convert to which', () => {
     const rows = Object.fromEntries(conversionMatrix().split('\n').filter(Boolean).slice(1).map((line) => [line.split(/\s+/)[0], line.split(/\s+/).slice(1)]));
-    expect(rows['from']).toEqual(['\\', 'to', 'epub', 'pdf', 'cbz', 'cbr', 'txt', 'rtf', 'mobi', 'azw3', 'azw', 'x4.epub', 'x3.epub']);
+    expect(rows['from']).toEqual(['\\', 'to', 'epub', 'pdf', 'cbz', 'cbr', 'cb7', 'txt', 'rtf', 'mobi', 'azw3', 'azw', 'x4.epub', 'x3.epub']);
     expect(rows['epub']).toEqual(['—', '●', '●', '●', '●', '●', '●', '●', '●']);
     expect(rows['cbz']).toEqual(['●', '○', '—', '●', '○', '○', '○', '○', '○', '○', '○']);
     expect(rows['x4.epub']).toEqual(['○', '●', '●', '●', '●', '●', '●', '—', '○']);

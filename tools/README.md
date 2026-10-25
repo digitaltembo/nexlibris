@@ -19,7 +19,7 @@ Under Node the tools need what a browser gives them (a DOM parser, `fetch` of lo
 - **Text for full-text search** (`fulltext/extract.ts`): EPUB, PDF, TXT and RTF; EPUB and TXT in a worker too, PDF and RTF only in the page.
 - **Converted:** see Conversions, below.
 
-Reading books is left to their users (nexlibris's reader opens EPUB, PDF, CBZ, CBR, TXT and RTF).
+Reading books is left to their users (nexlibris's reader opens EPUB, Kindle books, PDF, CBZ, CBR, TXT and RTF).
 
 ## Conversions
 

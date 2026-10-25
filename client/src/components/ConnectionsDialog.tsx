@@ -3,7 +3,7 @@ import { loadFeed } from '../catalogs/feedCache';
 import { textFetcher } from '../catalogs/remote';
 import { sourceOf } from '../catalogs/sources';
 import { CatalogBrowser } from './CatalogBrowser';
-import { applyOperations, createDevice, readPairings, removePairing, type Device, type DevicePatch, type FirstSyncMode, type Item, type ItemId, type Library, type Operation, type NewPairing, type Pairing } from '@nexlibris/common';
+import { applyOperations, createDevice, deviceItemCount, readPairings, removePairing, type Device, type DevicePatch, type FirstSyncMode, type Item, type ItemId, type Library, type Operation, type NewPairing, type Pairing } from '@nexlibris/common';
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import styled from 'styled-components';
 import {
@@ -151,6 +151,11 @@ export function ConnectionsDialog({ onClose, pair }: { onClose(): void; /** Open
   const devices = Object.values(library.devices ?? {})
     .filter((device) => device.id !== library.origin)
     .sort((a, b) => sortKey(a) - sortKey(b));
+  // Counted once per change to the library, not on every render: a search finds each catalog's books.
+  const counts = useMemo(
+    () => new Map(Object.values(library.devices ?? {}).map((device) => [device.id, deviceItemCount(library, device)])),
+    [library],
+  );
   const back = () => (loadPairings(), setScreen({ kind: 'list' }));
   const pairingOf = (device: Device) => pairings.find((p) => p.hub.origin === device.id);
   /** Devices paired with this one as their hub: shown on their connection's row, not again under hosting. */
@@ -276,7 +281,7 @@ export function ConnectionsDialog({ onClose, pair }: { onClose(): void; /** Open
       ) : (
         <Stack as="ul">
           {devices.map((device) => {
-            const books = plural(deviceItems(library, device).length, 'book');
+            const books = plural(counts.get(device.id) ?? 0, 'book');
             const { active } = status(device);
             if (isInstanceConnection(device)) {
               const pairing = pairingOf(device);
@@ -1006,7 +1011,7 @@ type CatalogState =
  */
 function SyncCatalog({ device, type, onDone, onClose }: { device: Device; type: ExportType; onDone(): void; onClose(): void }) {
   const { library: current, backend, apply } = useLibrary();
-  const count = deviceItems(current, current.devices?.[device.id] ?? device).length;
+  const count = deviceItemCount(current, current.devices?.[device.id] ?? device);
   const [state, setState] = useState<CatalogState>({ kind: 'loading' });
   const folder = state.kind === 'loading' ? undefined : state.folder;
   const catalogKey = `catalog:${device.id}`;

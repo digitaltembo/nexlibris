@@ -1,15 +1,10 @@
 # The nexlibris server: `docker compose up -d`, then open http://localhost:8080 and sign up (the first
-# account only, unless NEXLIBRIS_SIGNUP says otherwise). estuary-rpc and epubierjs must be checked out
-# beside this repository, as for development. Accounts from the command line:
+# account only, unless NEXLIBRIS_SIGNUP says otherwise). Accounts from the command line:
 #   docker compose run --rm nexlibris add-account <name>
 # Every option is an environment variable (`docker compose run --rm nexlibris --help`).
 services:
   nexlibris:
-    build:
-      context: .
-      additional_contexts:
-        estuary-rpc: ../estuary-rpc
-        epubierjs: ../epubierjs
+    build: .
     image: nexlibris
     restart: unless-stopped
     ports:

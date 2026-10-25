@@ -5,13 +5,15 @@ import { availableFields, DEFAULT_COLUMNS } from '../library/columns';
 import type { Sort } from '@nexlibris/common';
 import { sampleItems } from '../stories/sampleLibrary';
 import { applyAppearance, type Appearance } from '../styles/appearance';
-import { SettingsDialog, type View } from './SettingsDialog';
+import { SettingsDialog, type SettingsTab, type View } from './SettingsDialog';
 
 const fields = availableFields(sampleItems);
 
 const meta = {
   component: SettingsDialog,
   args: {
+    asked: { tab: 'appearance' },
+    accounts: false,
     view: 'grid',
     onView: fn(),
     appearance: 'system',
@@ -27,8 +29,9 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-function LiveSettings({ initialView }: { initialView: View }) {
+function LiveSettings({ initialView, initialTab = 'appearance' }: { initialView: View; initialTab?: SettingsTab }) {
   const [view, setView] = useState<View>(initialView);
+  const [asked] = useState({ tab: initialTab });
   // Picking light or dark here turns the story so, until the story is left.
   const [appearance, setAppearance] = useState<Appearance>('system');
   useLayoutEffect(() => {
@@ -39,6 +42,8 @@ function LiveSettings({ initialView }: { initialView: View }) {
   const [columns, setColumns] = useState<string[]>(DEFAULT_COLUMNS);
   return (
     <SettingsDialog
+      asked={asked}
+      accounts={false}
       view={view}
       onView={setView}
       appearance={appearance}
@@ -57,3 +62,7 @@ export const Grid: Story = { render: () => <LiveSettings initialView="grid" /> }
 export const List: Story = { render: () => <LiveSettings initialView="list" /> };
 export const Bookshelf: Story = { render: () => <LiveSettings initialView="bookshelf.shelf" /> };
 export const Graph: Story = { render: () => <LiveSettings initialView="graph.force" /> };
+export const Filesystem: Story = { render: () => <LiveSettings initialView="grid" initialTab="folder" /> };
+export const Backup: Story = { render: () => <LiveSettings initialView="grid" initialTab="backup" /> };
+export const Categories: Story = { render: () => <LiveSettings initialView="grid" initialTab="categories" /> };
+export const Connections: Story = { render: () => <LiveSettings initialView="grid" initialTab="connections" /> };

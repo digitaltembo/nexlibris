@@ -106,13 +106,14 @@ const TYPES: Record<string, FormatId> = {
   'application/x-cbz': 'cbz',
   'application/vnd.comicbook-rar': 'cbr',
   'application/x-cbr': 'cbr',
+  'application/x-cb7': 'cb7',
   'application/rtf': 'rtf',
   'text/rtf': 'rtf',
   'text/plain': 'txt',
 };
 
 /** Formats in the order a book's downloads are offered: the library's preference. */
-const PREFERENCE: FormatId[] = ['epub', 'azw3', 'mobi', 'azw', 'pdf', 'cbz', 'cbr', 'rtf', 'txt'];
+const PREFERENCE: FormatId[] = ['epub', 'azw3', 'mobi', 'azw', 'pdf', 'cbz', 'cbr', 'cb7', 'rtf', 'txt'];
 
 const kids = (el: Element, name: string) => [...el.children].filter((c) => c.localName === name);
 const kid = (el: Element, name: string) => kids(el, name)[0];

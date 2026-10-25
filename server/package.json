@@ -13,8 +13,8 @@
   },
   "dependencies": {
     "@nexlibris/common": "^0.0.0",
-    "estuary-rpc": "file:../../estuary-rpc/estuary-rpc",
-    "estuary-rpc-server": "file:../../estuary-rpc/estuary-rpc-server"
+    "estuary-rpc": "^1.1.0",
+    "estuary-rpc-server": "^1.1.0"
   },
   "devDependencies": {
     "rolldown": "^1.2.12"

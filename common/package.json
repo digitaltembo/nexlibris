@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@nexlibris/tools": "^0.0.0",
-    "estuary-rpc": "file:../../estuary-rpc/estuary-rpc",
-    "estuary-rpc-client": "file:../../estuary-rpc/estuary-rpc-client"
+    "estuary-rpc": "^1.1.0",
+    "estuary-rpc-client": "^1.1.0"
   }
 }

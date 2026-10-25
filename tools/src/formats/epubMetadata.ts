@@ -1,12 +1,16 @@
 import JSZip from 'jszip';
 import type { Creator } from '../metadata';
-import type { EpubBook } from './epubBuilder';
+import { coverManifestItem, opfFolder, resolvePath } from './epub';
+import { extensionFor, type EpubBook } from './epubBuilder';
 import { splitTags, type ParsedItem } from './formats';
 import { bcp47Language, sameLanguage } from './language';
 import { parseXml } from './xml';
 
 /** The metadata {@link writeEpubMetadata} writes, as conversions build it from an item (`bookFromItem`). */
 export type EpubMetadata = Omit<EpubBook, 'chapters' | 'cover' | 'resources' | 'toc' | 'identifiers'>;
+
+/** A cover image {@link writeEpubMetadata} puts in a book. */
+export type EpubCover = NonNullable<EpubBook['cover']>;
 
 const DC_NS = 'http://purl.org/dc/elements/1.1/';
 const OPF_NS = 'http://www.idpf.org/2007/opf';
@@ -25,9 +29,10 @@ function authorSorts(book: EpubMetadata): string[] | undefined {
  * Rewrites an EPUB's package metadata from the library's, so a copy sent to a device, or the
  * library's own file (`library/updateFiles.ts`), shows the user's edits. What the library has
  * replaces what the file says; what it lacks (no description, say, or no tags) is left as the file
- * has it. Everything else in the book, including its identifiers and cover, is kept.
+ * has it. With a `cover`, the book's cover image is replaced too (`writeCover`). Everything else in
+ * the book, including its identifiers, is kept.
  */
-export async function writeEpubMetadata(data: Blob, book: EpubMetadata): Promise<Blob> {
+export async function writeEpubMetadata(data: Blob, book: EpubMetadata, cover?: EpubCover): Promise<Blob> {
   const zip = await JSZip.loadAsync(await data.arrayBuffer());
   const containerText = await zip.file('META-INF/container.xml')?.async('string');
   const container = containerText ? parseXml(containerText) : undefined;
@@ -123,12 +128,87 @@ export async function writeEpubMetadata(data: Blob, book: EpubMetadata): Promise
     }
   }
 
+  if (cover) await writeCover(zip, opf, opfPath, metadata, cover, epub3);
+
   // Some serializers (happy-dom's) write a non-breaking space as HTML's `&nbsp;`, which XML doesn't know.
   const xml = new XMLSerializer().serializeToString(opf.documentElement).replaceAll('&nbsp;', '&#160;');
   zip.file(opfPath, `<?xml version="1.0" encoding="UTF-8"?>\n${xml}`);
   // The mimetype entry must stay first and uncompressed; JSZip keeps the order it loaded.
   zip.file('mimetype', 'application/epub+zip', { compression: 'STORE' });
   return zip.generateAsync({ type: 'blob', mimeType: 'application/epub+zip', compression: 'DEFLATE' });
+}
+
+/** Files that may refer to the cover image by name: pages, styles, the old table of contents. */
+const REFERRING = /\.(x?html?|svg|css|ncx)$/i;
+
+/**
+ * Puts `cover` in the book as its cover image: in place of the image it has (the one `parseEpub` reads as its cover),
+ * or as a new one where it has none, marked as the cover both ways (EPUB 3's `cover-image`, EPUB 2's `<meta
+ * name="cover">`). An image of another type gets that type's extension, and the pages and styles naming the old file
+ * name the new one. Readers show the image marked; a cover page the book has shows the new image too.
+ */
+async function writeCover(zip: JSZip, opf: Document, opfPath: string, metadata: Element, cover: EpubCover, epub3: boolean) {
+  const manifest = Array.from(opf.getElementsByTagName('*')).find((el) => el.localName === 'manifest');
+  if (!manifest) throw new Error('The EPUB has no manifest.');
+  const folder = opfFolder(opfPath);
+  const extension = extensionFor(cover.mediaType);
+  const taken = (path: string) => !!zip.file(path);
+  /** A file name in `dir` for `stem` with the cover's extension, not already used. */
+  const freePath = (dir: string, stem: string) => {
+    for (let i = 0; ; i++) {
+      const name = `${stem}${i ? `-${i}` : ''}.${extension}`;
+      if (!taken(resolvePath(folder, dir + name))) return dir + name;
+    }
+  };
+
+  let item = coverManifestItem(opf);
+  const oldHref = item?.getAttribute('href');
+  if (item && oldHref) {
+    const oldPath = resolvePath(folder, decodeURIComponent(oldHref));
+    if (item.getAttribute('media-type') === cover.mediaType) zip.file(oldPath, cover.data);
+    else {
+      // Named for its type, so readers that go by the extension read it.
+      const slash = oldHref.lastIndexOf('/') + 1;
+      const dir = oldHref.slice(0, slash);
+      const oldName = oldHref.slice(slash);
+      const stem = decodeURIComponent(oldName).replace(/\.[^.]*$/, '');
+      zip.remove(oldPath);
+      const href = freePath(dir, stem);
+      const newName = href.slice(slash);
+      zip.file(resolvePath(folder, decodeURIComponent(href)), cover.data);
+      item.setAttribute('href', href);
+      item.setAttribute('media-type', cover.mediaType);
+      for (const file of Object.values(zip.files)) {
+        if (file.dir || !REFERRING.test(file.name)) continue;
+        const text = await file.async('string');
+        if (text.includes(oldName)) zip.file(file.name, text.replaceAll(oldName, newName));
+      }
+    }
+  } else {
+    const ids = new Set(Array.from(opf.getElementsByTagName('*'), (el) => el.getAttribute('id')));
+    let id = 'nexlibris-cover';
+    for (let i = 1; ids.has(id); i++) id = `nexlibris-cover-${i}`;
+    const href = freePath('', 'cover');
+    zip.file(resolvePath(folder, href), cover.data);
+    item = opf.createElementNS(manifest.namespaceURI ?? OPF_NS, 'item');
+    item.setAttribute('id', id);
+    item.setAttribute('href', href);
+    item.setAttribute('media-type', cover.mediaType);
+    manifest.appendChild(item);
+  }
+
+  // Marked as the cover both ways, whichever way the book found it.
+  if (epub3) {
+    const properties = (item.getAttribute('properties') ?? '').split(/\s+/).filter(Boolean);
+    if (!properties.includes('cover-image')) item.setAttribute('properties', [...properties, 'cover-image'].join(' '));
+  }
+  if (!item.id) item.setAttribute('id', 'nexlibris-cover');
+  const named = Array.from(metadata.children).filter((el) => el.localName === 'meta' && el.getAttribute('name') === 'cover');
+  for (const el of named) el.remove();
+  const meta = opf.createElementNS(metadata.namespaceURI ?? OPF_NS, 'meta');
+  meta.setAttribute('name', 'cover');
+  meta.setAttribute('content', item.id);
+  metadata.appendChild(meta);
 }
 
 /**

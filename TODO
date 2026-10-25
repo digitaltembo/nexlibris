@@ -1,6 +1,19 @@
-* Optionally let browser and desktop users store the library at a path of their chosing chosen via the filesystem API instead of via OPFS (or wherever the desktop app defaults to). Also use the same tools the crosspoint reader connections have to specify storage path. 
-* Rename current opds connection to 'OPDS Static Export'. Add a new OPDS connection that just lets you see and browse items in an existing OPDS server in the "On it.." section, but does not actually allow you to sync. Add connections such as these where you can browse their files to the main library page, so you can go e.g. 'Library / Project Gutenberg' to see books from your Project Gutenberg OPDS connection. Reading all the books would take too long, so come up with something to deal with pagination there. If you add an OPDS connection which exposes search information, integrate that as a search tool inside the search bar, next to 'Books' and 'Inside books'
-* Add a currently reading section that by default shows up at the top of the library in a window regardless of the view as the cover/grid view in a horizontally scrolling section if necessary. It should be easy to close, and easy to remove books from the list. You should be able to search for 
-* server, sign in account allows for cloud-side storage instead of browserside/opds or personal file ystem.
-* music?
-* movies?
+
+* Reviews?
+* Full support for calibre3opds format, still haven't verified output static opds
+* Forget a pairing device doesn't seem to work, shouldn't have to activate _and_ pair (activating should effectively be pairing, deactivate automatically when pairing heartbeat fails)
+* epubier share buttons should be removed
+* volume controls for page turns?
+* Better cross-format compatible rendering
+  * expand epubier? New thing?
+  * Allow for both page flip and scroll view
+  * Animation for page flip?
+* Server
+  * Dynamic OPDS support
+  * RSS support
+  * Email acceptance? Does this matter for servers if we can just get an app? Probably not
+    * <user>@<host>
+* Music, photos, audiobooks: relatively easy
+  * Audiobook player: kinda complicated
+  * Playlists
+* Movies: tough? I imagine? efficient streaming?

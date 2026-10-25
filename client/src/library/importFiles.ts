@@ -4,7 +4,7 @@ import { hasIsbn, normalizeIsbn } from '../isbn/isbn';
 import { CONVERTERS } from '@nexlibris/tools/formats/convert/converters';
 import { epubMetadataChanges } from '@nexlibris/tools/formats/epubMetadata';
 import { EPUB_FORMATS, formatFromName, isEpub, KINDLE_FORMATS, READER_EPUBS, type FormatId, type ParsedItem } from '@nexlibris/tools/formats/formats';
-import { fileMetadata, metadataKey } from './fileMetadata';
+import { coverDiffers, fileMetadata, metadataKey } from './fileMetadata';
 import { parseOpf, type OpfMetadata } from '@nexlibris/tools/formats/opf';
 import { parseFile } from '@nexlibris/tools/formats/parseFile';
 import { runConversion } from './convert';
@@ -40,7 +40,7 @@ export const ALREADY_IN_LIBRARY = 'already in the library';
 const kindleToEpub = CONVERTERS.find((c) => c.id === 'kindle-epub')!;
 
 /** Which format's metadata and cover an item takes, best first. Device-optimized copies come last. */
-export const METADATA_PREFERENCE: FormatId[] = ['epub', 'azw3', 'mobi', 'azw', 'pdf', 'cbz', 'cbr', 'rtf', 'txt', ...READER_EPUBS];
+export const METADATA_PREFERENCE: FormatId[] = ['epub', 'azw3', 'mobi', 'azw', 'pdf', 'cbz', 'cbr', 'cb7', 'rtf', 'txt', ...READER_EPUBS];
 
 /** Items are saved this many at a time, so a long import keeps what it has done if it stops partway. */
 const COMMIT_EVERY = 20;
@@ -283,15 +283,16 @@ async function importBook(
     },
     calibre?.opf?.calibre.added,
   );
-  // EPUBs that say what the item says are current with it; the rest (Calibre's metadata differing, say) are behind it.
-  const key = metadataKey(item);
+  // EPUBs that say what the item says, cover too, are current with it; the rest (Calibre's metadata or cover differing,
+  // say) are behind it.
   const wanted = fileMetadata(item);
   for (const file of item.files) {
     const read = [...said].find(([ref]) => ref.hash === file.hash)?.[1];
-    if (read && !epubMetadataChanges(read, wanted).length) file.metadataKey = key;
+    if (read && !epubMetadataChanges(read, wanted).length && !(await coverDiffers(item, file, read))) file.metadataKey = metadataKey(item, file);
   }
 
-  // Kindle files are read via EPUB, so make one straight away unless the book came with one; the original is kept.
+  // Kindle files get an EPUB straight away, which full-text search reads, unless the book came with one; the original
+  // is kept.
   const kindle = stored.find(({ ref }) => KINDLE_FORMATS.includes(ref.format as FormatId) && files.includes(ref));
   const hasEpub = (list: FileRef[]) => list.some((f) => EPUB_FORMATS.includes(f.format as FormatId));
   if (kindle && !hasEpub(files) && !(existing && hasEpub(existing.files))) {

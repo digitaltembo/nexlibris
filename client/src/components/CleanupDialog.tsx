@@ -255,8 +255,9 @@ export function CleanupDialog({
           <div>
             <strong>Update book files</strong>
             <Muted>
-              Write the library’s details (title, authors, tags, series, description and the like) into EPUBs that say
-              otherwise, so the files match wherever they go. Details the library lacks are left as the file has them.
+              Write the library’s details (title, authors, tags, series, description and the like) and cover into EPUBs
+              that say otherwise, so the files match wherever they go. Details the library lacks are left as the file has
+              them, and copies converted for a reader keep their own cover.
               {behind > 0 && ` ${plural(behind, 'file')} ${behind === 1 ? 'is' : 'are'} behind edits made since.`}
             </Muted>
           </div>
@@ -570,7 +571,7 @@ export function StaleFiles({ found }: { found: FindResult }) {
       <Intro>
         {found.stopped ? 'Stopped. ' : ''}
         {stale.length
-          ? `${plural(stale.length, 'file')} on ${plural(new Set(stale.map((s) => s.item.id)).size, 'book')} ${stale.length === 1 ? 'differs' : 'differ'} from the library. Updating writes the library’s details into them; their text, cover and identifiers stay as they are.`
+          ? `${plural(stale.length, 'file')} on ${plural(new Set(stale.map((s) => s.item.id)).size, 'book')} ${stale.length === 1 ? 'differs' : 'differ'} from the library. Updating writes the library’s details and cover into them; their text and identifiers stay as they are.`
           : `Every file matches the library${found.current ? ` (${plural(found.current, 'EPUB')} checked)` : ''}.`}
       </Intro>
       {stale.length > 0 && (

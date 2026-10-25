@@ -1,26 +1,30 @@
 import type { FileRef, Item, WindowColors } from '@nexlibris/common';
 import { lazy, Suspense, useCallback, useEffect, useState, type ComponentType } from 'react';
 import styled from 'styled-components';
-import { EPUB_FORMATS, FORMATS, isEpub, isFormatId, READ_PREFERENCE, type FormatId } from '@nexlibris/tools/formats/formats';
+import { FORMATS, isFormatId, READ_PREFERENCE, type FormatId } from '@nexlibris/tools/formats/formats';
 import { useLibrary } from '../library/LibraryContext';
 import { useReadingPosition } from '../library/useReadingPosition';
 import { LockScroll } from '../styles/GlobalStyle';
 import { Button, Muted, Status } from '../styles/ui';
 import { setReaderColors } from '../styles/windowColors';
+import { epubierFormat } from './epubierFormat';
 
-const Shell = styled.div`
+const Shell = styled.div<{ $titleBar?: boolean }>`
   position: fixed;
   inset: 0;
   z-index: 20;
   display: flex;
   flex-direction: column;
-  padding: var(--title-bar-height, 0px) var(--safe-right, 0px) var(--safe-bottom, 0px) var(--safe-left, 0px);
+  padding: ${({ $titleBar }) => ($titleBar ? '0px' : 'var(--title-bar-height, 0px)')} var(--safe-right, 0px)
+    var(--safe-bottom, 0px) var(--safe-left, 0px);
   background: var(--bg);
 
   /* Without a title bar (the desktop app on macOS), a strip above the reader holds the window
-     buttons and moves the window. data-covers-window keeps the top bar beneath from taking it. */
+     buttons and moves the window, unless the viewer's toolbar is the title bar ($titleBar: epubier's).
+     data-covers-window keeps the top bar beneath from taking it. */
   &::before {
     content: '';
+    display: ${({ $titleBar }) => ($titleBar ? 'none' : 'block')};
     position: absolute;
     inset: 0 0 auto;
     height: var(--title-bar-height, 0px);
@@ -60,24 +64,17 @@ export interface ViewerProps {
   /** Reports where the reader is, as often as it likes; saving is debounced. */
   onPosition?(locator: string, progress?: number): void;
   onClose(): void;
-  /** The viewer's own colours (epubier's themes), for what's around it: the title bar strip, the system bars. */
+  /** The viewer's own colours (epubier's themes), for what's around it: the system bars. */
   onColors?(colors: WindowColors): void;
-  options: { forcePdfjs: boolean };
 }
 
-const EpubViewer = lazy(() => import('./EpubViewer'));
-const PdfViewer = lazy(() => import('./PdfViewer'));
-const ComicViewer = lazy(() => import('./ComicViewer'));
+const EpubierViewer = lazy(() => import('./EpubierViewer'));
 const PlainTextViewer = lazy(() => import('./TextViewer').then((m) => ({ default: m.PlainTextViewer })));
-const RtfViewer = lazy(() => import('./TextViewer').then((m) => ({ default: m.RtfViewer })));
 
+/** epubier for what it reads, else one of nexlibris's own. Plugins' formats are registered before this module loads. */
 const VIEWERS: Partial<Record<FormatId, ComponentType<ViewerProps>>> = {
-  ...Object.fromEntries(EPUB_FORMATS.map((format) => [format, EpubViewer])),
-  pdf: PdfViewer,
-  cbz: ComicViewer,
-  cbr: ComicViewer,
+  ...Object.fromEntries(READ_PREFERENCE.filter((format) => epubierFormat(format)).map((format) => [format, EpubierViewer])),
   txt: PlainTextViewer,
-  rtf: RtfViewer,
 };
 
 export function isReadable(file: FileRef): boolean {
@@ -135,11 +132,10 @@ export interface BookReaderProps {
 export function BookReader({ title, file, load, position, onPosition, onClose }: BookReaderProps) {
   const [data, setData] = useState<Blob | null>();
   const [fetchError, setFetchError] = useState<string>();
-  const [forcePdfjs, setForcePdfjs] = useState(false);
   const [colors, setColors] = useState<WindowColors>();
   const format = isFormatId(file.format) ? file.format : undefined;
   // epubier has its own toolbar and uses Escape for its menus.
-  const ownChrome = !!format && isEpub(format);
+  const ownChrome = !!format && !!epubierFormat(format);
 
   useEffect(() => {
     let cancelled = false;
@@ -194,14 +190,13 @@ export function BookReader({ title, file, load, position, onPosition, onClose }:
           onPosition={onPosition}
           onClose={onClose}
           onColors={setColors}
-          options={{ forcePdfjs }}
         />
       </Suspense>
     );
 
   if (ownChrome && data) {
     return (
-      <Shell data-covers-window {...(colors && { style: { background: colors.background } })}>
+      <Shell data-covers-window $titleBar {...(colors && { style: { background: colors.background } })}>
         <LockScroll />
         {body}
       </Shell>
@@ -215,11 +210,6 @@ export function BookReader({ title, file, load, position, onPosition, onClose }:
           ← Back
         </Button>
         <Title>{title}</Title>
-        {format === 'pdf' && navigator.pdfViewerEnabled && (
-          <Button $variant="secondary" onClick={() => setForcePdfjs((f) => !f)}>
-            {forcePdfjs ? 'Use built-in viewer' : 'Use pdf.js'}
-          </Button>
-        )}
         <Muted>{format ? FORMATS[format].label : file.format}</Muted>
       </Bar>
       <Body>{body}</Body>

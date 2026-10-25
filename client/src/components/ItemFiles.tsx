@@ -13,7 +13,9 @@ import { canSync } from '../sync/connect';
 import { MenuButton, type MenuAction } from './MenuButton';
 import { AddTo } from './AddTo';
 import { writableConnections } from './SendTo';
-import { isBehind } from '../library/fileMetadata';
+import { canWriteMetadata, isBehind } from '../library/fileMetadata';
+import { updateFiles } from '../library/updateFiles';
+import { useOptionalTextIndex } from '../fulltext/TextIndexContext';
 
 const FileRow = styled.li`
   display: flex;
@@ -55,6 +57,11 @@ const DetachButton = styled(Button)`
   margin-left: auto;
 `;
 
+const Note = styled(Muted)`
+  font-size: 0.85em;
+  flex-basis: 100%;
+`;
+
 const ErrorText = styled.span`
   color: var(--danger);
   font-size: 0.85em;
@@ -87,7 +94,8 @@ async function downloadFile(backend: LibraryBackend, item: Item, file: FileRef) 
 
 /**
  * One file's row: its name (which downloads it), Read, and a menu of the rest (download, show in the
- * file manager, add to a connection, remove, which asks again in the row). Converting is the book's (`ConvertDialog`).
+ * file manager, add to a connection, write the library's metadata into it as Clean up's "Update book files" does,
+ * remove, which asks again in the row). Converting is the book's (`ConvertDialog`).
  */
 function FileItem({ item, file, notDownloaded, onRead }: {
   item: Item;
@@ -99,10 +107,14 @@ function FileItem({ item, file, notDownloaded, onRead }: {
   const [confirming, setConfirming] = useState(false);
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState<string>();
+  const [updating, setUpdating] = useState(false);
+  const [notice, setNotice] = useState<string>();
+  const text = useOptionalTextIndex();
   const name = fileName(item, file);
 
   const attempt = (what: string, task: () => Promise<void>) => async () => {
     setError(undefined);
+    setNotice(undefined);
     try {
       await task();
     } catch (e) {
@@ -111,12 +123,30 @@ function FileItem({ item, file, notDownloaded, onRead }: {
   };
   const download = attempt('download', () => downloadFile(backend, item, file));
   const show = attempt('show', () => showFileInFolder(file.hash));
+  // Written, checked and swapped in as the cleanup does; the row is then the new file's.
+  const updateMetadata = attempt('update', async () => {
+    setUpdating(true);
+    const resume = text?.pause();
+    try {
+      const result = await updateFiles(backend, [{ item, file, changes: [] }], apply, {
+        ...(text && { carryText: (from, to) => text.index.carry(from, to) }),
+      });
+      if (result.failed[0]) throw new Error(result.failed[0].message);
+      if (!result.updated) setNotice('It already says what the library does.');
+    } finally {
+      resume?.();
+      setUpdating(false);
+    }
+  });
   const remove = attempt('remove', async () => void (await removeFiles(backend, apply, [{ item, hashes: [file.hash] }])));
 
   const actions: MenuAction[] = [
     { label: 'Download', onSelect: () => void download() },
     ...(canShowFiles() && !notDownloaded ? [{ label: 'Show in folder', onSelect: () => void show() }] : []),
     ...(writableConnections(library).length ? [{ label: 'Add to…', onSelect: () => setAdding(true) }] : []),
+    ...(canWriteMetadata(file) && !notDownloaded
+      ? [{ label: updating ? 'Updating file metadata…' : 'Update file metadata', disabled: updating, onSelect: () => void updateMetadata() }]
+      : []),
     { label: 'Remove…', danger: true, onSelect: () => setConfirming(true) },
   ];
 
@@ -161,6 +191,7 @@ function FileItem({ item, file, notDownloaded, onRead }: {
         )}
       </Actions>
       {error && <ErrorText role="alert">{error}</ErrorText>}
+      {notice && <Note role="status">{notice}</Note>}
       {adding && <AddTo items={[item]} file={file} onClose={() => setAdding(false)} />}
     </FileRow>
   );

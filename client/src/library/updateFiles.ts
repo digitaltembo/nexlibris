@@ -7,15 +7,16 @@ import {
   type LibraryBackend,
   type Operation,
 } from '@nexlibris/common';
-import { canWriteMetadata, fileMetadata, metadataKey } from './fileMetadata';
+import { canWriteMetadata, coverDiffers, fileMetadata, metadataKey, writesCover } from './fileMetadata';
 import { epubDrm, parseEpub } from '@nexlibris/tools/formats/epub';
 import { epubMetadataChanges, writeEpubMetadata } from '@nexlibris/tools/formats/epubMetadata';
 import type { ParsedItem } from '@nexlibris/tools/formats/formats';
 
 /**
  * Library cleanup's "Update book files": writes the library's metadata (title, creators, tags,
- * series, description, sort names and so on) into the books' own files where they say otherwise, so
- * the files carry the user's edits wherever they go. EPUBs only (the CrossPoint readers' ones too):
+ * series, description, sort names and so on) and cover into the books' own files where they say otherwise, so
+ * the files carry the user's edits wherever they go (the cover only into files not converted from
+ * another, `writesCover`). EPUBs only (the CrossPoint readers' ones too):
  * nexlibris can't write the other formats, and DRM-protected EPUBs are left alone. What the library
  * lacks is left as the file has it.
  *
@@ -69,8 +70,14 @@ interface Options {
   parse?: (data: Blob, name: string) => Promise<ParsedItem>;
 }
 
-/** An EPUB's metadata, without its cover, which isn't compared. */
-const readMetadata = (data: Blob, name: string) => parseEpub(data, name, { cover: false });
+/** An EPUB's metadata and cover. */
+const readMetadata = (data: Blob, name: string) => parseEpub(data, name);
+
+/** The fields where a file says otherwise than the library would write into it, the cover among them. */
+const differences = async (item: Item, file: FileRef, parsed: ParsedItem, cover: boolean) => [
+  ...epubMetadataChanges(parsed, fileMetadata(item)),
+  ...(cover && (await coverDiffers(item, file, parsed)) ? ['cover'] : []),
+];
 
 /** Changes are applied this many books at a time, so stopping partway keeps what was done. */
 const APPLY_EVERY = 25;
@@ -90,8 +97,6 @@ export async function findStaleFiles(backend: LibraryBackend, library: Library, 
       break;
     }
     options.onProgress?.({ done, total: items.length, current: item.title });
-    const wanted = fileMetadata(item);
-    const key = metadataKey(item);
     let stored = false;
     for (const file of item.files.filter(writable)) {
       try {
@@ -104,7 +109,8 @@ export async function findStaleFiles(backend: LibraryBackend, library: Library, 
           result.drm.push({ title: item.title, kind: drm });
           continue;
         }
-        const changes = epubMetadataChanges(await parse(data, nameOf(item, file)), wanted);
+        const changes = await differences(item, file, await parse(data, nameOf(item, file)), true);
+        const key = metadataKey(item, file);
         if (changes.length) result.stale.push({ item, file, changes });
         else {
           result.current++;
@@ -183,6 +189,8 @@ export async function updateFiles(
     options.onProgress?.({ done, total: byItem.size, current: entries[0]!.item.title });
     if (!item) continue;
     const wanted = fileMetadata(item);
+    // The cover as the library has it, where it's stored here (another instance may have it).
+    const cover = item.cover && (await backend.getFile(item.cover.hash).catch(() => undefined));
     const replaced = new Map<FileHash, FileRef>();
     for (const { file } of entries) {
       try {
@@ -191,19 +199,22 @@ export async function updateFiles(
         if (!data) throw new Error('The file is missing from storage.');
         const drm = await epubDrm(data, nameOf(item, file));
         if (drm) throw new Error(`It’s DRM-protected (${drm}), so it’s left alone.`);
-        const written = await writeEpubMetadata(data, wanted);
+        const withCover = writesCover(item, file) && !!cover;
+        const written = await writeEpubMetadata(data, wanted, withCover && cover ? { data: cover, mediaType: item.cover!.mediaType } : undefined);
         // Checked before it replaces anything: it must read back as the library has it.
-        const left = epubMetadataChanges(await parse(written, nameOf(item, file)), wanted);
+        const left = await differences(item, file, await parse(written, nameOf(item, file)), withCover);
         if (left.length) throw new Error(`It didn’t take: ${left.join(', ')}`);
+        // Without the cover written, what the file's is isn't known.
+        const key = withCover ? metadataKey(item, file) : metadataKey(item);
         const { hash, size } = await backend.putFile(written);
         if (hash === file.hash) {
           // It said what the library says after all (it only differed in what isn't compared).
-          if (file.metadataKey !== metadataKey(item)) pending.push({ type: 'setFileMetadataKey', id: item.id, hash, metadataKey: metadataKey(item) });
+          if (file.metadataKey !== key) pending.push({ type: 'setFileMetadataKey', id: item.id, hash, metadataKey: key });
           continue;
         }
         // Without it, the book is only indexed again.
         await options.carryText?.(file.hash, hash).catch(() => undefined);
-        replaced.set(file.hash, { ...file, hash, size, metadataKey: metadataKey(item) });
+        replaced.set(file.hash, { ...file, hash, size, metadataKey: key });
         old.add(file.hash);
         result.updated++;
       } catch (e) {

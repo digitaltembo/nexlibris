@@ -3,6 +3,7 @@ import { createItem, LOCAL_USER, MemoryStorage, StoredLibraryBackend, type Item,
 import { describe, expect, it } from 'vitest';
 import { epubDrm, parseEpub } from '@nexlibris/tools/formats/epub';
 import { buildEpub } from '@nexlibris/tools/formats/epubBuilder';
+import { isBehind, metadataKey } from './fileMetadata';
 import { findStaleFiles, updateFiles } from './updateFiles';
 
 const epub = (title: string, tags: string[], body = '<p>Hi</p>') =>
@@ -97,5 +98,57 @@ describe('updating book files', () => {
     expect(await epubDrm(await withFiles(book, { 'META-INF/encryption.xml': encryption('http://www.idpf.org/2008/embedding') }))).toBeUndefined();
     expect(await epubDrm(await withFiles(book, { 'META-INF/encryption.xml': encryption('http://www.w3.org/2001/04/xmlenc#aes128-cbc') }))).toBe('encrypted');
     expect(await epubDrm(await withFiles(book, { 'META-INF/sinf.xml': '<sinf/>' }))).toBe('Apple DRM');
+  });
+});
+
+describe('updating book files’ covers', () => {
+  const JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3]);
+  const bytes = async (blob: Blob | undefined) => [...new Uint8Array(await blob!.arrayBuffer())];
+
+  /** Dune, whose EPUB has no cover and whose X4 copy, converted from it, has none either, given a cover in the library. */
+  async function withCover() {
+    const backend = new StoredLibraryBackend(new MemoryStorage(), 'Books');
+    const book = await backend.putFile(await epub('Dune', []));
+    const x4 = await backend.putFile(await epub('Dune', [], '<p>Optimized</p>'));
+    const cover = await backend.putFile(new Blob([JPEG]));
+    const dune = createItem({
+      title: 'Dune',
+      creators: [{ name: 'Frank Herbert', role: 'aut' }],
+      cover: { hash: cover.hash, mediaType: 'image/jpeg' },
+      files: [
+        { ...book, format: 'epub', name: 'Dune.epub' },
+        { ...x4, format: 'x4.epub', derivedFrom: { hash: book.hash, converter: 'xteink', converterVersion: '1' } },
+      ],
+    });
+    await backend.apply([{ type: 'addItem', item: dune }]);
+    return { backend, dune, cover };
+  }
+
+  it('finds a file whose cover isn’t the library’s, and writes it, but not into converted copies', async () => {
+    const { backend, dune } = await withCover();
+    const found = await findStaleFiles(backend, await backend.getLibrary());
+    expect(found.stale.map((s) => [s.file.format, s.changes])).toEqual([['epub', ['cover']]]);
+
+    expect(await updateFiles(backend, found.stale, (ops) => backend.apply(ops))).toMatchObject({ updated: 1, failed: [] });
+    const item = (await backend.getLibrary()).items[dune.id]!;
+    const book = item.files.find((f) => f.format === 'epub')!;
+    const parsed = await parseEpub((await backend.getFile(book.hash))!);
+    expect(parsed.cover?.mediaType).toBe('image/jpeg');
+    expect(await bytes(parsed.cover?.data)).toEqual([...JPEG]);
+    expect(book.metadataKey).toBe(metadataKey(item, book));
+    expect((await findStaleFiles(backend, await backend.getLibrary())).stale).toEqual([]);
+  });
+
+  it('counts a file behind once its cover is changed, unless its fingerprint is from before covers were written', async () => {
+    const { dune } = await withCover();
+    const book = dune.files[0]!;
+    const recolored = { ...dune, cover: { hash: 'b'.repeat(64), mediaType: 'image/jpeg' } };
+    expect(isBehind(dune, { ...book, metadataKey: metadataKey(dune, book) })).toBe(false);
+    expect(isBehind(recolored, { ...book, metadataKey: metadataKey(dune, book) })).toBe(true);
+    // A fingerprint without the cover's part knows only the rest.
+    expect(isBehind(recolored, { ...book, metadataKey: metadataKey(dune) })).toBe(false);
+    // Converted copies keep their own cover, so theirs isn't part of their fingerprint.
+    const x4 = dune.files[1]!;
+    expect(metadataKey(dune, x4)).toBe(metadataKey(dune));
   });
 });

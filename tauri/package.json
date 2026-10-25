@@ -1,0 +1,15 @@
+{
+  "name": "@nexlibris/tauri",
+  "productName": "nexlibris",
+  "version": "0.0.0",
+  "private": true,
+  "description": "A prototype of nexlibris as a desktop app in the system's web view (Tauri), beside the Electron app in desktop/",
+  "scripts": {
+    "start": "cargo run --manifest-path src-tauri/Cargo.toml",
+    "bundle": "tauri build",
+    "icons": "tauri icon ../desktop/assets/icon.png --output src-tauri/icons && cd src-tauri/icons && rm -rf android ios Square* StoreLogo.png 64x64.png"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.12.4"
+  }
+}

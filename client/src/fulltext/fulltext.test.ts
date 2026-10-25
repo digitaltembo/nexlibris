@@ -121,7 +121,7 @@ describe('matching', () => {
     // epub.js, as epubier opens it, finds the word there.
     // oxlint-disable-next-line typescript/ban-ts-comment -- epub.js's source has no types
     // @ts-ignore
-    const { default: EpubCFI } = await import('../../../../epubierjs/node_modules/epubjs/src/epubcfi.js');
+    const { default: EpubCFI } = await import('epubjs/src/epubcfi.js');
     const zip = await (await import('jszip')).default.loadAsync(await (await epub()).arrayBuffer());
     const chapter = parseXml(await zip.file('OEBPS/text/c2.xhtml')!.async('string'))!;
     const range = new EpubCFI(cfi).toRange(chapter);

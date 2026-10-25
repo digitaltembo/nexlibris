@@ -15,6 +15,16 @@ export function deviceItems(library: Library, device: Device): Item[] {
   return [...chosen, ...searchMatches(library, device, new Set(device.items))];
 }
 
+/** How many books `deviceItems` gives, without sorting them (for showing the number). */
+export function deviceItemCount(library: Library, device: Device): number {
+  const excluded = new Set(device.excluded);
+  const picked = new Set(device.items);
+  const chosen = device.items.filter((id) => library.items[id] && !excluded.has(id)).length;
+  if (!device.query?.trim()) return chosen;
+  const found = filterItems(Object.values(library.items), device.query, { ratings: userData(library).ratings });
+  return chosen + found.filter((item) => !picked.has(item.id) && !excluded.has(item.id)).length;
+}
+
 /** Items a connection's search matches that aren't in its catalog (or taken out of it), by title. */
 export function searchMatches(library: Library, device: Device, picked: Set<ItemId>): Item[] {
   if (!device.query?.trim()) return [];

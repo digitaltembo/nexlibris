@@ -67,7 +67,6 @@ export function CategoriesDialog({ onClose }: Props) {
   const [draft, setDraft] = useState<Category[]>(saved);
   const [error, setError] = useState<string>();
   const items = useMemo(() => Object.values(library.items), [library.items]);
-  const { ratings } = userData(library);
   const tagListId = useId();
   const tags = useMemo(
     () => [...new Set(items.flatMap((i) => i.tags))].sort((a, b) => a.localeCompare(b)).map((tag) => formatTerm({ kind: 'field', field: 'tag', values: [tag], negate: false })),
@@ -75,7 +74,13 @@ export function CategoriesDialog({ onClose }: Props) {
   );
 
   const update = (id: string, change: (category: Category) => Category) => setDraft(draft.map((c) => (c.id === id ? change(c) : c)));
-  const matches = (query: string) => (query.trim() ? filterItems(items, query, { ratings }).length : undefined);
+  // Counted again only when a search or the library changes, not on every keystroke in a name.
+  const queries = [...new Set(draft.flatMap((c) => c.entries.map((e) => e.query)).filter((q) => q.trim()))].join('\n');
+  const counts = useMemo(() => {
+    const { ratings } = userData(library);
+    return new Map(queries.split('\n').filter((q) => q.trim()).map((q) => [q, filterItems(items, q, { ratings }).length]));
+  }, [queries, items, library]);
+  const matches = (query: string) => counts.get(query);
 
   const save = async () => {
     const cleaned = draft.map((c) => ({ ...c, name: c.name.trim(), entries: c.entries.filter((e) => e.query.trim()) }));

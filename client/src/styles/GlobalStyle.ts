@@ -32,9 +32,6 @@ const DARK = css`
   --star: #f4d35e;
   --qr-ink: #0d3b66;
   --qr-paper: #faf0ca;
-  --page-filter: invert(1) hue-rotate(180deg);
-  --page-blend: lighten;
-  --page-ink-blend: darken;
   color-scheme: dark;
 `;
 
@@ -59,13 +56,6 @@ export const GlobalStyle = createGlobalStyle`
     /* QR codes stay dark on light in both schemes, as scanners expect, in the theme's colours. */
     --qr-ink: #0a2540;
     --qr-paper: #fffdf5;
-    /*
-     * PDF pages rendered by pdf.js (reader/PdfViewer.tsx): paper becomes --surface and ink --text, by blending
-     * the canvas onto the surface and then the text colour over it; in the dark scheme the page is inverted first.
-     */
-    --page-filter: none;
-    --page-blend: multiply;
-    --page-ink-blend: lighten;
     color-scheme: light;
     font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
     font-size: 15px;
@@ -142,6 +132,8 @@ export const GlobalStyle = createGlobalStyle`
   :root[data-title-bar='inset'] {
     --title-bar-inset: 72px;
     --title-bar-height: 28px;
+    /* epubier's toolbar, whose first icon needs more room after the green button than a text box. */
+    --reader-title-bar-inset: 80px;
   }
 
   /* Matches of a search in the text of books. */

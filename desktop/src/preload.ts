@@ -23,7 +23,7 @@ ipcRenderer.on('nexlibris:peer-request', async (_event, { id, ...request }: RpcR
  * Gives the page three things: an estuary-rpc call to the main process (the Storage, Save, Import
  * and SyncHost APIs), which answers it from native files, a way to answer the sync calls paired
  * devices make, the menu bar (its menus, and the items chosen), and whether the window buttons sit
- * over the page (macOS, outside full screen). The page gets nothing else
+ * over the page (macOS, outside full screen), and putting its window in or out of full screen. The page gets nothing else
  * from Electron or Node.
  */
 contextBridge.exposeInMainWorld('NexlibrisDesktop', {
@@ -40,4 +40,5 @@ contextBridge.exposeInMainWorld('NexlibrisDesktop', {
   onFullScreen: (handler: ((on: boolean) => void) | undefined) => {
     fullScreenHandler = handler;
   },
+  setFullScreen: (on: boolean) => ipcRenderer.send('nexlibris:set-full-screen', on),
 });
