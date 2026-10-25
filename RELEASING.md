@@ -3,7 +3,7 @@
 A release is a GitHub release. Publishing one tagged `v<major>.<minor>.<patch>` (a pre-release such as
 `v0.3.0-beta.1` too) runs `.github/workflows/release.yml`, which:
 
-1. **Verifies** everything first (`verify.yml`, which also runs on every push and pull request): lint, typecheck,
+1. **Verifies** everything first (`verify.yml`, which also runs on every pull request): lint, typecheck,
    every workspace's tests, the builds and Storybook; the Docker image, built and started; Android's unit tests and lint; NexlibrisKit's Swift tests and
    an unsigned iOS build; the Tauri app's Rust tests. Nothing is built for release until all of it passes.
 2. **Stamps the version** from the tag (`scripts/release/version.mjs`) on the packages, the Tauri app, Android's
@@ -105,7 +105,8 @@ set up yet.
 
 ## Cutting a release
 
-1. Check that `main` is green (Verify).
+1. Optionally, run Verify on `main` by hand (Actions → Verify → Run workflow) to catch problems before tagging;
+   the release runs it again either way.
 2. GitHub → Releases → Draft a new release → a new tag `vX.Y.Z` on `main`, notes, Publish (tick pre-release for
    `vX.Y.Z-beta.N`). GitHub's `releases/latest`, which the About screen's downloads link to, skips pre-releases,
    as do npm's `latest` and Docker's `latest`: make the first release a full one.

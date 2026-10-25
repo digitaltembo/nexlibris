@@ -1,11 +1,10 @@
-# Everything that has to pass before a release, and on every push and pull request: the web side's lint,
+# Everything that has to pass before a release, and on every pull request: the web side's lint,
 # typecheck, tests and builds, and each app's own tests and build (Android, iOS, the Tauri desktop app).
-# release.yml runs it first, and builds nothing until it passes.
+# release.yml runs it first, and builds nothing until it passes. Pushes to main don't run it; run it by hand
+# (Actions → Verify → Run workflow) to check main between releases.
 name: Verify
 
 on:
-  push:
-    branches: [main]
   pull_request:
   workflow_call:
   workflow_dispatch:
