@@ -3,7 +3,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { Plugin } from 'vite';
+import { normalizePath, type Plugin } from 'vite';
 import { defineConfig } from 'vitest/config';
 
 /**
@@ -65,22 +65,23 @@ function rtfCodepages(): Plugin {
     10029, 10081,
   ];
   const rtfPackage = import.meta.resolve('rtf.js/package.json');
-  const src = fileURLToPath(new URL('src/', rtfPackage));
+  // Forward slashes, as Vite's ids have them on Windows too.
+  const src = normalizePath(fileURLToPath(new URL('src/', rtfPackage)));
   const tablesId = '\0nexlibris-rtf-codepages';
   return {
     name: 'nexlibris-rtf-codepages',
     apply: 'build',
     enforce: 'pre',
     resolveId(id, importer) {
-      if (id === 'rtf.js') return join(src, 'index.ts');
-      if (!importer?.startsWith(src)) return null;
-      if (id === 'EMFJS' || id === 'WMFJS') return join(src, id.toLowerCase(), 'index.ts');
+      if (id === 'rtf.js') return `${src}index.ts`;
+      if (!importer || !normalizePath(importer).startsWith(src)) return null;
+      if (id === 'EMFJS' || id === 'WMFJS') return `${src}${id.toLowerCase()}/index.ts`;
       if (id === 'codepage') return tablesId;
       return null;
     },
     // Its entry points re-export interfaces as if they were values, which tsc and esbuild drop and rolldown doesn't.
     transform(code, id) {
-      if (!id.startsWith(src) || !id.endsWith('index.ts')) return null;
+      if (!normalizePath(id).startsWith(src) || !id.endsWith('index.ts')) return null;
       return code.replace(/, (ISettings|IRendererSettings) \}/, ', type $1 }');
     },
     load(id) {
