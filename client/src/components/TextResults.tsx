@@ -6,6 +6,7 @@ import { useTextSearch, type TextCoverage, type TextHit } from '../fulltext/Text
 import { NARROW } from '../styles/GlobalStyle';
 import { Muted } from '../styles/ui';
 import { Cover } from './Cover';
+import { t } from '../i18n';
 
 const Summary = styled.p`
   margin: 4px 0 16px;
@@ -132,12 +133,12 @@ export const passagePlace = (_hit: TextHit, passage: Passage) => passage.place;
 export function coverageNote(coverage: TextCoverage | undefined): string | undefined {
   if (!coverage) return undefined;
   const notes = [];
-  if (coverage.pending) notes.push(`${coverage.pending} ${coverage.pending === 1 ? 'is' : 'are'} still being indexed`);
-  if (coverage.elsewhere) notes.push(`${coverage.elsewhere} ${coverage.elsewhere === 1 ? 'isn’t' : 'aren’t'} stored on this device`);
-  if (coverage.without) notes.push(`${coverage.without} ${coverage.without === 1 ? 'has' : 'have'} no text to search (comics, scans, no file)`);
+  if (coverage.pending) notes.push(t('textResults.pending', { count: coverage.pending }));
+  if (coverage.elsewhere) notes.push(t('textResults.elsewhere', { count: coverage.elsewhere }));
+  if (coverage.without) notes.push(t('textResults.without', { count: coverage.without }));
   if (!notes.length) return undefined;
   const books = coverage.searched + coverage.pending + coverage.elsewhere + coverage.without;
-  return `Searched the text of ${coverage.searched} of ${books} books; ${notes.join(', ')}.`;
+  return t('textResults.coverage', { searched: coverage.searched, books, notes: notes.join(t('common.listJoin')) });
 }
 
 const SHOWN = 3;
@@ -159,13 +160,14 @@ export function TextResults({ query, items, onRead, onOpenItem }: Props) {
   const note = coverageNote(coverage);
 
   return (
-    <section aria-label="Text search results">
+    <section aria-label={t('textResults.label')}>
       <Summary role="status">
         {hits.length
-          ? `${hits.length} ${hits.length === 1 ? 'book has' : 'books have'} “${query}” in the text, ${total} ${total === 1 ? 'time' : 'times'}${searching ? ' so far…' : '.'}`
+          ? t('textResults.found', { count: hits.length, query, times: t('textResults.times', { count: total }) }) +
+            (searching ? t('textResults.soFar') : t('textResults.end'))
           : searching
-            ? 'Searching the text…'
-            : `No book’s text has “${query}”.`}
+            ? t('textResults.searching')
+            : t('textResults.none', { query })}
         {note && (
           <>
             {' '}
@@ -180,21 +182,21 @@ export function TextResults({ query, items, onRead, onOpenItem }: Props) {
           const more = hit.match.passages.length - passages.length;
           return (
             <Book key={hit.item.id}>
-              <CoverButton aria-label={`Show ${hit.item.title}`} onClick={() => onOpenItem(hit.item.id)}>
+              <CoverButton aria-label={t('textResults.show', { title: hit.item.title })} onClick={() => onOpenItem(hit.item.id)}>
                 <Cover item={hit.item} />
               </CoverButton>
               <Heading>
                 <TitleButton onClick={() => onOpenItem(hit.item.id)}>{hit.item.title}</TitleButton>
                 <Muted>{hit.item.creators[0]?.name}</Muted>
                 <Muted>
-                  · {hit.match.total} {hit.match.total === 1 ? 'match' : 'matches'}
+                  {t('textResults.matches', { count: hit.match.total })}
                 </Muted>
               </Heading>
               <Passages>
                 {passages.map((passage, i) => (
                   <li key={i}>
                     <PassageButton
-                      title="Read from here"
+                      title={t('textResults.readFromHere')}
                       onClick={() => onRead(hit.item, hit.file, passage.locator)}
                     >
                       {passagePlace(hit, passage) && <Where>{passagePlace(hit, passage)}</Where>}
@@ -205,7 +207,7 @@ export function TextResults({ query, items, onRead, onOpenItem }: Props) {
                 {more > 0 && (
                   <li>
                     <More onClick={() => setExpanded(new Set([...expanded, hit.item.id]))}>
-                      {more} more {more === 1 ? 'passage' : 'passages'}
+                      {t('textResults.more', { count: more })}
                     </More>
                   </li>
                 )}

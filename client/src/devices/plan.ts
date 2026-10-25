@@ -3,6 +3,7 @@ import { matchItem } from './match';
 import type { Catalog, ConnectionType, DeviceTarget, FilesType, RemoteBook, RemoteFile } from './types';
 import { DEFAULT_FILE_NAME, expandPath, hasPlaceholders, templateRoot } from './pathTemplate';
 import { catalogFiles, deviceItems, itemFiles } from './selection';
+import { t } from '../i18n';
 
 /** A file to put on the device. */
 export interface Upload {
@@ -209,7 +210,7 @@ export function planSync(library: Library, device: Device, type: FilesType, list
     } else if (size !== placed.size) {
       // Someone replaced it on the device; it's theirs now.
       plan.forget.push(path);
-      if (wanted) plan.conflicts.push({ path, itemId: wanted.item.id, reason: 'It was changed on the device since it was sent.' });
+      if (wanted) plan.conflicts.push({ path, itemId: wanted.item.id, reason: t('errors.changedOnDevice') });
     } else if (!wanted) {
       if (inCatalog.has(placed.itemId)) stale.push(path);
       else plan.left++;
@@ -225,12 +226,12 @@ export function planSync(library: Library, device: Device, type: FilesType, list
     const there = device.placed[path];
     if (there && !inScope(there.itemId)) {
       // Another book's, which only a full sync moves out of the way.
-      plan.conflicts.push({ path, itemId: wanted.item.id, reason: 'Another book is there until the next full sync.' });
+      plan.conflicts.push({ path, itemId: wanted.item.id, reason: t('errors.anotherBook') });
       continue;
     }
     if (there) continue;
     if (sizes.has(path)) {
-      if (!foundFor(path, wanted)) plan.conflicts.push({ path, itemId: wanted.item.id, reason: 'A file nexlibris didn’t send is already there.' });
+      if (!foundFor(path, wanted)) plan.conflicts.push({ path, itemId: wanted.item.id, reason: t('errors.notSent') });
     } else if (!foundFor(path, wanted)) {
       upload(path, wanted, false);
     }

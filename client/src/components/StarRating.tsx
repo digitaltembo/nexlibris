@@ -1,4 +1,5 @@
 import styled from 'styled-components';
+import { t } from '../i18n';
 
 interface Props {
   value: number | undefined;
@@ -22,16 +23,16 @@ const Star = styled.button.attrs({ type: 'button' })<{ $on: boolean }>`
 export function StarRating({ value, onChange }: Props) {
   if (!onChange) {
     if (value === undefined) return null;
-    return <Stars aria-label={`${value} of 5 stars`}>{'★'.repeat(Math.round(value))}</Stars>;
+    return <Stars aria-label={t('starRating.stars', { value })}>{'★'.repeat(Math.round(value))}</Stars>;
   }
   return (
-    <Stars role="radiogroup" aria-label="Rating">
+    <Stars role="radiogroup" aria-label={t('starRating.label')}>
       {[1, 2, 3, 4, 5].map((n) => (
         <Star
           key={n}
           role="radio"
           aria-checked={value === n}
-          aria-label={`${n} star${n > 1 ? 's' : ''}`}
+          aria-label={t('starRating.star', { count: n })}
           $on={value !== undefined && n <= value}
           onClick={() => onChange(value === n ? undefined : n)}
         >

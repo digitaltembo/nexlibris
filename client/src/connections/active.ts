@@ -3,6 +3,7 @@ import { useEffect, useMemo, useSyncExternalStore } from 'react';
 import { onSessionChange } from '../library/account';
 import { useLibrary } from '../library/LibraryContext';
 import { connectionType } from '.';
+import { t } from '../i18n';
 
 /**
  * Whether each connection is active on this device: only active ones are in the Library and can
@@ -75,14 +76,14 @@ export async function setConnectionActive(backend: LibraryBackend, id: string, a
 
 function statusIn(state: Snapshot, device: Device): ConnectionStatus {
   const type = connectionType(device.type);
-  if (!type) return { active: false, reason: 'Unknown type', manual: false };
+  if (!type) return { active: false, reason: t('connectionTypes.unknownType'), manual: false };
   const activation = type.activation ?? 'always';
   const manual = activation === 'manual';
   const unavailable = type.unavailable?.();
   if (unavailable) return { active: false, reason: unavailable, manual };
   if (activation === 'always') return { active: true, manual };
-  if (manual) return state.manual.has(device.id) ? { active: true, manual } : { active: false, reason: 'Not activated', manual };
-  if (!state.checked.has(device.id)) return { active: false, reason: 'Checking…', manual };
+  if (manual) return state.manual.has(device.id) ? { active: true, manual } : { active: false, reason: t('connectionTypes.notActivated'), manual };
+  if (!state.checked.has(device.id)) return { active: false, reason: t('connectionTypes.checking'), manual };
   const reason = state.checked.get(device.id);
   return reason ? { active: false, reason, manual } : { active: true, manual };
 }

@@ -54,6 +54,7 @@ server/           Node server: the web app, accounts, a library per account, syn
 - **Search** (`common/src/search.ts`): a Gmail-style syntax (`tag:fantasy rating:4+ -has:file`). It's the one way of choosing books: the search box, connections' catalogs and browse categories all take search text, with no separate filters. Full-text search inside books (`fulltext/`, over the text `tools/src/fulltext/` extracts) indexes in the background into local state.
 - **Browsing** (`library/browse.ts`): calibre3opds's navigation (authors, series, tags, the user's categories). Books show as a grid, a list, or a view a plugin adds, such as the built-in 3D bookshelf (`plugins/bookshelf/`) and force graph (`plugins/graph/`, books drawn together by the authors, tags and series they share).
 - **Reading** (`reader/`): EPUB, Kindle books (MOBI, AZW3, AZW), PDF and comics (CBZ, CBR and CB7) through epubier (over epub.js, pdf.js, mobi-parser and, for CBR and CB7, libarchive in a worker), with its table of contents, search, bookmarks and themes; text with viewers of nexlibris's own.
+- **Text** (`i18n/en.json`): every string the app shows, and the reader's (epubier's, in its `epubier` section), is in one file, so rewording or translating it means editing only that file.
 - **Connections** (`devices/`, `connections/`, `plugins/`): a connection reads (lists a place's books and brings them into the library), writes (holds a catalog of books it's given), or both. OPDS servers, the static OPDS export, other instances and folders are built in; plugins add more, with formats, converters and views. A write connection's catalog is the books (or particular files) added to it by hand (Add to…, Send to…, Bulk edit) plus what its search matches; a book's details list the catalogs holding it. Syncs only add: books in the catalog are sent as stored, changed files replaced, and nothing is removed, except by the user. Before sending, books without a format the connection prefers can be converted, and files behind their book's details updated (`devices/send.ts`). A device type can add tools for what else is on the device; CrossPoint's manage its sleep images, StarDict dictionaries and fonts. Where books go on a reader or folder is a path template (`/library/<author>/<title>/`), and books move when it changes. Copies of chosen books already on the device (from Calibre, say) are kept, or moved into place, rather than sent again. A folder gets a manifest, `.nexlibris-library.json`, so another library reads its books back with their details. The static export writes an OPDS catalog in calibre3opds's layout, with its Cloudflare Pages files for search and sign-in.
 
 ### Formats
@@ -141,6 +142,10 @@ The Android build needs the Android SDK and JDK 17+ (e.g. `export JAVA_HOME="/Ap
 
 The iOS app is `ios/nexlibris.xcodeproj` (open it in Xcode to run it on a simulator or an iPhone; set a team under Signing first), generated from `ios/project.yml` by [XcodeGen](https://github.com/yonaskolb/XcodeGen): run `xcodegen` in `ios/` after changing that, and commit the result. Its build copies `client/dist` into the app, so run `npm run build` first. Its native side is the Swift package `ios/NexlibrisKit`, which builds for macOS too, so its tests run without a simulator: `cd ios/NexlibrisKit && swift test`. With only the Command Line Tools (no Xcode), Swift Testing needs pointing at: `swift test -Xswiftc -F -Xswiftc $F -Xlinker -rpath -Xlinker $F -Xlinker -rpath -Xlinker $L`, with `F=/Library/Developer/CommandLineTools/Library/Developer/Frameworks` and `L=/Library/Developer/CommandLineTools/Library/Developer/usr/lib`.
 
+## Releases
+
+Publishing a GitHub release (`vX.Y.Z`) verifies everything, then publishes the npm packages (`@nexlibris/tools`, `@nexlibris/crosspoint-tools`, `@nexlibris/cli`, `@nexlibris/server`), the server's Docker image, the Android APK, the Tauri desktop app for macOS, Windows and Linux, an iOS build to TestFlight, and the web app on GitHub Pages. [RELEASING.md](RELEASING.md) has the setup each needs.
+
 ## Server
 
 `server/` serves the web app with accounts (M4). Signed out, a visitor gets the app as ever, with the library in their browser. Signed in, they can move the library into their account (Library folder…), where every device they sign in on opens the same one, or keep it in the browser and keep a copy in the account that it syncs with (Connections…, "Your account on …"), as with another device.
@@ -161,13 +166,16 @@ node server/dist/main.js --storage b2 --bucket books --region us-west-004
 node server/dist/main.js --storage s3 --endpoint http://localhost:9000 --path-style --bucket books   # MinIO
 ```
 
+Without the repository, the same server is on npm with the web app: `npx @nexlibris/server serve --data ./data` (Node 24).
+
 Bucket keys come only from the environment (`NEXLIBRIS_ACCESS_KEY_ID`/`NEXLIBRIS_SECRET_ACCESS_KEY`, else `AWS_*`). `--signup open|first|closed` (default: the first account only), `--tls-cert`/`--tls-key`, `--trust-proxy` behind a proxy that sets `X-Forwarded-*`; `node server/dist/main.js help` lists the rest. For development, `NEXLIBRIS_SERVER=http://localhost:8080 npm run dev` passes Vite's `/api` on to a running server.
 
 ### Docker
 
-The image (`Dockerfile`) holds Node, the server bundled into one file, and the built web app; it runs as an unprivileged user, keeps everything in `/data`, and has a healthcheck.
+The image (`Dockerfile`) holds Node, the server bundled into one file, and the built web app; it runs as an unprivileged user, keeps everything in `/data`, and has a healthcheck. Each release publishes it, for linux/amd64 and linux/arm64, as `ghcr.io/digitaltembo/nexlibris` (tagged with its version, `major.minor` and `latest`):
 
 ```
+docker run -d -p 8080:8080 -v nexlibris-data:/data ghcr.io/digitaltembo/nexlibris   # the published image
 docker compose up -d                                            # builds and serves at http://localhost:8080, data in a volume
 docker compose run --rm nexlibris add-account ada              # NEXLIBRIS_PASSWORD, else asked (add -it)
 docker compose run --rm nexlibris --help                       # every option, each an environment variable

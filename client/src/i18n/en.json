@@ -1,0 +1,2021 @@
+{
+  "locale": "en",
+  "app": {
+    "name": "nexlibris",
+    "signIn": "Sign in…",
+    "account": "Account…",
+    "untitled": "Untitled",
+    "importFailed": "Import",
+    "menu": {
+      "searchInside": "Search inside books…",
+      "importFiles": "Import files…",
+      "importFolder": "Import folder…",
+      "newItem": "New item",
+      "addByIsbn": "Add by ISBN…",
+      "selectAll": "Select all",
+      "connections": "Connections…",
+      "backup": "Backup…",
+      "libraryFolder": "Library folder…",
+      "categories": "Browse categories…",
+      "cleanup": "Clean up library…",
+      "settings": "Settings…",
+      "about": "About nexlibris"
+    },
+    "menuBar": {
+      "file": "File",
+      "importFiles": "Import Files…",
+      "importFolder": "Import Folder…",
+      "newItem": "New Item",
+      "addByIsbn": "Add by ISBN…",
+      "backup": "Backup…",
+      "libraryFolder": "Library Folder…",
+      "signIn": "Sign In…",
+      "account": "Account…",
+      "settings": "Settings…",
+      "edit": "Edit",
+      "selectAll": "Select All",
+      "deselectAll": "Deselect All",
+      "find": "Find…",
+      "findText": "Find Inside Books…",
+      "view": "View",
+      "viewAs": "as {view}",
+      "sortBy": "Sort By",
+      "descending": "Descending",
+      "columns": "Columns…",
+      "appearance": "Appearance",
+      "go": "Go",
+      "library": "Library",
+      "up": "Up a Level",
+      "allBooks": "All Books",
+      "reading": "Currently Reading",
+      "authors": "Authors",
+      "series": "Series",
+      "tags": "Tags",
+      "libraryMenu": "Library",
+      "bulkEdit": "Bulk Edit…",
+      "bulkConvert": "Bulk Convert…",
+      "categories": "Browse Categories…",
+      "cleanup": "Clean Up Library…",
+      "connections": "Connections…",
+      "help": "Help",
+      "about": "About nexlibris"
+    },
+    "searchPlaceholder": {
+      "one": "Search {count} item…",
+      "other": "Search {count} items…"
+    },
+    "indexingTitle": "Reading books’ text so it can be searched",
+    "indexing": "Indexing text {done}/{total}",
+    "selection": "Selection",
+    "selected": "{count} selected",
+    "bulkEdit": "Bulk edit",
+    "bulkConvert": "Bulk convert",
+    "selectAll": "Select all",
+    "selectAllShown": "Select all shown",
+    "clearSelection": "Clear selection",
+    "insideBooks": "Inside books: “{query}”",
+    "editCategories": "Edit categories…",
+    "import": {
+      "stopped": "Stopped. ",
+      "imported": {
+        "one": "Imported {count} item",
+        "other": "Imported {count} items"
+      },
+      "merged": {
+        "one": ", and added files to {count} book already in the library",
+        "other": ", and added files to {count} books already in the library"
+      },
+      "known": {
+        "one": "; {count} file was in the library already",
+        "other": "; {count} files were in the library already"
+      },
+      "skipped": "; skipped {count}",
+      "end": ".",
+      "addedTo": "{names}: added to “{title}”",
+      "problem": "{name}: {reason}"
+    },
+    "dismiss": "Dismiss",
+    "empty": "Your library is empty.",
+    "emptyHint": "Drop EPUB, PDF, MOBI, AZW3, CBZ, CBR, TXT or RTF files, or a folder of them such as a Calibre library, anywhere on this page, or choose {how}.",
+    "emptyHowMenuBar": "File → Import Files… or Import Folder…",
+    "emptyHowMenu": "Import files… or Import folder… from the menu",
+    "noMatch": "Nothing here matches “{query}”.",
+    "nothingHere": "Nothing here.",
+    "dropFiles": "Drop files to import",
+    "aboutTitle": "About nexlibris"
+  },
+  "common": {
+    "delete": "Delete",
+    "remove": "Remove",
+    "cancel": "Cancel",
+    "close": "Close",
+    "add": "Add",
+    "save": "Save",
+    "done": "Done",
+    "opening": "Opening…",
+    "back": "Back",
+    "dismiss": "Dismiss",
+    "list": " · ",
+    "listJoin": ", ",
+    "books": {
+      "one": "{count} book",
+      "other": "{count} books"
+    },
+    "items": {
+      "one": "{count} item",
+      "other": "{count} items"
+    },
+    "files": {
+      "one": "{count} file",
+      "other": "{count} files"
+    },
+    "andMore": "and {count} more",
+    "or": " or ",
+    "tryAgain": "Try again",
+    "refresh": "Refresh",
+    "megabytes": "{count} MB",
+    "kilobytes": "{count} KB"
+  },
+  "queryInput": {
+    "placeholder": "e.g. tag:Recommended rating:4+",
+    "matches": {
+      "one": "{count} book matches now.",
+      "other": "{count} books match now."
+    }
+  },
+  "starRating": {
+    "stars": "{value} of 5 stars",
+    "label": "Rating",
+    "star": {
+      "one": "{count} star",
+      "other": "{count} stars"
+    }
+  },
+  "creatorsEditor": {
+    "name": "Name",
+    "role": "Role",
+    "remove": "Remove {name}",
+    "add": "Add a creator and press Enter…"
+  },
+  "viewSwitcher": {
+    "settings": "View settings",
+    "label": "View"
+  },
+  "keyValueEditor": {
+    "remove": "Remove {key}",
+    "value": "value",
+    "add": "Add"
+  },
+  "tagEditor": {
+    "tag": "tag",
+    "tags": "tags",
+    "remove": "Remove {noun} {tag}",
+    "addOne": "Add {noun}…",
+    "addMany": "Add {nouns}, comma-separated…",
+    "addLabel": "Add {nouns}"
+  },
+  "addTo": {
+    "file": "{format} of “{title}”",
+    "one": "“{title}”",
+    "many": {
+      "one": "{count} book",
+      "other": "{count} books"
+    },
+    "title": "Add {what}",
+    "none": "There are no connections with catalogs yet. Add one under Connections.",
+    "type": "({type})",
+    "inCatalog": "In its catalog",
+    "hint": "Books in a catalog go there with the connection’s next sync; use Send to… to send them now."
+  },
+  "itemCatalogs": {
+    "heading": "In catalogs",
+    "only": "only {formats}",
+    "bySearch": "added by its search",
+    "sent": "sent",
+    "notSent": "not sent yet",
+    "remove": "Remove from catalog"
+  },
+  "views": {
+    "grid": "Grid",
+    "list": "List",
+    "bookshelf": "Bookshelf",
+    "graph": "Graph"
+  },
+  "convertDialog": {
+    "source": "{format} ({name})",
+    "title": "Convert {title}",
+    "nothing": "None of this book’s files can be converted to anything it lacks.",
+    "from": "From",
+    "to": "To",
+    "indirect": "{format} (indirect)",
+    "indirectNote": "An indirect conversion: {path}.",
+    "converting": "Converting…",
+    "defaults": "Defaults",
+    "convert": "Convert"
+  },
+  "keptBooks": {
+    "explain": "Only books matching this search go to {name} (their details, covers and files), along with any added to it by hand. Empty for every book.",
+    "label": "Books {name} gets",
+    "everyBook": "every book",
+    "matching": "books matching “{query}”",
+    "gets": "Gets {what}",
+    "now": " ({count} now)",
+    "less": ", less {count} deleted there",
+    "end": ".",
+    "choose": "Choose books…",
+    "bringBack": "Bring back deleted"
+  },
+  "searchBox": {
+    "search": "Search",
+    "searchFor": "Search: {value}",
+    "searchInsideFor": "Search inside books: {value}",
+    "insideBooks": "Inside books",
+    "clear": "Clear search"
+  },
+  "crosspoint": {
+    "tools": {
+      "readingReader": "Reading the reader…",
+      "addFolder": "Add a folder…",
+      "remove": "Remove",
+      "dictionaries": {
+        "reading": "Reading the files…",
+        "copying": "Copying {name}: {file} ({n} of {total})…",
+        "removing": "Removing {name}…",
+        "note": "StarDict dictionaries, for looking words up while reading. Add their files, a folder of them, or the zip or tar.gz they were downloaded as. Choose the one used first on the reader, in Settings → Reader → Dictionary.",
+        "addFiles": "Add files…",
+        "none": "No dictionaries on the reader yet.",
+        "words": {
+          "one": "{n} word",
+          "other": "{n} words"
+        },
+        "hidden": "in .dictionaries"
+      },
+      "fonts": {
+        "anySize": "TTF/OTF, 12–18 pt",
+        "sizes": "{sizes} pt",
+        "switching": "Switching to {name}…",
+        "adding": "Adding fonts…",
+        "notFont": "{name}: not a font file (.cpfont, .ttf, .otf or .ttc).",
+        "addingOne": "Adding {family}: {name} ({n} of {total})…",
+        "notCpfont": "not a CrossPoint font",
+        "problem": "{name}: {message}",
+        "removing": "Removing {name}…",
+        "note": "Reading fonts on the SD card. Add CrossPoint’s .cpfont files (one per size; fonts made for it are in the crosspoint-fonts project, or the reader can download them itself in Settings → Reader → Manage Fonts), or TTF, OTF and TTC files, which only readers with external RAM can use. Pick a folder to add a family whose styles are separate files.",
+        "addFiles": "Add font files…",
+        "builtIn": "Built in",
+        "inUse": "In use",
+        "use": "Use",
+        "details": "{sizes} · {size}"
+      },
+      "sleep": {
+        "adding": "Adding…",
+        "addingOne": "Adding {name} ({n} of {total})…",
+        "problem": "{name}: {message}",
+        "removing": "Removing…",
+        "note": "The reader shows one of these, picked at random, when it sleeps. Pictures are made into {width}×{height} grayscale BMPs for its screen.",
+        "modeNote": "Its sleep screen is set to “{mode}”, so it doesn’t show them.",
+        "changing": "Changing the setting…",
+        "showThese": "Show these when asleep",
+        "single": "sleep.bmp is shown every time, instead of the rest, while it’s there.",
+        "fallback": "Pictures in the visible “sleep” folder aren’t shown while “.sleep” has any.",
+        "addPictures": "Add pictures…",
+        "placement": "How pictures fit the screen",
+        "fill": "Fill the screen (crop)",
+        "fit": "Fit the whole picture",
+        "none": "No sleep images on the reader yet.",
+        "always": "sleep.bmp (always)"
+      }
+    },
+    "placeholderHelp": "{placeholders}; <authorSort:1> for its first letter; [ … ] for a part kept only when everything in it has a value, as in [<series>/]. Books move when this changes.",
+    "model": "Model",
+    "modelHelp": "Books are sent as this reader’s optimized EPUB where they have one (Convert makes it), else as their EPUB.",
+    "address": "Address",
+    "addressHelp": "Shown on the reader in File Transfer mode. Use its IP address if crosspoint.local doesn’t work.",
+    "folder": "Folder",
+    "folderHelp": "Where books go on the SD card. Put the book’s details in with {placeholders}",
+    "fileName": "File name",
+    "fileNameHelp": "Books’ file names, without the extension, from the same details. A clash gets “(2)”.",
+    "otherFirmware": "The reader’s library index is from other firmware, so only the sync folders are listed. Opening the library on the reader rebuilds it.",
+    "noIndex": "The reader’s library index couldn’t be read, so only the sync folders are listed. Opening the library on the reader makes one.",
+    "sleepImages": "Sleep images",
+    "dictionaries": "Dictionaries",
+    "fonts": "Fonts",
+    "reader": "CrossPoint Reader",
+    "name": "CrossPoint"
+  },
+  "convertOptions": {
+    "pathSeparator": " → ",
+    "indirect": "Each step can lose some formatting, so a direct conversion is better where there is one."
+  },
+  "camera": {
+    "starting": "Starting the camera…",
+    "loading": "Loading the code reader…",
+    "refused": "Camera access was refused. Allow it in the browser or system settings, or: {otherwise}",
+    "none": "No camera found. {otherwise}",
+    "failed": "Couldn’t start the camera: {message}"
+  },
+  "breadcrumbs": {
+    "label": "Breadcrumbs"
+  },
+  "libraryGrid": {
+    "noFile": "no file"
+  },
+  "appMenu": {
+    "label": "Menu"
+  },
+  "completion": {
+    "suggestions": "Suggestions"
+  },
+  "sendTo": {
+    "one": "“{title}”",
+    "many": {
+      "one": "{count} book",
+      "other": "{count} books"
+    },
+    "title": "Send {what}",
+    "none": "There are no connections to send to yet. Add one under Connections.",
+    "inactive": " (inactive)",
+    "inactiveTitle": "{reason}. Activate it under Connections.",
+    "inactiveReason": "Inactive",
+    "send": "Send",
+    "addForNext": "Add for next sync",
+    "add": "Add",
+    "servedTitle": "Added to its catalog: the server serves it at once.",
+    "nextTitle": "Added to its catalog: it goes with the connection’s next sync."
+  },
+  "bulkConvert": {
+    "converting": "Converting {n} of {total} to {format}…",
+    "failure": "{title}: {message}",
+    "converted": "Converted {count} to {format}.",
+    "title": "Convert {books}",
+    "nothing": "None of these books has a file that can be converted.",
+    "pickBest": "Pick best (least lost for each book)",
+    "none": "None of these books can be made {format}, or all have it already.",
+    "noneFrom": "None of these books can be made {format} from {from}, or all have it already.",
+    "all": "All {books} will get a copy in {format}; the rest have one already or nothing to make it from.",
+    "some": "{count} of {books} will get a copy in {format}; the rest have one already or nothing to make it from.",
+    "indirectAll": "Indirect",
+    "indirectSome": {
+      "one": "{count} book converts indirectly",
+      "other": "{count} books convert indirectly"
+    },
+    "indirectPath": ": {path}.",
+    "indirectOther": ", by way of other formats.",
+    "failed": "{count} failed: {failures}",
+    "failureSeparator": "; ",
+    "convert": "Convert",
+    "convertBooks": "Convert {books}"
+  },
+  "sendCheck": {
+    "updating": "Updating files…",
+    "failure": "{title}: {message}",
+    "failureSeparator": "; ",
+    "converting": "Converting {title} ({n} of {total})…",
+    "convert": {
+      "one": "{count} book has no {formats}, which {device} prefers. Convert it first (kept in the library)?",
+      "other": "{count} books have no {formats}, which {device} prefers. Convert them first (kept in the library)?"
+    },
+    "behind": {
+      "one": "{count} file to send has older details than the library’s. Write the library’s into it first?",
+      "other": "{count} files to send have older details than the library’s. Write the library’s into them first?"
+    },
+    "unsendable": "Not sent, with no file {device} takes: {titles}",
+    "unsendableMore": " and {count} more",
+    "end": ".",
+    "asTheyAre": "Send as they are",
+    "convertUpdateSend": "Convert, update and send",
+    "convertSend": "Convert and send",
+    "updateSend": "Update and send"
+  },
+  "backup": {
+    "notSaved": "Not saved.",
+    "savedMissing": {
+      "one": "Saved, but {count} file the library refers to could not be found and is not included.",
+      "other": "Saved, but {count} files the library refers to could not be found and are not included."
+    },
+    "saved": "Saved.",
+    "title": "Backup",
+    "backUp": "Back up",
+    "explain": {
+      "one": "Saves all {count} item, with their files, covers, ratings, reviews and reading positions, as one zip file.",
+      "other": "Saves all {count} items, with their files, covers, ratings, reviews and reading positions, as one zip file."
+    },
+    "save": "Save backup",
+    "saving": "Saving… file {files} of {total}, {size}",
+    "preparing": "Preparing…",
+    "restore": "Restore",
+    "restoreExplain": "Adds the items from a backup that aren’t already in this library. Nothing here is changed or removed.",
+    "restoring": "Restoring…",
+    "choose": "Choose backup…",
+    "restored": {
+      "one": "Restored {count} item",
+      "other": "Restored {count} items"
+    },
+    "alreadyIn": "; {count} already in the library",
+    "end": "."
+  },
+  "instanceContents": {
+    "shows": "The books {name} shows this device.",
+    "offered": "The books {name} offered this device when it last synced ({date}). Ask for one, and it comes with its next sync.",
+    "notOffered": "{name} hasn’t offered this device any books yet: it does when it syncs with it.",
+    "title": "On {name}",
+    "connecting": "Connecting to {name}…",
+    "reading": "Reading…",
+    "count": "{note} {books}, {missing} not in this library.",
+    "filter": "Filter by title or author",
+    "downloadAll": "Download all {count}",
+    "inLibrary": "in your library",
+    "download": "Download",
+    "askedTitle": "Comes with its next sync.",
+    "asked": "Asked for",
+    "ask": "Ask for it",
+    "more": "And {count} more: filter to find them."
+  },
+  "categories": {
+    "needsName": "Each category needs a name.",
+    "title": "Browse categories",
+    "explain": "Your own categories, shown in the Library between Series and Tags. Each entry opens the books its search finds (say {example}); a category with one entry opens its books directly.",
+    "example": "tag:Fantasy",
+    "name": "Category name",
+    "namePlaceholder": "Name, e.g. Moods",
+    "entryName": "Entry name",
+    "entryNamePlaceholder": "Name",
+    "entrySearch": "Entry search",
+    "removeEntry": "Remove entry {entry}",
+    "addEntry": "Add entry",
+    "new": "New category"
+  },
+  "importProgress": {
+    "finding": "Finding files…",
+    "reading": {
+      "one": "Reading folder… {n} file",
+      "other": "Reading folder… {n} files"
+    },
+    "copying": {
+      "one": "Copying {n} of {total} file",
+      "other": "Copying {n} of {total} files"
+    },
+    "copied": "{done} of {total}",
+    "importing": "Importing…",
+    "importingBooks": {
+      "one": "Importing {n} of {total} book",
+      "other": "Importing {n} of {total} books"
+    },
+    "detail": "{label} · {detail}",
+    "stop": "Stop"
+  },
+  "currentlyReading": {
+    "label": "Currently reading",
+    "heading": "Currently reading",
+    "hideTitle": "Hide till nexlibris is next opened; the books stay under Library › Currently reading",
+    "hide": "Hide",
+    "continue": "Continue reading {title}",
+    "percent": "{percent}% read",
+    "remove": "Remove {title} from Currently reading",
+    "removeTitle": "Remove from Currently reading (keeps your place)"
+  },
+  "connectionTypes": {
+    "formatNoun": {
+      "one": "format",
+      "many": "formats"
+    },
+    "formats": "Formats",
+    "notWebAddress": "That isn’t a web address.",
+    "opds": {
+      "hostedAt": "Hosted at",
+      "hostedAtHelp": "The address the catalog is served from, if you host it. Sync writes the files; putting them online is up to you.",
+      "formatsHelp": "Each book is offered in every format it has, or, if you pick some, in every one of those it has; a book with none of them is left out.",
+      "searchRouting": "Cloudflare search routing",
+      "searchRoutingHelp": "Lets OPDS readers search as they type when the catalog is hosted on Cloudflare Pages: writes a Pages Function and a search index.",
+      "basicAuth": "Cloudflare Basic Auth",
+      "basicAuthHelp": "Puts a user name and password in front of the whole catalog on Cloudflare Pages: writes _worker.js. Set them as the BASIC_USER and BASIC_PASS secrets of the Pages project (see README.md in the catalog).",
+      "export": "OPDS Static Export",
+      "catalogAddress": "Catalog address",
+      "catalogAddressHelp": "The address of the catalog’s first page, e.g. https://www.gutenberg.org/ebooks.opds/ for Project Gutenberg.",
+      "giveAddress": "Give the catalog’s address.",
+      "searchAddress": "Search address (optional)",
+      "searchAddressHelp": "Only needed if the catalog’s own search can’t be read here: its search page’s address with {searchTerms} where the words go, e.g. https://www.gutenberg.org/ebooks/search.opds/?query={searchTerms} for Project Gutenberg in a browser.",
+      "searchTerms": "Put {searchTerms} where the words go.",
+      "server": "OPDS server",
+      "served": "OPDS feed on your server",
+      "signIn": "Sign in to a nexlibris server (Account…) to serve it"
+    },
+    "instance": "Nexlibris twin",
+    "unknownType": "Unknown type",
+    "notActivated": "Not activated",
+    "checking": "Checking…",
+    "folder": {
+      "savePath": "Save path",
+      "savePathHelp": "Folders and file name, from {placeholders}; [ … ] for a part kept only when everything in it has a value. A book in several formats gets a file in each (Dune.epub, Dune.x4.epub).",
+      "formatsHelp": "Each book is written in every format it has, or, if you pick some, in every one of those it has.",
+      "unknown": "This computer doesn’t know where {name} is. Edit it and choose its folder.",
+      "noneChosen": "No folder chosen on this device",
+      "gone": "The folder “{name}” isn’t there",
+      "label": "Folder",
+      "noFolders": "This browser can’t be given folders: use Chrome, Edge or the desktop app.",
+      "noManifest": "This folder has no nexlibris manifest yet, so its books are known by their file names."
+    }
+  },
+  "browse": {
+    "library": "Library",
+    "allBooks": "All books",
+    "reading": "Currently reading",
+    "authors": "Authors",
+    "series": "Series",
+    "tags": "Tags",
+    "catalog": "Catalog",
+    "counts": {
+      "authors": {
+        "one": "{count} author",
+        "other": "{count} authors"
+      },
+      "series": {
+        "one": "{count} series",
+        "other": "{count} series"
+      },
+      "tags": {
+        "one": "{count} tag",
+        "other": "{count} tags"
+      },
+      "categories": {
+        "one": "{count} category",
+        "other": "{count} categories"
+      },
+      "entries": {
+        "one": "{count} entry",
+        "other": "{count} entries"
+      },
+      "books": {
+        "one": "{count} book",
+        "other": "{count} books"
+      }
+    }
+  },
+  "fields": {
+    "subtitle": "Subtitle",
+    "series": "Series",
+    "seriesIndex": "Number in series",
+    "originallyPublished": "First published",
+    "published": "Edition published",
+    "publisher": "Publisher",
+    "language": "Language",
+    "pages": "Pages",
+    "rights": "Rights",
+    "titleSort": "Title sort",
+    "authorSort": "Author sort",
+    "coverColor": "Cover colour"
+  },
+  "fieldHints": {
+    "seriesIndex": "1, 2.5…",
+    "originallyPublished": "YYYY, YYYY-MM, YYYY-MM-DD or 570 BC",
+    "published": "YYYY, YYYY-MM, YYYY-MM-DD or 570 BC",
+    "language": "en, fr, pt-BR…",
+    "coverColor": "#rrggbb"
+  },
+  "columns": {
+    "cover": "Cover",
+    "creators": "Creators",
+    "titleSort": "Title sort",
+    "authorSort": "Author sort",
+    "series": "Series",
+    "tags": "Tags",
+    "rating": "Rating",
+    "formats": "Formats",
+    "size": "Size (MB)",
+    "added": "Added",
+    "updated": "Updated"
+  },
+  "appearance": {
+    "system": "System",
+    "light": "Light",
+    "dark": "Dark"
+  },
+  "suggest": {
+    "has": "Has",
+    "field": "Field",
+    "author": "Author",
+    "series": "Series",
+    "tag": "Tag",
+    "fields": {
+      "text": "Anything",
+      "title": "Title",
+      "author": "Author",
+      "series": "Series",
+      "tag": "Tags",
+      "format": "Format",
+      "rating": "Rating",
+      "added": "Added",
+      "originallyPublished": "First published",
+      "published": "Edition published",
+      "publisher": "Publisher",
+      "language": "Language",
+      "pages": "Pages",
+      "cover": "Cover",
+      "isbn": "ISBN"
+    }
+  },
+  "placeholders": {
+    "title": "Title",
+    "titleSort": "Title sort",
+    "author": "First author",
+    "authors": "All authors, joined by “&”",
+    "authorSort": "Author sort",
+    "series": "Series",
+    "seriesIndex": "Number in series",
+    "year": "Year first published",
+    "publisher": "Publisher",
+    "language": "Language",
+    "isbn": "ISBN",
+    "unknown": "<{name}> isn’t a detail nexlibris knows.",
+    "angles": "A < or > doesn’t pair up.",
+    "brackets": "A [ or ] doesn’t pair up (and sections can’t be nested)."
+  },
+  "libraryFolder": {
+    "errors": {
+      "desktopOnly": "Files can only be shown in the desktop app.",
+      "notHere": "The file isn’t stored on this computer.",
+      "noLibrary": "The folder “{name}” no longer has the library in it.",
+      "noOpfs": "This browser does not support the Origin Private File System, which nexlibris needs to store your library.",
+      "signIn": "Sign in to open your library.",
+      "unreachable": "Your library is in your nexlibris account, and its server can’t be reached.",
+      "accountHasLibrary": "Your account has a library already.",
+      "unreadable": "Couldn’t read the file {hash}….",
+      "notReached": "Some files didn’t reach your account. Try again.",
+      "browserHasLibrary": "This browser has a library of its own already. Open that one, or move it elsewhere first.",
+      "changed": "The file {hash}… arrived changed.",
+      "backFirst": "Move the library back into this browser’s storage first.",
+      "appsOnly": "Only the apps keep their library this way.",
+      "folderHasLibrary": "That folder has a library already.",
+      "couldntRead": "Couldn’t read {path}.",
+      "notWhole": "{path} didn’t copy whole.",
+      "noPermission": "nexlibris wasn’t given permission to use that folder.",
+      "already": "The library is in that folder already.",
+      "intoItself": "The library can’t move into its own folder, or into one its folder is in."
+    }
+  },
+  "account": {
+    "errors": {
+      "chooseServer": "Choose a nexlibris server first (Account…).",
+      "notAddress": "That isn’t a server’s address. Type it as your browser would, e.g. books.example.org or 192.168.1.20:8080.",
+      "needsHttps": "A server outside your network needs an https:// address.",
+      "noPath": "The app needs a server at its own address, without a path.",
+      "unreachable": "Couldn’t reach a nexlibris server at {url}: {message}",
+      "notServer": "{url} answered, but not as a nexlibris server."
+    }
+  },
+  "backupErrors": {
+    "notZip": "This file is not a nexlibris backup (it is not a zip).",
+    "noManifest": "This file is not a nexlibris backup (it has no manifest).",
+    "notBackup": "This file is not a nexlibris backup.",
+    "otherVersion": "This backup was made by a different version of nexlibris and cannot be restored."
+  },
+  "textResults": {
+    "pending": {
+      "one": "{count} is still being indexed",
+      "other": "{count} are still being indexed"
+    },
+    "elsewhere": {
+      "one": "{count} isn’t stored on this device",
+      "other": "{count} aren’t stored on this device"
+    },
+    "without": {
+      "one": "{count} has no text to search (comics, scans, no file)",
+      "other": "{count} have no text to search (comics, scans, no file)"
+    },
+    "coverage": "Searched the text of {searched} of {books} books; {notes}.",
+    "label": "Text search results",
+    "found": {
+      "one": "{count} book has “{query}” in the text, {times}",
+      "other": "{count} books have “{query}” in the text, {times}"
+    },
+    "times": {
+      "one": "{count} time",
+      "other": "{count} times"
+    },
+    "soFar": " so far…",
+    "end": ".",
+    "searching": "Searching the text…",
+    "none": "No book’s text has “{query}”.",
+    "show": "Show {title}",
+    "matches": {
+      "one": "· {count} match",
+      "other": "· {count} matches"
+    },
+    "readFromHere": "Read from here",
+    "more": {
+      "one": "{count} more passage",
+      "other": "{count} more passages"
+    }
+  },
+  "libraryList": {
+    "workedOut": "Worked out from the {from}",
+    "fromTitle": "title",
+    "fromAuthors": "authors",
+    "cover": "Cover",
+    "title": "Title"
+  },
+  "libraryContext": {
+    "opening": "Opening library…",
+    "signIn": "Your library is in your nexlibris account on {name}{server}. Sign in to open it.",
+    "server": " ({server})",
+    "unreachableServer": "Your library is in your nexlibris account on {server}, which can’t be reached. Check your connection, then reopen the app.",
+    "unreachable": "Your library is in your nexlibris account, and this page can’t reach the server it’s on. Check your connection, then reload.",
+    "useDevice": "Use this device’s library instead",
+    "useBrowser": "Use this browser’s storage instead",
+    "folder": "Your library is in the folder {folder}. The browser asks again before nexlibris may use it; choose “Allow on every visit” to skip this next time.",
+    "open": "Open the library"
+  },
+  "reader": {
+    "title": "{title} · nexlibris",
+    "missing": "This file is missing from storage.",
+    "loading": "Loading viewer…",
+    "reading": "Reading {title}"
+  },
+  "bookshelf": {
+    "label": "Bookshelf",
+    "aria": "{title}, {byline}",
+    "title": "{title} — {byline}"
+  },
+  "graph": {
+    "by": "by {name}",
+    "author": "author",
+    "tag": "tag",
+    "series": "series",
+    "kind": {
+      "one": "{kind} · {count} book",
+      "other": "{kind} · {count} books"
+    },
+    "label": "A graph of {count} books, joined by their authors, tags and series"
+  },
+  "accountDialog": {
+    "name": "Name",
+    "password": "Password",
+    "make": "Make the account",
+    "signIn": "Sign in",
+    "haveAccount": "I have an account",
+    "makeAccount": "Make an account…",
+    "cloud": "Your library is kept in your account, so it’s the same wherever you sign in.",
+    "device": "Your library is kept on this device. It can move to your account, or keep a copy there that it syncs with: see Library folder.",
+    "browser": "Your library is kept in this browser. It can move to your account, or keep a copy there that it syncs with: see Library folder.",
+    "title": "Account",
+    "unreachable": "Couldn’t reach the server at {server}. Check your connection, and the address.",
+    "asking": "Asking the server…",
+    "signInTo": "Sign in to {name} to keep your library in your account, where your other devices can reach it. Signed out, nexlibris keeps it on this device.",
+    "signInToBrowser": "Sign in to {name} to keep your library in your account, where your other devices can reach it. Signed out, nexlibris keeps it in this browser.",
+    "server": "Server: {server}",
+    "change": "Change…",
+    "signOutStop": "Sign out and stop using it",
+    "stop": "Stop using it",
+    "serverExplain": "A nexlibris server keeps your library in an account, where your other devices can open it, or keeps a copy that this device syncs with. Run one yourself (see nexlibris’s README), or use one someone runs for you.",
+    "signsOut": " Choosing another signs you out of this one.",
+    "serverAddress": "Server address",
+    "serverPlaceholder": "books.example.org or 192.168.1.20:8080",
+    "connecting": "Connecting…",
+    "connect": "Connect",
+    "passwordChanged": "Password changed. Your other devices are signed out.",
+    "signedInAs": "Signed in to {server} as {name}.",
+    "currentPassword": "Current password",
+    "newPassword": "New password",
+    "changeIt": "Change it",
+    "libraryFolder": "Library folder…",
+    "changePassword": "Change password…",
+    "signOut": "Sign out"
+  },
+  "settings": {
+    "sort": {
+      "title": "Title",
+      "author": "Author",
+      "series": "Series",
+      "published": "First published",
+      "rating": "Rating",
+      "size": "Size",
+      "added": "Date added"
+    },
+    "tabs": {
+      "appearance": "Appearance",
+      "folder": "Filesystem",
+      "backup": "Backup",
+      "account": "Account",
+      "categories": "Categories",
+      "connections": "Connections"
+    },
+    "title": "Settings",
+    "appearance": "Appearance",
+    "theme": "Theme",
+    "view": "View",
+    "sortHeading": "Sort",
+    "sortBy": "Sort by",
+    "descending": "Descending",
+    "listColumns": "List columns",
+    "titleAlways": "Title is always shown.",
+    "fields": "Fields",
+    "resetColumns": "Reset columns"
+  },
+  "isbn": {
+    "invalid": "“{typed}” isn’t a valid ISBN.",
+    "noBarcode": "No ISBN barcode found in that picture. Try a closer, sharper one, or type the number.",
+    "photoFailed": "Couldn’t read that picture: {message}",
+    "isbnTitle": "ISBN {isbn}",
+    "addFailed": "Couldn’t add the book: {message}",
+    "title": "Add by ISBN",
+    "explain": "Scan the barcode on the back of a book, or type its ISBN, to look it up on Open Library and add it to the library without a file.",
+    "hint": "Hold the barcode inside the frame.",
+    "otherwise": "Use a photo of the barcode, or type the ISBN.",
+    "stopCamera": "Stop camera",
+    "scan": "Scan with camera",
+    "photo": "Photo of barcode…",
+    "placeholder": "ISBN, e.g. 978-0-441-17271-9",
+    "label": "ISBN",
+    "lookUp": "Look up",
+    "found": "Books found",
+    "addAll": "Add all {count}",
+    "addedOpen": "Added · Open",
+    "inLibraryOpen": "In library · Open",
+    "adding": "Adding…",
+    "add": "Add",
+    "anywayTitle": "Adds an item with only the ISBN, to fill in yourself",
+    "anyway": "Add anyway",
+    "retry": "Retry",
+    "looking": "Looking up…",
+    "unknown": "Open Library doesn’t know this ISBN."
+  },
+  "coverPicker": {
+    "notImage": "{name} isn’t an image.",
+    "none": "Open Library has no covers for this book.",
+    "downloadFailed": "Couldn’t download that cover.",
+    "newCover": "New cover",
+    "change": "Change cover",
+    "choose": "Choose image…",
+    "searching": "Searching Open Library…",
+    "find": "Find on Open Library",
+    "generating": "Generating…",
+    "generate": "Generate",
+    "undo": "Undo change",
+    "covers": "Covers from Open Library",
+    "use": "Use the cover of {label}"
+  },
+  "size": {
+    "bytes": "{count} B",
+    "kilobytes": "{count} KB",
+    "megabytes": "{count} MB",
+    "gigabytes": "{count} GB"
+  },
+  "itemFiles": {
+    "missing": "The file is missing from the library.",
+    "failed": {
+      "download": "Couldn’t download {name}: {message}",
+      "show": "Couldn’t show {name}: {message}",
+      "update": "Couldn’t update {name}: {message}",
+      "remove": "Couldn’t remove {name}: {message}"
+    },
+    "upToDate": "It already says what the library does.",
+    "download": "Download",
+    "show": "Show in folder",
+    "addTo": "Add to…",
+    "updating": "Updating file metadata…",
+    "update": "Update file metadata",
+    "remove": "Remove…",
+    "converted": " · converted",
+    "behind": " · details older than the library’s",
+    "notDownloaded": " · not downloaded",
+    "removeConfirm": "Remove",
+    "read": "Read",
+    "actions": "Actions for {name}",
+    "none": "No files. This item is cataloged without media.",
+    "attach": "Attach file…",
+    "noFiles": "No files.",
+    "detach": "Detach {name}",
+    "meta": "{format} · {size}"
+  },
+  "connectionBrowser": {
+    "readFrom": "Read from {description}.",
+    "shows": "The books {name} shows this device.",
+    "offered": "The books {name} offered this device when it last synced. One asked for comes with its next sync.",
+    "notOffered": "{name} hasn’t offered this device any books yet: it does when it syncs with it.",
+    "unreadable": "This connection can’t be read.",
+    "reading": "Reading {name}…",
+    "inLibrary": "In library",
+    "count": {
+      "one": "{note} {count} book.",
+      "other": "{note} {count} books."
+    },
+    "nothing": "Nothing here.",
+    "dontAsk": "Don’t ask for it",
+    "ask": "Ask for it",
+    "downloadFile": "Download its file",
+    "download": "Download",
+    "nextSync": "It comes with the next sync from there.",
+    "working": "Working…"
+  },
+  "bulkEditor": {
+    "all": "all",
+    "of": "{n} of {count}",
+    "paren": "({of})",
+    "doneAll": "{done} all.",
+    "doneSome": "{done} {n} of {count}.",
+    "removedTags": "Removed {tags} from",
+    "notTagged": "None of the selected items are tagged {tags}.",
+    "removedCreator": "Removed {name} from",
+    "noCreator": "None of the selected items have {name} as a creator.",
+    "removedFiles": {
+      "one": "Removed {count} {format} file",
+      "other": "Removed {count} {format} files"
+    },
+    "notDeleted": "; {count} weren’t deleted, as another book uses them or they aren’t stored on this device",
+    "end": ".",
+    "removeFailed": "Couldn’t remove the {format} files: {message}",
+    "label": "Bulk edit",
+    "selected": {
+      "one": "{count} item selected",
+      "other": "{count} items selected"
+    },
+    "rating": "Rating",
+    "connections": "Connections",
+    "inCatalog": "({on} in its catalog)",
+    "none": "none",
+    "add": "Add",
+    "sendTitle": "Sends these books now, adding them to its catalog, and leaves the rest of it as it is.",
+    "inactive": "{name} is inactive. Activate it under Connections.",
+    "send": "Send",
+    "sendInactive": "Send (inactive)",
+    "removeTitle": "Takes them out of its catalog (kept out, if its search matches them). What was sent stays there.",
+    "remove": "Remove",
+    "files": "Files",
+    "formatToRemove": "Format to remove",
+    "removeFormat": {
+      "one": "Remove {count} {format} file",
+      "other": "Remove {count} {format} files"
+    },
+    "filesExplain": "Takes the files off the selected books and deletes them from the library.",
+    "leftBare": {
+      "one": " One book has no other file and would be left with none.",
+      "other": " {count} books have no other file and would be left with none."
+    },
+    "tags": "Tags",
+    "manyTags": "The selected items have {count} different tags.",
+    "tagsToRemove": "Tags to remove, comma-separated…",
+    "tagsToRemoveLabel": "Tags to remove",
+    "removeTag": "Remove tag {tag} from selected items",
+    "tagsToAdd": "Tags to add, comma-separated…",
+    "tagsToAddLabel": "Tags to add",
+    "creators": "Creators",
+    "manyCreators": "The selected items have {count} different creators.",
+    "creatorToRemove": "A creator to remove…",
+    "creatorToRemoveLabel": "Creator to remove",
+    "removeCreator": "Remove {name} from selected items",
+    "authorToAdd": "An author to add…",
+    "authorToAddLabel": "Author to add",
+    "fields": "Fields",
+    "clearField": "Clear {key} on selected items",
+    "field": "field",
+    "value": "value",
+    "setOnAll": "Set on all",
+    "deleteItems": {
+      "one": "Delete {count} item",
+      "other": "Delete {count} items"
+    }
+  },
+  "catalogBrowser": {
+    "books": {
+      "one": "{n} book",
+      "other": "{n} books"
+    },
+    "booksMore": "{n}+ books",
+    "entries": {
+      "one": "{n} entry",
+      "other": "{n} entries"
+    },
+    "entriesMore": "{n}+ entries",
+    "reading": "Reading {name}…",
+    "inLibrary": "In library",
+    "stale": "Couldn’t check it: {error}",
+    "read": "Read {when}",
+    "checkNow": "Check now",
+    "more": "{title} ›",
+    "nothingFor": "Nothing found for “{terms}”.",
+    "nothing": "Nothing here.",
+    "loading": "Loading…",
+    "loadMore": "Load more",
+    "today": "today at {time}",
+    "on": "on {date}",
+    "file": "File",
+    "added": "Added to the library.",
+    "addedFile": "Added the file to “{title}”.",
+    "notAddedBecause": "Not added: {reason}.",
+    "notAdded": "Not added.",
+    "readingPage": "Reading its page…",
+    "pageFailed": "Couldn’t read its page: {error}",
+    "adding": "Adding…",
+    "addAgain": "Add again",
+    "add": "Add to library",
+    "cantRead": "nexlibris can’t read its downloads",
+    "noDownload": "The catalog offers no download",
+    "size": " · {size}",
+    "cantReadFormat": "nexlibris can’t read this format",
+    "downloadIt": "Download it",
+    "placeBooks": {
+      "one": "{n} book",
+      "other": "{n} books"
+    }
+  },
+  "roles": {
+    "aut": "Author",
+    "edt": "Editor",
+    "trl": "Translator",
+    "ill": "Illustrator",
+    "art": "Artist",
+    "clr": "Colorist",
+    "cov": "Cover artist",
+    "nrt": "Narrator",
+    "ctb": "Contributor"
+  },
+  "itemDetail": {
+    "withRole": "{name} ({role})",
+    "seriesIndex": "{series} #{index}",
+    "edit": "Edit",
+    "convert": "Convert…",
+    "sendTo": "Send to…",
+    "addTo": "Add to…",
+    "delete": "Delete…",
+    "details": "Details for {title}",
+    "title": "Title",
+    "deleteConfirm": "Delete",
+    "continue": "Continue{progress}",
+    "progress": " · {percent}%",
+    "read": "Read",
+    "actions": "Actions for {title}",
+    "actionsText": "Actions",
+    "inLibrary": "In library",
+    "inLibraryAs": "In library as “{title}”",
+    "files": "Files",
+    "searchFor": "Search for “{tag}”",
+    "about": "About",
+    "review": "Your review",
+    "detailsHeading": "Details",
+    "size": "Size {size} · ",
+    "added": "Added {date}",
+    "updated": " · updated {date}",
+    "creators": "Creators",
+    "tags": "Tags",
+    "description": "Description",
+    "reviewPlaceholder": "What did you think?",
+    "otherFields": "Other fields",
+    "field": "field",
+    "identifiers": "Identifiers",
+    "scheme": "scheme (isbn, …)",
+    "saving": "Saving…",
+    "save": "Save"
+  },
+  "searchDialog": {
+    "starters": {
+      "author": "Author",
+      "title": "Title",
+      "series": "Series",
+      "tag": "Tag",
+      "format": "Format",
+      "rating": "Rating",
+      "added": "Added",
+      "has": "Has…"
+    },
+    "label": "Search",
+    "placeholderSource": "Search {name}…",
+    "placeholderText": "Search the text of books…",
+    "placeholder": "Search titles, authors, tags…",
+    "clear": "Clear",
+    "search": "Search",
+    "searchIn": "Search in",
+    "books": "Books",
+    "insideBooks": "Inside books",
+    "searching": "Searching {name}",
+    "sourceNote": "Searches {name}’s catalog when you press Enter, and shows what it finds in the Library.",
+    "within": "Searching within",
+    "in": "In {scope}",
+    "allNotJust": "Search all books, not just {scope}",
+    "all": "Search all books",
+    "searchBy": "Search by",
+    "recentLabel": "Recent searches",
+    "recent": "Recent",
+    "suggestions": "Suggestions",
+    "searchingText": "· searching…",
+    "textHits": {
+      "one": "· {n} book",
+      "other": "· {n} books"
+    },
+    "nothingFound": "· nothing found",
+    "place": "{place}: ",
+    "matches": {
+      "one": "{count} match",
+      "other": "{count} matches"
+    },
+    "bookMatches": {
+      "one": "· {count} match",
+      "other": "· {count} matches"
+    },
+    "nothing": "Nothing matches.",
+    "choose": "{keys} choose",
+    "complete": "{keys} complete",
+    "enter": "{keys} search",
+    "cancel": "{keys} cancel"
+  },
+  "cleanup": {
+    "noFiles": "No files",
+    "added": "Added {date}",
+    "isbn": "ISBN {isbn}",
+    "authors": "· {authors}",
+    "keep": "Keep {formats}, {detail}",
+    "kept": "Kept",
+    "mergeInto": "Merge into the copy kept",
+    "merge": "Merge {formats}, {detail}",
+    "mergeN": "Merge {count} into one",
+    "title": "Clean up library",
+    "duplicates": "Same title and author",
+    "duplicatesExplain": "Find items that are the same book, and merge each into one.",
+    "findDuplicates": "Find duplicates…",
+    "reread": "Re-read metadata",
+    "rereadExplain": "Read each book’s files again to fill in what its details lack: sort names, dates, cover colours and the like. Nothing already there is changed, and nothing is looked up online.",
+    "rereadButton": "Re-read…",
+    "updateFiles": "Update book files",
+    "updateFilesExplain": "Write the library’s details (title, authors, tags, series, description and the like) and cover into EPUBs that say otherwise, so the files match wherever they go. Details the library lacks are left as the file has them, and copies converted for a reader keep their own cover.",
+    "behind": {
+      "one": " {n} file is behind edits made since.",
+      "other": " {n} files are behind edits made since."
+    },
+    "checkFiles": "Check files…",
+    "groups": {
+      "one": "One book has more than one item. Merging keeps the one chosen and adds the others’ files, tags and fields it lacks, then removes them.",
+      "other": "{n} books have more than one item. Merging keeps the one chosen and adds the others’ files, tags and fields it lacks, then removes them."
+    },
+    "noDuplicates": "No two items share a title and author.",
+    "mergeFailed": "Couldn’t merge: {error}",
+    "mergeAll": "Merge all {n}",
+    "read": {
+      "one": "{done} of {n} book read…",
+      "other": "{done} of {n} books read…"
+    },
+    "starting": "Starting…",
+    "stopped": "It stopped: {message}",
+    "stop": "Stop",
+    "stoppedPrefix": "Stopped. ",
+    "filled": "Filled in {details} on {books}.",
+    "details": {
+      "one": "{n} detail",
+      "other": "{n} details"
+    },
+    "books": {
+      "one": "{n} book",
+      "other": "{n} books"
+    },
+    "files": {
+      "one": "{n} file",
+      "other": "{n} files"
+    },
+    "epubs": {
+      "one": "{n} EPUB",
+      "other": "{n} EPUBs"
+    },
+    "nothingToFill": "Nothing to fill in: every book has what its files say.",
+    "rereadNotHere": {
+      "one": "{n} book wasn’t read, as its files are on another device. Re-read there to fill it in.",
+      "other": "{n} books weren’t read, as their files are on another device. Re-read there to fill them in."
+    },
+    "rereadFailed": {
+      "one": "{n} book couldn’t be read: {list}",
+      "other": "{n} books couldn’t be read: {list}"
+    },
+    "failure": "{title} ({message})",
+    "failureSeparator": "; ",
+    "ellipsis": "…",
+    "checked": {
+      "one": "{done} of {n} book checked…",
+      "other": "{done} of {n} books checked…"
+    },
+    "updated": {
+      "one": "{done} of {n} book updated…",
+      "other": "{done} of {n} books updated…"
+    },
+    "update": "Update {files}",
+    "stale": {
+      "one": "{files} on {books} differs from the library. Updating writes the library’s details and cover into them; their text and identifiers stay as they are.",
+      "other": "{files} on {books} differ from the library. Updating writes the library’s details and cover into them; their text and identifiers stay as they are."
+    },
+    "allMatch": "Every file matches the library.",
+    "allMatchChecked": "Every file matches the library ({epubs} checked).",
+    "filesToUpdate": "Files to update",
+    "format": "· {format}",
+    "drm": {
+      "one": "{n} file is DRM-protected, so left alone: {list}",
+      "other": "{n} files are DRM-protected, so left alone: {list}"
+    },
+    "updatedFiles": "Updated {files}.",
+    "noneUpdated": "No files were updated.",
+    "freed": {
+      "one": " The old version was deleted.",
+      "other": " The old versions were deleted."
+    },
+    "notHere": {
+      "checked": {
+        "one": "{n} book wasn’t checked, as its files are on another device. Update it there.",
+        "other": "{n} books weren’t checked, as their files are on another device. Update them there."
+      },
+      "updated": {
+        "one": "{n} book wasn’t updated, as its files are on another device. Update it there.",
+        "other": "{n} books weren’t updated, as their files are on another device. Update them there."
+      }
+    },
+    "notDone": {
+      "checked": {
+        "one": "{n} file couldn’t be checked: {list}",
+        "other": "{n} files couldn’t be checked: {list}"
+      },
+      "updated": {
+        "one": "{n} file couldn’t be updated: {list}",
+        "other": "{n} files couldn’t be updated: {list}"
+      }
+    },
+    "changes": {
+      "title": "title",
+      "creators": "creators",
+      "tags": "tags",
+      "language": "language",
+      "description": "description",
+      "publisher": "publisher",
+      "published": "published",
+      "series": "series",
+      "series index": "series index",
+      "title sort": "title sort",
+      "author sort": "author sort",
+      "cover": "cover"
+    }
+  },
+  "libraryFolderDialog": {
+    "files": {
+      "one": "{n} file",
+      "other": "{n} files"
+    },
+    "place": {
+      "cloud": "in your account ({name}) on this server",
+      "folder": "in {name}",
+      "desktop": "in the app’s data folder ({name})",
+      "app": "in the app’s own storage, which only nexlibris can see",
+      "browser": "in this browser’s own storage, which only nexlibris can see"
+    },
+    "home": {
+      "desktop": "the app’s data folder",
+      "app": "the app’s own storage",
+      "browser": "this browser’s storage"
+    },
+    "tradeoffs": {
+      "android": "In a folder, every file goes through Android’s storage provider, which is slower than the app’s own storage: books and covers open a little more slowly, and importing, converting and moving books takes noticeably longer. In return, file managers, other apps and a computer plugged in by USB can see the books, and they stay if nexlibris is uninstalled, which deletes its own storage. No permission is needed beyond the folder you pick.",
+      "ios": "In a folder, the books are files you can see in the Files app, and other apps, a computer (through iCloud Drive or a drive) and backups can reach them; they stay if nexlibris is deleted, which deletes its own storage. A folder in iCloud Drive is slower, as books not yet on the phone are downloaded when they’re opened. No permission is needed beyond the folder you pick.",
+      "browser": "In a folder, saving is slower: the browser writes each file to a temporary copy and checks it before putting it in place, so importing, converting and moving books takes longer than in its own storage, though reading is about as quick. The browser also asks again to let nexlibris use the folder after it restarts (one click; Chrome remembers if you choose “Allow on every visit”). In return, other apps and backups can see the books, and clearing the browser’s data for this site doesn’t delete them."
+    },
+    "moveFailed": "The library couldn’t be moved.",
+    "title": "Library folder",
+    "where": "Your library is {place}.",
+    "has": "It has {files}, for a total size of {size}, not counting metadata",
+    "empty": "It is empty.",
+    "lost": "nexlibris can no longer use the folder {folder}, where the library was: the folder was deleted or moved, or its permission was taken back. Choose it again to open the library there.",
+    "laidOut": "Its books are laid out as below; nexlibris’s own files are in the hidden .nexlibris folder there.",
+    "canFolder": "It can be kept in a folder of yours instead, with the books laid out as below, where other apps and backups can see them. nexlibris’s own files go in a hidden .nexlibris folder there.",
+    "dontMove": "Change books in nexlibris rather than moving or renaming their files yourself: it keeps track of where it put them.",
+    "noFolders": "This browser can’t keep the library in a folder of yours: that needs the File System Access API, which Chrome and Edge have, as do nexlibris’s desktop and phone apps.",
+    "arrange": "Move books to match",
+    "another": "Move to another folder…",
+    "choose": "Choose a folder…",
+    "openIn": "Open the library in {home}",
+    "moveBackTo": "Move back to {home}",
+    "copyToAccount": "Copy the library to your account{account}, and use it from there? Its {files} ({size}) go there, checked as they arrive; afterwards this app opens your account’s library, here or on any device you sign in on.",
+    "account": " ({name})",
+    "copyStays": "This device’s own library stays where it is, as it is, and can be opened again from here. Its connections to other devices stay with it.",
+    "copyIt": "Copy it and use it there",
+    "moveToAccount": "Move the library to your account{account}? Its {files} ({size}) go there, checked as they arrive, then it’s deleted from this browser. Afterwards you open it by signing in, here or anywhere else.",
+    "moveLeaves": "This browser’s own records stay behind: its connections to other devices need pairing again from the account, and the text index and covers’ thumbnails are made again.",
+    "moveIt": "Move it",
+    "fromAccount": "Move the library from your account into this browser? Its {files} ({size}) come here, then it’s deleted from your account, and your other devices can’t open it there any more.",
+    "moveHere": "Move it here",
+    "moveBack": "Move the library from {name} back to {home}? Its {files} ({size}) go there, and the books and .nexlibris folder leave {name}; anything else in it stays.",
+    "moveItBack": "Move it back",
+    "hasLibrary": "{name} has a nexlibris library already. Open that one? This library stays where it is ({place}), and can be opened again from here.",
+    "openIt": "Open it",
+    "yourAccount": "Your account",
+    "signInTo": "Sign in to {name} to keep your library in your account, where your other devices can open it, or to keep a copy there that this one syncs with.",
+    "signInServer": "Sign in to a nexlibris server, one you run yourself or one run for you, to keep your library in your account there, where your other devices can open it, or to keep a copy there that this device syncs with.",
+    "signIn": "Sign in…",
+    "chooseServer": "Choose a server…",
+    "inCloud": "It’s the same wherever you sign in. To keep a copy on a device too, open the library in that device’s own storage and connect it to your account from Connections.",
+    "openDevice": "Open this device’s library",
+    "openBrowser": "Open this browser’s library",
+    "moveToBrowser": "Move it to this browser…",
+    "looking": "Looking in your account…",
+    "accountHas": {
+      "one": "Your account ({name}) has a library already, of {n} book. Open that one instead (this one stays {here}), or keep the two in sync, as two devices are.",
+      "other": "Your account ({name}) has a library already, of {n} books. Open that one instead (this one stays {here}), or keep the two in sync, as two devices are."
+    },
+    "onDevice": "on this device",
+    "here": "here",
+    "openAccount": "Open your account’s library",
+    "syncWith": "Sync this one with it…",
+    "copyOffer": "Copy the library to your account ({name}) and open it from anywhere you sign in, or keep it here and keep a copy there, which it syncs with like another device.",
+    "moveOffer": "Move the library to your account ({name}) and open it from anywhere you sign in, or keep it here and keep a copy there, which it syncs with like another device.",
+    "useFromAccount": "Use it from your account…",
+    "moveToAccountButton": "Move to your account…",
+    "keepCopy": "Keep a copy there too…",
+    "backFirst": "To move it to your account, move it back into this browser’s storage first.",
+    "moving": "Moving the library",
+    "arranging": "Moving books to match the layout",
+    "progress": ": {done} of {files}…",
+    "ellipsis": "…",
+    "keepOpen": "Keep nexlibris open until it’s done.",
+    "confirmMove": "Move the library to {name}? Its {files} ({size}) go there{example}. It won’t be {from} any more.",
+    "booksLike": ", books like {path}",
+    "otherFiles": "The folder has other files in it, which stay as they are. A book whose place one of them has waits in .nexlibris.",
+    "bookFolders": "Book folders",
+    "bookFoldersHelp": "Each book’s folder in the library folder, from its details: {placeholders}; <authorSort:1> for its first letter; [ … ] for a part kept only when everything in it has a value, as in [<series>/].",
+    "fileNames": "File names",
+    "fileNamesHelp": "Without the extension, which is the format (Dune.epub, Dune.x4.epub). A clash gets “(2)”.",
+    "example": "For example: {path}"
+  },
+  "sync": {
+    "never": "never",
+    "transport": {
+      "network": "over the network",
+      "bluetooth": "over Bluetooth",
+      "folder": "through a folder",
+      "account": "through your account"
+    },
+    "pairIntro": "Each device keeps the whole library, and syncs its changes with the ones it’s connected to. Books’ files go along too: the books chosen for each device, all of them to start with.",
+    "hostDesktop": "Let a device pair with this computer…",
+    "hostPhone": "Let a computer pair with this phone over Bluetooth…",
+    "account": "Your account on {name}…",
+    "network": "A computer on this network…",
+    "bluetooth": "A phone over Bluetooth…",
+    "folderIos": "A computer through a folder…",
+    "folderPhone": "A computer by USB…",
+    "folder": "A phone by USB, or a folder…",
+    "noWay": "This browser can’t reach other devices: use Chrome or Edge (over Bluetooth, or with a folder), or open nexlibris over plain http on the same network as the desktop app.",
+    "loading": "Loading…",
+    "hostTitle": "Let devices pair with this computer",
+    "hostExplain": "Lets the nexlibris app on your phone (or a browser on this network) sync with this library while nexlibris is open here. Each device needs pairing once.",
+    "turnOff": "Turn off",
+    "turnOn": "Turn on",
+    "pairDevice": "Pair a device…",
+    "noNetwork": "This computer isn’t on a network, so nothing can reach it.",
+    "pairTitle": "Pair a device",
+    "pairHow": "In nexlibris on the other device, add a Nexlibris twin (“A computer on this network”), and scan this or enter the address and code.",
+    "theDevice": "the device",
+    "qrLabel": "Pairing code {code} for {address}",
+    "codeOnce": "The code works once, for the next 10 minutes.",
+    "notSyncedYet": "Paired, not synced yet",
+    "lastSynced": "last synced {when}",
+    "forget": "Forget",
+    "direction": {
+      "both": "Sync",
+      "from": "Sync from",
+      "to": "Sync to"
+    },
+    "title": "{direction} {name}",
+    "interrupted": "{message} Nothing is lost: sync again to finish.",
+    "synced": "Synced {how} · last synced {when}",
+    "comparing": "Comparing with {name}…",
+    "back": "Back",
+    "unpairTitle": "Pair again to sync with it",
+    "unpair": "Unpair",
+    "fromTitle": "Brings every book {name} shows this device that it doesn’t have.",
+    "syncFrom": "Sync from…",
+    "toTitle": "Sends every book in this device’s catalog for {name} that it doesn’t have.",
+    "syncTo": "Sync to…",
+    "bothWays": "Both ways…",
+    "syncing": "Syncing…",
+    "download": "Download",
+    "send": "Send",
+    "pairComputer": "Pair with a computer",
+    "pairComputerHow": "In nexlibris on your computer, open Connections, choose Add connection, Nexlibris twin, then “Let a device pair with this computer”: turn it on and choose “Pair a device”. Then scan the code it shows, or enter its address and code here.",
+    "qrHint": "Hold the QR code inside the frame.",
+    "qrOtherwise": "Enter the address and code instead.",
+    "notPairingCode": "That QR code isn’t a nexlibris pairing code.",
+    "scanQr": "Scan QR code",
+    "address": "Address",
+    "code": "Code",
+    "pairing": "Pairing…",
+    "pair": "Pair",
+    "theComputer": "the computer",
+    "accountTitle": "Keep a copy in your account",
+    "accountExplain": "This library stays {where}, and your account{account} on {server} keeps a copy, which it syncs with as with another device. Your other devices can connect to your account the same way, and each syncs through it. Choose which books’ files stay here as well afterwards; the rest are fetched from your account when you open them.",
+    "onDevice": "on this device",
+    "inBrowser": "in this browser",
+    "accountName": " ({name})",
+    "thisServer": "this server",
+    "connecting": "Connecting…",
+    "connect": "Connect",
+    "yourAccount": "your account",
+    "bluetoothTitle": "Pair with a phone over Bluetooth",
+    "bluetoothHow": "In nexlibris on your phone, open Connections, choose Add connection, Nexlibris twin, then “Let a computer pair with this phone over Bluetooth”: turn it on and choose “Pair a device”. Then choose the phone here, and enter the code it shows. Syncing over Bluetooth is slow for books’ files: the phone can keep only some of them here, chosen as it shows the code (or later, by editing this computer’s connection there).",
+    "anotherPhone": "Choose another phone…",
+    "choosePhone": "Choose the phone…",
+    "connectedTo": "Connected to {name}",
+    "codeOn": "Code shown on {name}",
+    "syncFolder": "sync folder",
+    "iosTitle": "Sync with a computer through a folder",
+    "iosHow": "This iPhone syncs through a folder that the computer reaches too: on a USB drive plugged into the iPhone, then into the computer, or in iCloud Drive on both. Make one for it (say, nexlibris-sync) and choose it.",
+    "iosThen": "Sync here, take the drive to the computer (or let iCloud Drive catch up), and in nexlibris on the computer add a Nexlibris twin (“A phone by USB, or a folder”) and choose that folder. Then sync here again to take what the computer sent. Books’ files are only kept in the folder until the other side has them.",
+    "usbTitle": "Sync with a computer by USB",
+    "usbHow": "This phone syncs through a folder in its storage, which a computer can open when the phone is plugged in by USB. Make one for it (say, nexlibris-sync in Documents) and choose it.",
+    "usbThen": "Sync here, plug the phone in, and in nexlibris on the computer add a Nexlibris twin (“A phone by USB”) and choose that folder on the phone. Then sync here again to take what the computer sent. Books’ files are only kept in the folder until the other side has them.",
+    "folderTitle": "Sync with a phone by USB, or through a folder",
+    "folderHow": "Plug the phone in by USB, with its storage open on this computer (on a Mac that takes an app that mounts it, such as MacDroid), and choose the folder the phone syncs through (say {folder}). Sync on the phone before and after.",
+    "folderExample": "Documents/nexlibris-sync",
+    "anyFolder": "Any folder two devices both reach works the same way: a USB stick, or a shared or synced folder.",
+    "anotherFolder": "Choose another folder…",
+    "chooseFolder": "Choose a folder…",
+    "useFolder": "Use this folder",
+    "chooseTheFolder": "Choose the folder…",
+    "btHostTitle": "Let a computer pair with this phone over Bluetooth",
+    "btHostExplain": "Lets a computer sync with this phone over Bluetooth while nexlibris is open here: in Chrome or Edge, or the desktop app, with no network needed.",
+    "on": "On",
+    "onAs": "On as “{name}”",
+    "connected": {
+      "one": " · {n} device connected",
+      "other": " · {n} devices connected"
+    },
+    "end": ".",
+    "btPairHow": "On the computer, add a Nexlibris twin (“A phone over Bluetooth”), choose {phone}, and enter:",
+    "quoted": "“{name}”",
+    "thisPhone": "this phone",
+    "firstSync": "First sync",
+    "combine": "Combine this library with {hub}’s (a book in both shows up twice)",
+    "replace": "Replace this library with {hub}’s",
+    "thisDevice": "this device",
+    "inSync": "Already in sync",
+    "willChange": "What will change",
+    "changes": {
+      "one": "{n} change",
+      "other": "{n} changes"
+    },
+    "changeCounts": "{ours} from {hub} to apply here, {theirs} to send to it.",
+    "becomesCopy": "This library will become a copy of {hub}’s: books only here are removed.",
+    "books": {
+      "one": "{n} book",
+      "other": "{n} books"
+    },
+    "brings": "Brings {books} here: {titles}",
+    "sends": "Sends {books} to {hub}: {titles}",
+    "offered": {
+      "one": "{n} other book in this device’s catalog for {hub} is offered to it: it can ask for them, and they come with a later sync.",
+      "other": "{n} other books in this device’s catalog for {hub} are offered to it: it can ask for them, and they come with a later sync."
+    },
+    "keptOff": "Deleted here, so kept off this device, but not deleted on {hub}: {titles}",
+    "keptHere": "Deleted on {hub}, so not sent there again, but kept here: {titles}",
+    "disagree": "Where they disagree",
+    "keepTheirs": "Keep {hub}’s",
+    "keepOurs": "Keep this device’s",
+    "noConflicts": "Nothing was changed differently on both.",
+    "conflict": "{what}: {theirs} ({hub}{theirsKept}) / {ours} (this device{oursKept})",
+    "kept": ", kept",
+    "otherwise": "Otherwise {side} wins, except for reading positions: they keep whichever is newer.",
+    "nowFiles": "Synced; now the files",
+    "checkingFiles": "Checking which files {hub} needs…",
+    "sendingFiles": "Sending files to {hub}: {done} of {total}",
+    "fetchingFiles": "Fetching files from {hub}: {done} of {total}",
+    "bookFiles": {
+      "one": "{n} book’s file",
+      "other": "{n} books’ files"
+    },
+    "covers": {
+      "one": "{n} cover",
+      "other": "{n} covers"
+    },
+    "fetchCounts": "{files} and {covers}",
+    "notChosen": "; {files} not chosen for here, left on {hub} until opened",
+    "titlesMore": " and {count} more",
+    "done": "Synced",
+    "resultChanges": "{received} from {hub}, {sent} sent",
+    "disagreements": {
+      "one": ", {n} disagreement settled",
+      "other": ", {n} disagreements settled"
+    },
+    "broughtHere": {
+      "one": "; {n} book brought here",
+      "other": "; {n} books brought here"
+    },
+    "booksSent": {
+      "one": "; {n} book sent",
+      "other": "; {n} books sent"
+    },
+    "repaired": {
+      "one": "The check afterwards found {n} item that still differed, and copied it from the source of truth.",
+      "other": "The check afterwards found {n} items that still differed, and copied them from the source of truth."
+    },
+    "files": {
+      "one": "{n} file",
+      "other": "{n} files"
+    },
+    "fileCounts": "{fetched} fetched, {sent} sent",
+    "bookFileCount": {
+      "one": "{n} book file",
+      "other": "{n} book files"
+    },
+    "notKeptHere": "; {files} not kept here",
+    "leftOn": "; {files} left on {hub} until opened",
+    "notSent": "; {files} not chosen for {hub}, so kept only here",
+    "unavailableFolder": {
+      "one": "{n} file isn’t in the folder yet: the device that has it adds it when it next syncs there. Sync here again after that.",
+      "other": "{n} files aren’t in the folder yet: the device that has them adds them when it next syncs there. Sync here again after that."
+    },
+    "unavailable": {
+      "one": "{n} file isn’t on {hub} yet: another device has it and hasn’t synced since. It’ll come on a later sync.",
+      "other": "{n} files aren’t on {hub} yet: another device has them and hasn’t synced since. They’ll come on a later sync."
+    },
+    "failed": {
+      "one": "{n} file couldn’t be moved ({message}). Sync again to retry.",
+      "other": "{n} files couldn’t be moved ({message}). Sync again to retry."
+    },
+    "filesError": "The files weren’t moved: {message} Sync again to retry."
+  },
+  "connections": {
+    "never": "never",
+    "deactivateTitle": "Takes {name} out of the Library and Send to… on this device.",
+    "activateTitle": "Puts {name} in the Library and Send to… on this device, while it’s around.",
+    "deactivate": "Deactivate",
+    "activate": "Activate",
+    "active": "active",
+    "inactive": "inactive",
+    "inactiveBecause": "inactive: {reason}",
+    "connectAnother": "Connect another nexlibris",
+    "title": "Connections",
+    "empty": "Add a reader or a folder to send books to, an OPDS catalog to publish them, an OPDS server to browse, or nexlibris on another device to share books with. Each one you send to has a catalog of books: add to it with “Add to…” on books, or give it a search whose matches are added.",
+    "pairedLink": "{how}, last synced {when}",
+    "hostedLink": "syncs with this device, last synced {when}",
+    "notPaired": "not paired from here",
+    "instanceLine": "nexlibris · {link} · gets {books} · {status}",
+    "edit": "Edit",
+    "seesTitle": "The books {name} shows this device.",
+    "offeredTitle": "The books {name} offered this device when it last synced.",
+    "onIt": "On it…",
+    "fromTitle": "Brings every book {name} shows this device that it doesn’t have.",
+    "syncFrom": "Sync from",
+    "toTitle": "Sends every book in its catalog that {name} doesn’t have. Nothing is deleted either side.",
+    "syncTo": "Sync to",
+    "forgetTitle": "Unpairs {name}: it can’t sync with this device until it pairs again. The connection stays.",
+    "forget": "Forget",
+    "pair": "Pair…",
+    "noAddress": "no address",
+    "inCatalog": "{books} in its catalog",
+    "adds": " (adds “{query}”)",
+    "at": "at {url}",
+    "unknownType": "Unknown type {type}",
+    "folderName": " (“{name}”)",
+    "syncedAt": " · synced {when}",
+    "readTitle": "Brings in every book there that the library doesn’t have.",
+    "writeTitle": "Sends every book in its catalog that isn’t there yet, and newer copies of ones that changed. Nothing there is deleted.",
+    "addConnection": "Add connection",
+    "searchLabel": {
+      "device": "Add books by search",
+      "catalog": "Add books by search",
+      "instance": "Books it sees"
+    },
+    "connection": "Connection",
+    "editTitle": "Edit {name}",
+    "type": "Type",
+    "name": "Name",
+    "browseHelp": "Browse its books in the Library and under “On it…”, and add them to the library from there. Nothing is sent to it.",
+    "thisDevice": "This device",
+    "instanceSearchHelp": "{name} sees the books matching this search, and books you add to it: their details, covers and files. It doesn’t see the others, and nothing either side deletes is deleted on the other.",
+    "searchHelp": "Books matching it, as in the search box (say, tag:xteink, or rating:4+ author:herbert), are added to its catalog beside the books you add to it, and stay there; take one out by hand to keep it out.",
+    "folder": "Folder",
+    "chooseAnother": "“{name}”: choose another…",
+    "chooseFolder": "Choose folder…",
+    "folderHelp": "Where its books are, on this computer (a backup drive, a reader that mounts as one). Each computer chooses it for itself; a manifest there, .nexlibris-library.json, keeps the books’ details.",
+    "signIn": "Sign-in (optional)",
+    "userName": "User name",
+    "password": "Password",
+    "signInHelp": "For a catalog that asks for one (HTTP Basic). Kept on this device only, sent only to the catalog’s own server.",
+    "insecure": "This address isn’t https, so the password would be sent unencrypted.",
+    "deleteNamed": "Delete {name}",
+    "removedItem": "A removed item",
+    "sendTo": "Send to {name}",
+    "sync": "Sync {name}",
+    "connecting": "Connecting to {name}…",
+    "syncing": "Syncing",
+    "progress": "{what} ({done} of {total})…",
+    "sent": "Sent {files}",
+    "moved": ", moved {count}",
+    "keptThere": ", kept {count} already there",
+    "replaced": {
+      "one": ", replaced {count} old copy",
+      "other": ", replaced {count} old copies"
+    },
+    "end": ".",
+    "nothingNeeded": "Nothing needed doing.",
+    "tookOut": {
+      "one": " Took {count} book deleted there out of its catalog.",
+      "other": " Took {count} books deleted there out of its catalog."
+    },
+    "catalogAdded": " Added the catalog to the reader’s OPDS libraries.",
+    "someFailed": "Some steps failed:",
+    "pathError": "{path}: {message}",
+    "updateCatalog": "Update catalog",
+    "upToDate": "Up to date",
+    "send": "Send",
+    "example": "For example: {example}",
+    "willSend": "send {files}",
+    "willKeep": {
+      "one": "keep 1 copy already there",
+      "other": "keep {count} copies already there"
+    },
+    "willMove": {
+      "one": "move {count} to its new place",
+      "other": "move {count} to their new places"
+    },
+    "willUpdate": "update {count}",
+    "will": "Will {changes}.",
+    "allThere": "Everything in its catalog is already there.",
+    "willAddCatalog": " Will add the catalog at {url} to the reader’s OPDS libraries.",
+    "unchanged": " {count} already there.",
+    "connected": "Connected: {description}.",
+    "movedFrom": "({found}moved from {from})",
+    "foundThere": "already on the device, ",
+    "replacing": ", replacing {name}",
+    "updated": ", updated",
+    "keptLine": "(already there, kept)",
+    "deletedThere": "Deleted there since the last sync, so taken out of its catalog rather than sent again: {titles}.",
+    "leftThere": {
+      "one": "{count} file no longer in its catalog left there as it is.",
+      "other": "{count} files no longer in its catalog left there as they are."
+    },
+    "keepFound": "Keep copies of these books already on the device (put there by hand or by other software) rather than sending nexlibris’s. They’re sent again once the book’s file in the library changes.",
+    "leftAlone": "Left alone:",
+    "unsendable": "Not sent, with no file the device reads: {titles}.",
+    "notAllowed": "nexlibris wasn’t allowed to write to {name}.",
+    "staticCatalog": "A static OPDS catalog of {books}, for hosting anywhere that serves files (it’s meant for the root of a site){at}. Books go as their files are; book files written before stay, even once out of the catalog.",
+    "atUrl": ", at {url}",
+    "writtenTo": "It’s written to the folder “{name}” on this computer; only what changed is copied.",
+    "chooseToWrite": "Choose a folder to write it to (the one your site is deployed from, say): later syncs update it in place.",
+    "zipOnly": "This browser can’t write to folders, so each sync saves the whole catalog as a zip.",
+    "writing": "Writing",
+    "wrote": "Wrote the catalog of {books}",
+    "notSaved": "Not saved",
+    "alreadyUpToDate": {
+      "one": "; {count} file was already up to date",
+      "other": "; {count} files were already up to date"
+    },
+    "removedPages": {
+      "one": "; removed {count} page no longer needed",
+      "other": "; removed {count} pages no longer needed"
+    },
+    "inFolder": " in “{name}”",
+    "leftOut": "{title}: left out, with no file in a format the catalog takes",
+    "forgetFolder": "Forget folder",
+    "anotherFolder": "Another folder…",
+    "saveZip": "Save as zip",
+    "syncButton": "Sync",
+    "on": "On {name}",
+    "onlySpecific": "Only specific {many}",
+    "choice": {
+      "one": "choice",
+      "other": "choices"
+    },
+    "books": "Books",
+    "reading": "Reading…",
+    "status": {
+      "current": "up to date",
+      "update": "the next sync sends a newer copy",
+      "left": "no longer in its catalog: left there",
+      "changed": "changed on the device, so left alone"
+    },
+    "seriesIndex": "{series} #{index}",
+    "working": "(working…)",
+    "noCatalogYet": "Nothing yet: the catalog hasn’t been written. Sync it to write it.",
+    "noBooks": "No books on it.",
+    "onItCounts": "{books} on it: {parts}.",
+    "sentByCount": "{count} sent by nexlibris",
+    "alsoCount": "{count} also in your library",
+    "notInCount": "{count} not in your library",
+    "pending": {
+      "one": " {count} book in its catalog not on it yet: the next sync adds it.",
+      "other": " {count} books in its catalog not on it yet: the next sync adds them."
+    },
+    "notInLibrary": "Not in your library",
+    "importAll": "Import all",
+    "importHelp": "Importing copies a book into the library and keeps it on this connection.",
+    "import": "Import",
+    "alsoInLibrary": "Also in your library",
+    "linkAll": "Link all",
+    "linkHelp": "Put there some other way. Linking keeps them on this connection and lets syncs update them. One whose library copy has no file the connection takes can be imported instead, adding the device’s file to it.",
+    "link": "Link",
+    "inTheCatalog": "In the catalog",
+    "sentBy": "Sent by nexlibris",
+    "removeHelp": "Removing one deletes it there and takes it out of the catalog, so syncs don’t send it again.",
+    "removedFromLibrary": "removed from the library",
+    "notOnYet": "Not on it yet"
+  },
+  "errors": {
+    "noBluetooth": "This browser can’t use Bluetooth. Try Chrome or Edge, or the desktop app.",
+    "noPhoneChosen": "No phone was chosen.",
+    "cantConnect": "{name} can’t be connected to.",
+    "couldntConnect": "Couldn’t connect to {name}: {message}. Check that sync over Bluetooth is on there.",
+    "dropped": "The Bluetooth connection to {name} dropped.",
+    "notConnected": "Not connected to {name}.",
+    "stoppedAnswering": "{name} stopped answering over Bluetooth.",
+    "bluetoothFirst": "Sync over Bluetooth first.",
+    "unreachable": "Couldn’t reach {host}. Check the address and your connection{why}.",
+    "unreachableSignIn": "; or the server may not let web pages sign in to it (it has to allow the Authorization header), which the desktop app can",
+    "unreachableRead": "; or the server may not let web pages read it, which the desktop app can",
+    "refusedSignIn": "The catalog refused the user name and password.",
+    "serverSaid": "The server said {status}.",
+    "cantDownload": "The server doesn’t let web pages download its books. Download it from the link, then import it; the desktop app can add it directly.",
+    "feedSignIn": "The catalog needs a sign-in, or refused the one given: check the user name and password in the connection’s settings.",
+    "feedNotFound": "The catalog has nothing at that address (404).",
+    "feedStatus": "The catalog’s server said {status}.",
+    "noSearchDescription": "Couldn’t read how to search this catalog (its OpenSearch description). Give a search address in the connection’s settings to search it from here.",
+    "noSearch": "This catalog doesn’t offer search.",
+    "notOpds": "That address doesn’t serve an OPDS catalog (an Atom feed).",
+    "syncFolder": "Sync folder",
+    "chooseFolderFirst": "Choose the folder first.",
+    "forgotFolder": "This computer doesn’t remember the sync folder. Pair with it again.",
+    "folderNotAllowed": "nexlibris wasn’t allowed to use the folder “{name}”.",
+    "folderFirst": "Sync with the folder first.",
+    "openLibraryUnreachable": "Couldn’t reach Open Library ({message}).",
+    "openLibraryStatus": "Open Library answered {status}",
+    "missingFromStorage": "The file is missing from storage.",
+    "drm": "It’s DRM-protected ({drm}), so it’s left alone.",
+    "didntTake": "It didn’t take: {fields}",
+    "bookGone": "This book, or this file of it, is no longer in the library.",
+    "fileMissing": "This file is missing from storage.",
+    "noAnswer": "The library didn’t answer. Open nexlibris, then open the book from there.",
+    "coverMissing": "A cover is missing from the library.",
+    "bookFileMissing": "{title}: the file is missing from the library.",
+    "chooseServer": "Choose a nexlibris server first (Account…).",
+    "savedFoldersOpen": "Couldn’t open the saved folders.",
+    "savedFoldersRead": "Couldn’t read the saved folders.",
+    "noCanvas": "There’s no canvas to draw a cover on here.",
+    "encodeCover": "Couldn’t encode the cover.",
+    "nothingToConvert": "Nothing to convert with",
+    "missingNamed": "{name} is missing from storage",
+    "workerStopped": "The worker stopped.",
+    "unknownFormat": "Unknown format {format}",
+    "changedOnDevice": "It was changed on the device since it was sent.",
+    "anotherBook": "Another book is there until the next full sync.",
+    "notSent": "A file nexlibris didn’t send is already there.",
+    "noFileTaken": "{title} has no file this connection takes.",
+    "cantSendBack": "This device can’t send files back.",
+    "notFetched": "This file isn’t on this device, and couldn’t be fetched ({reasons})",
+    "readerRefused": "The reader refused {path}: {message}",
+    "noThumbnailCanvas": "No canvas to draw the thumbnail on.",
+    "couldntRead": "Couldn't read {name} from the library: {status}",
+    "noMetadata": "it has no metadata",
+    "alreadyInLibrary": "already in the library",
+    "unsupported": "unsupported file type",
+    "couldntConvert": "couldn't convert to EPUB: {message}",
+    "couldntReadOpf": "couldn't read Calibre's metadata: {message}",
+    "couldntReadCover": "couldn't read the cover: {message}",
+    "keptGone": "The item to keep is no longer in the library.",
+    "libraryFileMissing": "The file is missing from the library.",
+    "notThere": "{path} isn’t there."
+  },
+  "instanceName": {
+    "iPad": "iPad",
+    "iPhone": "iPhone",
+    "android": "Android device",
+    "aBrowser": "A browser",
+    "on": "{browser} on {os}",
+    "mac": "a Mac",
+    "windows": "Windows",
+    "linux": "Linux",
+    "thisComputer": "this computer"
+  },
+  "opdsExport": {
+    "unknownAuthor": "Unknown author",
+    "byTitleFeed": "Books by title",
+    "recent": "Recent books",
+    "byTitle": "By title",
+    "authors": "Authors",
+    "series": "Series",
+    "tags": "Tags",
+    "browse": "Browse",
+    "search": "Search",
+    "searchFor": "Search: {term}"
+  },
+  "conflicts": {
+    "quoted": "“{text}”",
+    "aBook": "A book",
+    "aDevice": "A device",
+    "aCategory": "A category",
+    "part": "{name} — {part}",
+    "tag": "{name} — tag {tag}",
+    "file": "{name} — a file",
+    "authors": "{name} — authors",
+    "device": "Device {name}",
+    "setting": "{name} — setting {setting}",
+    "category": "Category {name}",
+    "kept": "kept",
+    "removed": "removed",
+    "onDevice": "on the device",
+    "notOnDevice": "not on the device",
+    "keptOff": "kept off the device",
+    "notKeptOff": "not kept off",
+    "entries": "{name}: {entries}",
+    "noEntries": "no entries",
+    "none": "none",
+    "tagged": "tagged",
+    "attached": "attached",
+    "rating": "{value} ★"
+  },
+  "about": {
+    "title": "About nexlibris",
+    "tagline": "A library for your books, wherever you read them.",
+    "intro": "nexlibris keeps your ebooks, comics and documents in one library: it reads their details and covers, converts between formats, and sends books to your readers. It works in the browser, as a desktop app and on your phone, keeping the library on your own devices (or your own server), and syncs between them.",
+    "welcome": "Welcome. Your library is empty: add some books to start, by importing files, a folder or a whole Calibre library, or by looking one up by its ISBN. You can also connect to nexlibris on another device and sync its library here.",
+    "whatItDoes": "What it does",
+    "features": {
+      "import": {
+        "title": "Import",
+        "text": "EPUB, Kindle books, PDF, comics, text and RTF, single files, folders or whole Calibre libraries, with their details and covers."
+      },
+      "read": {
+        "title": "Read",
+        "text": "Every format it imports opens in the reader, which keeps your place on every device."
+      },
+      "convert": {
+        "title": "Convert",
+        "text": "Between formats, in the app itself: EPUB to Kindle books, PDF or RTF, comics between CBZ and CBR, and more."
+      },
+      "send": {
+        "title": "Send to readers",
+        "text": "CrossPoint readers, folders and drives, and OPDS catalogs, each with the books you choose for it."
+      },
+      "sync": {
+        "title": "Sync",
+        "text": "Between your computer, phone and browser, over the network, Bluetooth or a shared folder, or through your own server."
+      },
+      "search": {
+        "title": "Search",
+        "text": "By any detail, with a search syntax like Gmail’s, and inside the books’ text."
+      }
+    },
+    "apps": "Get the apps",
+    "appsIntro": "The library is the same everywhere; the apps add what a browser can’t do, such as keeping it in a folder of your own.",
+    "app": {
+      "desktop": {
+        "name": "Desktop",
+        "platforms": "macOS, Windows and Linux",
+        "download": "Download",
+        "unavailable": "Not available yet"
+      },
+      "android": {
+        "name": "Android",
+        "platforms": "An APK, installed directly",
+        "download": "Download APK",
+        "unavailable": "Not available yet"
+      },
+      "ios": {
+        "name": "iPhone and iPad",
+        "platforms": "iOS and iPadOS",
+        "download": "Get it",
+        "unavailable": "Not available yet: build it from the source with Xcode"
+      }
+    },
+    "thisOne": "You’re using this one.",
+    "source": "Source",
+    "sourceText": "nexlibris is free software, under the MIT licence. Its source, issues and releases:",
+    "getStarted": "Get started"
+  },
+  "epubier": {
+    "loading": "Loading…",
+    "loadingBook": "Loading book",
+    "titleWithAuthor": "{title} — {author}",
+    "percent": "{percent}%",
+    "toolbar": {
+      "back": "Back",
+      "contents": "Contents, notes and settings",
+      "bookmark": "Bookmark this page",
+      "removeBookmark": "Remove bookmark",
+      "fullscreen": "Fullscreen",
+      "share": "Share a link to this page",
+      "search": "Search"
+    },
+    "navigation": {
+      "previousPage": "Previous page",
+      "nextPage": "Next page",
+      "position": "Position in book"
+    },
+    "location": {
+      "pageOf": "Page {page} of {total}",
+      "corner": "{page} / {total}",
+      "countingPages": "Counting pages…",
+      "pagesLeftInChapter": {
+        "one": "{count} page left in chapter",
+        "other": "{count} pages left in chapter"
+      },
+      "lastPageInChapter": "Last page in chapter",
+      "separator": " · "
+    },
+    "panel": {
+      "close": "Close",
+      "contents": "Contents",
+      "notes": "Notes",
+      "settings": "Settings"
+    },
+    "toc": {
+      "empty": "This book has no table of contents.",
+      "start": "Start"
+    },
+    "notes": {
+      "label": "Bookmarks and highlights",
+      "bookmark": "Bookmark",
+      "page": "Page {page}",
+      "share": "Share link",
+      "delete": "Delete",
+      "empty": "No bookmarks or highlights yet. Bookmark a page with the bookmark button or B, or select some text to highlight it.",
+      "emptyBookmarksOnly": "No bookmarks yet. Bookmark a page with the bookmark button or B.",
+      "emptyTouch": "No bookmarks or highlights yet. Bookmark a page with the bookmark button, or select some text to highlight it.",
+      "emptyBookmarksOnlyTouch": "No bookmarks yet. Bookmark a page with the bookmark button."
+    },
+    "settings": {
+      "theme": "Theme",
+      "themeSample": "Aa",
+      "layout": "Layout",
+      "pageTurn": "Page turn",
+      "font": "Font",
+      "textSize": "Text size",
+      "smallerText": "Smaller text",
+      "largerText": "Larger text",
+      "resetTextSize": "Reset to the book's size",
+      "zoom": "Zoom",
+      "zoomOut": "Zoom out",
+      "zoomIn": "Zoom in",
+      "resetZoom": "Fit to the screen",
+      "align": "Text alignment"
+    },
+    "themes": {
+      "black": "Black",
+      "sepiaDark": "Sepia dark",
+      "sepiaLight": "Sepia light",
+      "white": "White"
+    },
+    "fonts": {
+      "original": "Original"
+    },
+    "layouts": {
+      "paginated": "Pages",
+      "scrolled": "Scroll"
+    },
+    "pageTurns": {
+      "slide": "Slide",
+      "none": "None"
+    },
+    "alignments": {
+      "justify": "Justified",
+      "left": "Left",
+      "right": "Right",
+      "original": "Original"
+    },
+    "highlight": {
+      "menu": "Highlight",
+      "colors": {
+        "yellow": "Yellow highlight",
+        "green": "Green highlight",
+        "blue": "Blue highlight",
+        "pink": "Pink highlight"
+      },
+      "share": "Share a link to this passage",
+      "remove": "Remove highlight"
+    },
+    "share": {
+      "copied": "Link copied",
+      "failed": "Couldn't copy the link",
+      "notReady": "Still counting pages, try again in a moment",
+      "quote": "“{text}”"
+    },
+    "search": {
+      "title": "Search",
+      "placeholder": "Search this book",
+      "searching": "Searching… {percent}%",
+      "results": {
+        "one": "{count} result",
+        "other": "{count} results"
+      },
+      "noResults": "No results"
+    },
+    "comic": {
+      "page": "Page {page}"
+    },
+    "errors": {
+      "noBookTitle": "No book specified",
+      "noBook": "No book was given to read.",
+      "openFailed": "Could not open book",
+      "unsupported": "Not a kind of book this reader opens ({formats})",
+      "changedOnServer": "The book changed on the server while it was being read",
+      "noPages": "There are no pages in this comic",
+      "notZip": "This comic isn't a zip archive",
+      "passwordProtected": "This comic is password-protected",
+      "unsupportedCompression": "{name} is compressed in a way this reader can't unpack",
+      "archiveUnreadable": "This comic's archive couldn't be read",
+      "archiveCutShort": "This comic's archive is cut short",
+      "tooBig": "This comic is too big to open",
+      "pageUnpackFailed": "A page of this comic couldn't be unpacked",
+      "pageMissing": "A page is missing from this comic's archive",
+      "workerFailed": "Couldn't load the comic archive worker from {url}",
+      "closed": "The comic was closed"
+    }
+  }
+}

@@ -5,11 +5,12 @@ import { findDuplicates, mergeItems, type DuplicateGroup } from '../library/dedu
 import { useLibrary } from '../library/LibraryContext';
 import { rereadMetadata, type RereadProgress, type RereadResult } from '../library/reread';
 import { filesBehind } from '../library/fileMetadata';
-import { findStaleFiles, updateFiles, type FindResult, type Progress as FileProgress, type UpdateResult } from '../library/updateFiles';
+import { changeLabel, findStaleFiles, updateFiles, type FindResult, type Progress as FileProgress, type UpdateResult } from '../library/updateFiles';
 import { Badge, Button, Muted, Spacer } from '../styles/ui';
 import { Cover, PlaceholderTitle } from './Cover';
 import { formatLabel } from './ItemFiles';
 import { Modal, ModalFooter } from './Modal';
+import { t } from '../i18n';
 
 /** The cleanups, each a description and its button. */
 const Cleanups = styled.ul`
@@ -108,11 +109,11 @@ const GroupActions = styled.div`
 
 /** What tells copies of a book apart. */
 function describe(item: Item): { formats: string; detail: string } {
-  const formats = [...new Set(item.files.map((f) => formatLabel(f.format)))].join(', ') || 'No files';
+  const formats = [...new Set(item.files.map((f) => formatLabel(f.format)))].join(t('common.listJoin')) || t('cleanup.noFiles');
   const series = typeof item.metadata.series === 'string' ? item.metadata.series : undefined;
   const isbn = Object.entries(item.identifiers).find(([key]) => key.startsWith('isbn'))?.[1];
-  const added = `Added ${new Date(item.addedAt).toLocaleDateString()}`;
-  return { formats, detail: [added, series, isbn && `ISBN ${isbn}`].filter(Boolean).join(' · ') };
+  const added = t('cleanup.added', { date: new Date(item.addedAt).toLocaleDateString() });
+  return { formats, detail: [added, series, isbn && t('cleanup.isbn', { isbn })].filter(Boolean).join(t('common.list')) };
 }
 
 /** Which of a group is kept, and which aren't merged into it (not the same book after all). */
@@ -146,7 +147,7 @@ function DuplicateEntries({
   return (
     <Group>
       <legend>
-        {first.title} <Muted>· {authors}</Muted>
+        {first.title} <Muted>{t('cleanup.authors', { authors })}</Muted>
       </legend>
       {group.items.map((item) => {
         const { formats, detail } = describe(item);
@@ -157,7 +158,7 @@ function DuplicateEntries({
               <input
                 type="radio"
                 name={group.key}
-                aria-label={`Keep ${formats}, ${detail}`}
+                aria-label={t('cleanup.keep', { formats, detail })}
                 checked={kept}
                 onChange={() => onChoice({ keep: item.id, skipped: new Set([...choice.skipped].filter((id) => id !== item.id)) })}
               />
@@ -168,12 +169,12 @@ function DuplicateEntries({
               </Details>
             </label>
             {kept ? (
-              <Badge>Kept</Badge>
+              <Badge>{t('cleanup.kept')}</Badge>
             ) : (
-              <label title="Merge into the copy kept">
+              <label title={t('cleanup.mergeInto')}>
                 <input
                   type="checkbox"
-                  aria-label={`Merge ${formats}, ${detail}`}
+                  aria-label={t('cleanup.merge', { formats, detail })}
                   checked={!choice.skipped.has(item.id)}
                   onChange={(e) => {
                     const skipped = new Set(choice.skipped);
@@ -189,7 +190,7 @@ function DuplicateEntries({
       })}
       <GroupActions>
         <Button $variant="secondary" $size="small" disabled={busy || !merging} onClick={onMerge}>
-          Merge {merging + 1} into one
+          {t('cleanup.mergeN', { count: merging + 1 })}
         </Button>
       </GroupActions>
     </Group>
@@ -228,47 +229,42 @@ export function CleanupDialog({
   if (view === 'reread') return <Reread onBack={back} onClose={onClose} {...(pauseIndexing && { pauseIndexing })} />;
   if (view === 'files') return <UpdateFiles onBack={back} onClose={onClose} {...indexing} />;
   return (
-    <Modal title="Clean up library" onClose={onClose}>
+    <Modal title={t('cleanup.title')} onClose={onClose}>
       <Cleanups>
         <li>
           <div>
-            <strong>Same title and author</strong>
-            <Muted>Find items that are the same book, and merge each into one.</Muted>
+            <strong>{t('cleanup.duplicates')}</strong>
+            <Muted>{t('cleanup.duplicatesExplain')}</Muted>
           </div>
           <Button $variant="secondary" onClick={() => setView('duplicates')}>
-            Find duplicates…
+            {t('cleanup.findDuplicates')}
           </Button>
         </li>
         <li>
           <div>
-            <strong>Re-read metadata</strong>
-            <Muted>
-              Read each book’s files again to fill in what its details lack: sort names, dates, cover colours and the
-              like. Nothing already there is changed, and nothing is looked up online.
-            </Muted>
+            <strong>{t('cleanup.reread')}</strong>
+            <Muted>{t('cleanup.rereadExplain')}</Muted>
           </div>
           <Button $variant="secondary" onClick={() => setView('reread')}>
-            Re-read…
+            {t('cleanup.rereadButton')}
           </Button>
         </li>
         <li>
           <div>
-            <strong>Update book files</strong>
+            <strong>{t('cleanup.updateFiles')}</strong>
             <Muted>
-              Write the library’s details (title, authors, tags, series, description and the like) and cover into EPUBs
-              that say otherwise, so the files match wherever they go. Details the library lacks are left as the file has
-              them, and copies converted for a reader keep their own cover.
-              {behind > 0 && ` ${plural(behind, 'file')} ${behind === 1 ? 'is' : 'are'} behind edits made since.`}
+              {t('cleanup.updateFilesExplain')}
+              {behind > 0 && t('cleanup.behind', count(behind))}
             </Muted>
           </div>
           <Button $variant="secondary" onClick={() => setView('files')}>
-            Check files…
+            {t('cleanup.checkFiles')}
           </Button>
         </li>
       </Cleanups>
       <ModalFooter>
         <Spacer />
-        <Button onClick={onClose}>Done</Button>
+        <Button onClick={onClose}>{t('common.done')}</Button>
       </ModalFooter>
     </Modal>
   );
@@ -305,12 +301,11 @@ export function Duplicates({ onBack, onClose }: { onBack(): void; onClose(): voi
 
   const mergeable = groups.filter((group) => mergedOf(group, choiceOf(group)).length);
   return (
-    <Modal title="Same title and author" onClose={onClose}>
+    <Modal title={t('cleanup.duplicates')} onClose={onClose}>
       {groups.length ? (
         <>
           <Intro>
-            {groups.length === 1 ? 'One book has' : `${groups.length.toLocaleString()} books have`} more than one item.
-            Merging keeps the one chosen and adds the others’ files, tags and fields it lacks, then removes them.
+            {t('cleanup.groups', count(groups.length))}
           </Intro>
           <Groups>
             {groups.map((group) => (
@@ -326,20 +321,20 @@ export function Duplicates({ onBack, onClose }: { onBack(): void; onClose(): voi
           </Groups>
         </>
       ) : (
-        <Intro>No two items share a title and author.</Intro>
+        <Intro>{t('cleanup.noDuplicates')}</Intro>
       )}
-      {error && <Muted as="p" role="alert">Couldn’t merge: {error}</Muted>}
+      {error && <Muted as="p" role="alert">{t('cleanup.mergeFailed', { error })}</Muted>}
       <ModalFooter>
         <Button $variant="secondary" disabled={busy} onClick={onBack}>
-          Back
+          {t('common.back')}
         </Button>
         {mergeable.length > 1 && (
           <Button $variant="secondary" disabled={busy} onClick={() => void merge(mergeable)}>
-            Merge all {mergeable.length.toLocaleString()}
+            {t('cleanup.mergeAll', { n: mergeable.length.toLocaleString() })}
           </Button>
         )}
         <Spacer />
-        <Button onClick={onClose}>Done</Button>
+        <Button onClick={onClose}>{t('common.done')}</Button>
       </ModalFooter>
     </Modal>
   );
@@ -350,7 +345,8 @@ type RereadState =
   | { kind: 'done'; result: RereadResult }
   | { kind: 'failed'; message: string };
 
-const plural = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString()} ${n === 1 ? one : many}`;
+/** `count` for a plural form, and `n` the number as the locale writes it. */
+const count = (n: number) => ({ count: n, n: n.toLocaleString() });
 
 /** Re-reading metadata from the books' files, from when it's opened, with progress and a way to stop. */
 function Reread({ onBack, onClose, pauseIndexing }: { onBack(): void; onClose(): void; pauseIndexing?: () => () => void }) {
@@ -384,33 +380,33 @@ function Reread({ onBack, onClose, pauseIndexing }: { onBack(): void; onClose():
 
   const running = state.kind === 'running';
   return (
-    <Modal title="Re-read metadata" onClose={onClose}>
+    <Modal title={t('cleanup.reread')} onClose={onClose}>
       {state.kind === 'running' && (
         <>
           <Intro>
             {state.progress.total
-              ? `${state.progress.done.toLocaleString()} of ${plural(state.progress.total, 'book')} read…`
-              : 'Starting…'}
+              ? t('cleanup.read', { done: state.progress.done.toLocaleString(), ...count(state.progress.total) })
+              : t('cleanup.starting')}
           </Intro>
           <Progress value={state.progress.done} max={Math.max(state.progress.total, 1)} />
           {state.progress.current && <Current title={state.progress.current}>{state.progress.current}</Current>}
         </>
       )}
       {state.kind === 'done' && <RereadSummary result={state.result} />}
-      {state.kind === 'failed' && <Muted as="p" role="alert">It stopped: {state.message}</Muted>}
+      {state.kind === 'failed' && <Muted as="p" role="alert">{t('cleanup.stopped', { message: state.message })}</Muted>}
       <ModalFooter>
         {running ? (
           <Button $variant="secondary" onClick={() => stop.current?.abort()}>
-            Stop
+            {t('cleanup.stop')}
           </Button>
         ) : (
           <Button $variant="secondary" onClick={onBack}>
-            Back
+            {t('common.back')}
           </Button>
         )}
         <Spacer />
         <Button disabled={running} onClick={onClose}>
-          Done
+          {t('common.done')}
         </Button>
       </ModalFooter>
     </Modal>
@@ -421,18 +417,18 @@ export function RereadSummary({ result }: { result: RereadResult }) {
   return (
     <>
       <Intro>
-        {result.stopped ? 'Stopped. ' : ''}
+        {result.stopped ? t('cleanup.stoppedPrefix') : ''}
         {result.updated
-          ? `Filled in ${plural(result.filled, 'detail')} on ${plural(result.updated, 'book')}.`
-          : 'Nothing to fill in: every book has what its files say.'}
+          ? t('cleanup.filled', { details: t('cleanup.details', count(result.filled)), books: t('cleanup.books', count(result.updated)) })
+          : t('cleanup.nothingToFill')}
       </Intro>
       {result.notHere > 0 && (
-        <Muted as="p">{plural(result.notHere, 'book')} weren’t read, as their files are on another device. Re-read there to fill them in.</Muted>
+        <Muted as="p">{t('cleanup.rereadNotHere', count(result.notHere))}</Muted>
       )}
       {result.failed.length > 0 && (
         <Muted as="p">
-          {plural(result.failed.length, 'book')} couldn’t be read: {result.failed.slice(0, 3).map((f) => `${f.title} (${f.message})`).join('; ')}
-          {result.failed.length > 3 && '…'}
+          {t('cleanup.rereadFailed', { ...count(result.failed.length), list: result.failed.slice(0, 3).map((f) => t('cleanup.failure', f)).join(t('cleanup.failureSeparator')) })}
+          {result.failed.length > 3 && t('cleanup.ellipsis')}
         </Muted>
       )}
     </>
@@ -523,15 +519,16 @@ export function UpdateFiles({
 
   const running = state.kind === 'finding' || state.kind === 'updating';
   return (
-    <Modal title="Update book files" onClose={onClose}>
+    <Modal title={t('cleanup.updateFiles')} onClose={onClose}>
       {running && (
         <>
           <Intro>
             {!state.progress.total
-              ? 'Starting…'
-              : state.kind === 'finding'
-                ? `${state.progress.done.toLocaleString()} of ${plural(state.progress.total, 'book')} checked…`
-                : `${state.progress.done.toLocaleString()} of ${plural(state.progress.total, 'book')} updated…`}
+              ? t('cleanup.starting')
+              : t(state.kind === 'finding' ? 'cleanup.checked' : 'cleanup.updated', {
+                  done: state.progress.done.toLocaleString(),
+                  ...count(state.progress.total),
+                })}
           </Intro>
           <Progress value={state.progress.done} max={Math.max(state.progress.total, 1)} />
           {state.progress.current && <Current title={state.progress.current}>{state.progress.current}</Current>}
@@ -539,23 +536,23 @@ export function UpdateFiles({
       )}
       {state.kind === 'found' && <StaleFiles found={state.found} />}
       {state.kind === 'done' && <FilesUpdated result={state.result} />}
-      {state.kind === 'failed' && <Muted as="p" role="alert">It stopped: {state.message}</Muted>}
+      {state.kind === 'failed' && <Muted as="p" role="alert">{t('cleanup.stopped', { message: state.message })}</Muted>}
       <ModalFooter>
         {running ? (
           <Button $variant="secondary" onClick={() => stop.current?.abort()}>
-            Stop
+            {t('cleanup.stop')}
           </Button>
         ) : (
           <Button $variant="secondary" onClick={onBack}>
-            Back
+            {t('common.back')}
           </Button>
         )}
         <Spacer />
         {state.kind === 'found' && state.found.stale.length > 0 ? (
-          <Button onClick={() => update(state.found)}>Update {plural(state.found.stale.length, 'file')}</Button>
+          <Button onClick={() => update(state.found)}>{t('cleanup.update', { files: t('cleanup.files', count(state.found.stale.length)) })}</Button>
         ) : (
           <Button disabled={running} onClick={onClose}>
-            Done
+            {t('common.done')}
           </Button>
         )}
       </ModalFooter>
@@ -569,31 +566,36 @@ export function StaleFiles({ found }: { found: FindResult }) {
   return (
     <>
       <Intro>
-        {found.stopped ? 'Stopped. ' : ''}
+        {found.stopped ? t('cleanup.stoppedPrefix') : ''}
         {stale.length
-          ? `${plural(stale.length, 'file')} on ${plural(new Set(stale.map((s) => s.item.id)).size, 'book')} ${stale.length === 1 ? 'differs' : 'differ'} from the library. Updating writes the library’s details and cover into them; their text and identifiers stay as they are.`
-          : `Every file matches the library${found.current ? ` (${plural(found.current, 'EPUB')} checked)` : ''}.`}
+          ? t('cleanup.stale', {
+              count: stale.length,
+              files: t('cleanup.files', count(stale.length)),
+              books: t('cleanup.books', count(new Set(stale.map((s) => s.item.id)).size)),
+            })
+          : found.current
+            ? t('cleanup.allMatchChecked', { epubs: t('cleanup.epubs', count(found.current)) })
+            : t('cleanup.allMatch')}
       </Intro>
       {stale.length > 0 && (
-        <FileList aria-label="Files to update">
+        <FileList aria-label={t('cleanup.filesToUpdate')}>
           {stale.map(({ item, file, changes }) => (
             <li key={`${item.id}:${file.hash}`}>
               <span>
-                {item.title} <Muted>· {formatLabel(file.format)}</Muted>
+                {item.title} <Muted>{t('cleanup.format', { format: formatLabel(file.format) })}</Muted>
               </span>
-              <Muted>{changes.join(', ')}</Muted>
+              <Muted>{changes.map(changeLabel).join(t('common.listJoin'))}</Muted>
             </li>
           ))}
         </FileList>
       )}
       {found.drm.length > 0 && (
         <Muted as="p">
-          {plural(found.drm.length, 'file')} {found.drm.length === 1 ? 'is' : 'are'} DRM-protected, so left alone:{' '}
-          {found.drm.slice(0, 3).map((f) => f.title).join('; ')}
-          {found.drm.length > 3 && '…'}
+          {t('cleanup.drm', { ...count(found.drm.length), list: found.drm.slice(0, 3).map((f) => f.title).join(t('cleanup.failureSeparator')) })}
+          {found.drm.length > 3 && t('cleanup.ellipsis')}
         </Muted>
       )}
-      <NotRead notHere={found.notHere} failed={found.failed} verb="checked" />
+      <NotRead notHere={found.notHere} failed={found.failed} kind="checked" />
     </>
   );
 }
@@ -602,25 +604,25 @@ export function FilesUpdated({ result }: { result: UpdateResult }) {
   return (
     <>
       <Intro>
-        {result.stopped ? 'Stopped. ' : ''}
-        {result.updated ? `Updated ${plural(result.updated, 'file')}.` : 'No files were updated.'}
-        {result.freed > 0 && ` The old ${result.freed === 1 ? 'version was' : 'versions were'} deleted.`}
+        {result.stopped ? t('cleanup.stoppedPrefix') : ''}
+        {result.updated ? t('cleanup.updatedFiles', { files: t('cleanup.files', count(result.updated)) }) : t('cleanup.noneUpdated')}
+        {result.freed > 0 && t('cleanup.freed', { count: result.freed })}
       </Intro>
-      <NotRead notHere={0} failed={result.failed} verb="updated" />
+      <NotRead notHere={0} failed={result.failed} kind="updated" />
     </>
   );
 }
 
-function NotRead({ notHere, failed, verb }: { notHere: number; failed: FindResult['failed']; verb: string }) {
+function NotRead({ notHere, failed, kind }: { notHere: number; failed: FindResult['failed']; kind: 'checked' | 'updated' }) {
   return (
     <>
       {notHere > 0 && (
-        <Muted as="p">{plural(notHere, 'book')} weren’t {verb}, as their files are on another device. Update them there.</Muted>
+        <Muted as="p">{t(`cleanup.notHere.${kind}`, count(notHere))}</Muted>
       )}
       {failed.length > 0 && (
         <Muted as="p">
-          {plural(failed.length, 'file')} couldn’t be {verb}: {failed.slice(0, 3).map((f) => `${f.title} (${f.message})`).join('; ')}
-          {failed.length > 3 && '…'}
+          {t(`cleanup.notDone.${kind}`, { ...count(failed.length), list: failed.slice(0, 3).map((f) => t('cleanup.failure', f)).join(t('cleanup.failureSeparator')) })}
+          {failed.length > 3 && t('cleanup.ellipsis')}
         </Muted>
       )}
     </>

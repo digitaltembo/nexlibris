@@ -36,7 +36,7 @@ function LiveFormats() {
       tags={formats}
       candidates={['epub', 'x4.epub', 'x3.epub', 'pdf', 'cbz', 'cbr', 'azw3', 'mobi', 'txt']}
       only
-      noun="format"
+      noun={{ one: 'format', many: 'formats' }}
       onAdd={(added) => setFormats((current) => [...new Set([...current, ...added])])}
       onRemove={(format) => setFormats((current) => current.filter((f) => f !== format))}
     />

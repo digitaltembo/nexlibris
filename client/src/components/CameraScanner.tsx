@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import styled from 'styled-components';
 import type { BarcodeReader } from '../isbn/scanner';
 import { Muted } from '../styles/ui';
+import { t } from '../i18n';
 
 const Viewfinder = styled.div<{ $square: boolean }>`
   position: relative;
@@ -65,7 +66,7 @@ export function CameraScanner({
   square?: boolean;
 }) {
   const video = useRef<HTMLVideoElement>(null);
-  const [note, setNote] = useState('Starting the camera…');
+  const [note, setNote] = useState(t('camera.starting'));
   const callbacks = useRef({ onValue, onError, reader, hint, otherwise });
   callbacks.current = { onValue, onError, reader, hint, otherwise };
 
@@ -83,7 +84,7 @@ export function CameraScanner({
         if (stopped || !video.current) return;
         video.current.srcObject = stream;
         await video.current.play();
-        setNote('Loading the code reader…');
+        setNote(t('camera.loading'));
         const reader = await callbacks.current.reader();
         if (stopped) return;
         setNote(callbacks.current.hint);
@@ -108,10 +109,10 @@ export function CameraScanner({
         const name = e instanceof DOMException ? e.name : '';
         callbacks.current.onError(
           name === 'NotAllowedError'
-            ? `Camera access was refused. Allow it in the browser or system settings, or: ${lowerFirst(callbacks.current.otherwise)}`
+            ? t('camera.refused', { otherwise: lowerFirst(callbacks.current.otherwise) })
             : name === 'NotFoundError' || name === 'OverconstrainedError'
-              ? `No camera found. ${callbacks.current.otherwise}`
-              : `Couldn’t start the camera: ${errorMessage(e)}`,
+              ? t('camera.none', { otherwise: callbacks.current.otherwise })
+              : t('camera.failed', { message: errorMessage(e) }),
         );
       }
     })();

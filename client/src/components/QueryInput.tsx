@@ -2,6 +2,7 @@ import { filterItems, userData } from '@nexlibris/common';
 import styled from 'styled-components';
 import { useLibrary } from '../library/LibraryContext';
 import { Muted } from '../styles/ui';
+import { t } from '../i18n';
 
 const Input = styled.input`
   width: 100%;
@@ -20,7 +21,7 @@ export function useMatchCount(query: string): number | undefined {
  * `or`, `has:cover`), typed as text, with how many books match it now. What connections' catalogs
  * and the books another instance keeps are chosen by.
  */
-export function QueryInput({ value, onChange, placeholder = 'e.g. tag:Recommended rating:4+', ...rest }: {
+export function QueryInput({ value, onChange, placeholder = t('queryInput.placeholder'), ...rest }: {
   value: string;
   onChange(value: string): void;
   placeholder?: string;
@@ -30,7 +31,7 @@ export function QueryInput({ value, onChange, placeholder = 'e.g. tag:Recommende
   return (
     <>
       <Input type="search" value={value} placeholder={placeholder} spellCheck={false} onChange={(e) => onChange(e.target.value)} {...rest} />
-      {count !== undefined && <Muted as="small">{count === 1 ? '1 book matches' : `${count} books match`} now.</Muted>}
+      {count !== undefined && <Muted as="small">{t('queryInput.matches', { count })}</Muted>}
     </>
   );
 }

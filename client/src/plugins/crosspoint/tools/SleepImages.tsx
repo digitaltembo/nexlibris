@@ -15,6 +15,7 @@ import {
   type Profile,
 } from '@nexlibris/crosspoint-tools/sleepImage';
 import { Actions, Note, PickButton, Status, useReaderState, type ToolProps } from './shared';
+import { t } from '../../../i18n';
 
 interface SleepImage {
   path: string;
@@ -93,12 +94,12 @@ export function SleepImages({ reader, profile }: ToolProps & { profile: Profile 
   });
 
   const add = (files: { name: string; data: Blob }[]) =>
-    void run('Adding…', async (say) => {
+    void run(t('crosspoint.tools.sleep.adding'), async (say) => {
       await reader.makeFolder('/', SLEEP_FOLDER.slice(1));
       const taken = new Set((data?.images ?? []).map((i) => i.path.slice(i.path.lastIndexOf('/') + 1).toLowerCase()));
       const problems: string[] = [];
       for (const [i, file] of files.entries()) {
-        say(`Adding ${file.name} (${i + 1} of ${files.length})…`);
+        say(t('crosspoint.tools.sleep.addingOne', { name: file.name, n: i + 1, total: files.length }));
         try {
           const image = await makeSleepImage(file.data, profile, placement);
           const name = sleepImageName(file.name, taken);
@@ -106,13 +107,13 @@ export function SleepImages({ reader, profile }: ToolProps & { profile: Profile 
           await reader.upload(`${SLEEP_FOLDER}/${name}`, image);
           fetched.set(`${SLEEP_FOLDER}/${name}:${image.size}`, URL.createObjectURL(image));
         } catch (e) {
-          problems.push(`${file.name}: ${e instanceof Error ? e.message : String(e)}`);
+          problems.push(t('crosspoint.tools.sleep.problem', { name: file.name, message: e instanceof Error ? e.message : String(e) }));
         }
       }
       if (problems.length) throw new Error(problems.join(' '));
     });
 
-  const remove = (image: SleepImage) => void run('Removing…', () => reader.remove(image.path));
+  const remove = (image: SleepImage) => void run(t('crosspoint.tools.sleep.removing'), () => reader.remove(image.path));
 
   const mode = data?.setting;
   const custom = mode && (mode.value === SLEEP_CUSTOM || mode.value === SLEEP_COVER_CUSTOM);
@@ -123,45 +124,44 @@ export function SleepImages({ reader, profile }: ToolProps & { profile: Profile 
   return (
     <>
       <Note>
-        The reader shows one of these, picked at random, when it sleeps. Pictures are made into {screen.width}×{screen.height}{' '}
-        grayscale BMPs for its screen.
+        {t('crosspoint.tools.sleep.note', { width: screen.width, height: screen.height })}
       </Note>
       {mode && !custom && (
         <Note>
-          Its sleep screen is set to “{mode.options?.[Number(mode.value)] ?? mode.value}”, so it doesn’t show them.{' '}
-          <Button $variant="secondary" $size="small" disabled={!!busy} onClick={() => void run('Changing the setting…', () => reader.changeSettings({ sleepScreen: SLEEP_CUSTOM }))}>
-            Show these when asleep
+          {t('crosspoint.tools.sleep.modeNote', { mode: mode.options?.[Number(mode.value)] ?? mode.value })}{' '}
+          <Button $variant="secondary" $size="small" disabled={!!busy} onClick={() => void run(t('crosspoint.tools.sleep.changing'), () => reader.changeSettings({ sleepScreen: SLEEP_CUSTOM }))}>
+            {t('crosspoint.tools.sleep.showThese')}
           </Button>
         </Note>
       )}
-      {single && <Note>sleep.bmp is shown every time, instead of the rest, while it’s there.</Note>}
+      {single && <Note>{t('crosspoint.tools.sleep.single')}</Note>}
       {own && data?.images.some((i) => i.where === 'fallback') && (
-        <Note>Pictures in the visible “sleep” folder aren’t shown while “.sleep” has any.</Note>
+        <Note>{t('crosspoint.tools.sleep.fallback')}</Note>
       )}
       <Actions>
         <PickButton accept="image/*" disabled={!!busy} onPick={add}>
-          Add pictures…
+          {t('crosspoint.tools.sleep.addPictures')}
         </PickButton>
         <label>
-          <SmallSelect value={placement} aria-label="How pictures fit the screen" onChange={(e) => setPlacement(e.target.value as Placement)}>
-            <option value="fill">Fill the screen (crop)</option>
-            <option value="fit">Fit the whole picture</option>
+          <SmallSelect value={placement} aria-label={t('crosspoint.tools.sleep.placement')} onChange={(e) => setPlacement(e.target.value as Placement)}>
+            <option value="fill">{t('crosspoint.tools.sleep.fill')}</option>
+            <option value="fit">{t('crosspoint.tools.sleep.fit')}</option>
           </SmallSelect>
         </label>
       </Actions>
       <Status busy={busy} error={error} />
-      {!data && !error && <Note>Reading the reader…</Note>}
-      {data && data.images.length === 0 && <Note>No sleep images on the reader yet.</Note>}
+      {!data && !error && <Note>{t('crosspoint.tools.readingReader')}</Note>}
+      {data && data.images.length === 0 && <Note>{t('crosspoint.tools.sleep.none')}</Note>}
       {data && data.images.length > 0 && (
         <Grid>
           {data.images.map((image) => (
             <li key={image.path}>
               <Thumbnail reader={reader} image={image} ratio={`${screen.width} / ${screen.height}`} />
               <small title={image.path}>
-                {image.where === 'single' ? 'sleep.bmp (always)' : image.path.slice(image.path.lastIndexOf('/') + 1)}
+                {image.where === 'single' ? t('crosspoint.tools.sleep.always') : image.path.slice(image.path.lastIndexOf('/') + 1)}
               </small>
               <Button $variant="secondary" $size="small" disabled={!!busy} onClick={() => remove(image)}>
-                Remove
+                {t('crosspoint.tools.remove')}
               </Button>
             </li>
           ))}

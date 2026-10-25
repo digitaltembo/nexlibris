@@ -4,6 +4,7 @@ import { EXTRACTOR_VERSION, extractText, textFormats, workerFormats } from '@nex
 import { parseTextQuery, type BookMatch, type TextTerm } from '@nexlibris/tools/fulltext/match';
 import type { TextWork } from './textWork';
 import type { Remote } from './workerRpc';
+import { t } from '../i18n';
 
 /**
  * The text of the library's books, for full-text search. It's this instance's own (local files and
@@ -79,8 +80,8 @@ export class TextIndex {
     let entry: FileEntry;
     try {
       const data = await this.backend.getFile(file.hash);
-      if (!data) throw new Error('The file is missing from storage.');
-      if (!isFormatId(file.format)) throw new Error(`Unknown format ${file.format}`);
+      if (!data) throw new Error(t('errors.missingFromStorage'));
+      if (!isFormatId(file.format)) throw new Error(t('errors.unknownFormat', { format: file.format }));
       const packed = workerFormats().includes(file.format)
         ? await this.work.index(data, file.format)
         : await this.work.pack(await extractText(data, file.format));

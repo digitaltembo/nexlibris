@@ -3,6 +3,7 @@ import { libraryPlace } from './libraryFolder';
 import { nativeTransport } from '../backends/native';
 import { IMPORT_ACCEPT } from '@nexlibris/tools/formats/formats';
 import { quietlySkipped, SIDECAR_NAMES, type ImportSource } from './importFiles';
+import { t } from '../i18n';
 
 /** Whether files are picked through the native app (Android, desktop) rather than a file input. */
 export const nativeImportAvailable = () => nativeTransport() !== undefined;
@@ -79,7 +80,7 @@ export function storedSource(
       // In a folder of the user's, the app stores imports in its .nexlibris folder.
       const dir = libraryPlace().kind === 'folder' ? `${DATA_DIR}/` : '';
       const response = await fetchFile(`/library/${dir}${storedFilePath(hash)}`);
-      if (!response.ok) throw new Error(`Couldn't read ${name} from the library: ${response.status}`);
+      if (!response.ok) throw new Error(t('errors.couldntRead', { name, status: response.status }));
       return response.arrayBuffer();
     },
   };

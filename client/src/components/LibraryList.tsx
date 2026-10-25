@@ -2,7 +2,6 @@ import {
   authorSortKey,
   bookSize,
   DEFAULT_DESC,
-  fieldLabel,
   fieldText,
   type Item,
   sizeInMB,
@@ -11,6 +10,7 @@ import {
   titleSortKey,
   userData,
 } from '@nexlibris/common';
+import { fieldLabel } from '../library/fieldLabels';
 import type { ReactNode } from 'react';
 import styled, { css } from 'styled-components';
 import { BUILTIN_COLUMNS, fieldKey, type BuiltinColumn, type ColumnId } from '../library/columns';
@@ -23,6 +23,7 @@ import { clickModifiers, type CollectionProps } from './LibraryGrid';
 import { StarRating } from './StarRating';
 import { NARROW } from '../styles/GlobalStyle';
 import { Badge } from '../styles/ui';
+import { t } from '../i18n';
 
 /** A column's kind: built-in columns by id, metadata fields all alike. */
 type ColumnKind = BuiltinColumn | 'title' | 'field';
@@ -81,7 +82,7 @@ const Computed = styled.span`
 /** A sort field's value, or the form worked out when the book has none. */
 function sortCell(stored: string | undefined, computed: string, from: string): ReactNode {
   if (stored) return stored;
-  return computed ? <Computed title={`Worked out from the ${from}`}>{computed}</Computed> : null;
+  return computed ? <Computed title={t('libraryList.workedOut', { from })}>{computed}</Computed> : null;
 }
 
 const cellStyles = css<{ $col: ColumnKind }>`
@@ -175,8 +176,8 @@ export function LibraryList({ items, selection, onActivate, onLongPress, columns
   const builtinCell: Record<BuiltinColumn, (item: Item) => ReactNode> = {
     cover: () => null,
     creators: (item) => item.creators.map((c) => c.name).join(', '),
-    titleSort: (item) => sortCell(item.metadata.titleSort, titleSortKey(item), 'title'),
-    authorSort: (item) => sortCell(item.metadata.authorSort, authorSortKey(item), 'authors'),
+    titleSort: (item) => sortCell(item.metadata.titleSort, titleSortKey(item), t('libraryList.fromTitle')),
+    authorSort: (item) => sortCell(item.metadata.authorSort, authorSortKey(item), t('libraryList.fromAuthors')),
     series: (item) => seriesLabel(item),
     tags: (item) => item.tags.join(', '),
     rating: (item) => <StarRating value={ratings[item.id]} />,
@@ -223,9 +224,9 @@ export function LibraryList({ items, selection, onActivate, onLongPress, columns
     <Table>
       <thead>
         <tr>
-          {showCover && <Th $col="cover" aria-label="Cover" />}
+          {showCover && <Th $col="cover" aria-label={t('libraryList.cover')} />}
           <Th $col="title" aria-sort={ariaSort('title')}>
-            {header('title', 'Title')}
+            {header('title', t('libraryList.title'))}
           </Th>
           {columns.map((id) => (
             <Th key={id} $col={kind(id)} aria-sort={ariaSort(sortKey(id))}>

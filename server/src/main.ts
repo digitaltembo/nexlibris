@@ -10,12 +10,15 @@ import { objectStoreFor, parseConfig, USAGE, type ServerConfig } from './config'
 /** The server's command line: runs it, or manages accounts (see `USAGE` in `config.ts`). */
 
 const here = dirname(fileURLToPath(import.meta.url));
-const builtClient = join(here, '..', '..', 'client', 'dist');
+/** The web app: in the npm package beside the bundle (`client/`), else the repository's (and the Docker image's) build. */
+const builtClient = [join(here, '..', 'client'), join(here, '..', '..', 'client', 'dist')].find((dir) =>
+  existsSync(join(dir, 'index.html')),
+);
 
 async function main() {
   let config: ServerConfig;
   try {
-    config = parseConfig(process.argv.slice(2), process.env, existsSync(builtClient) ? { clientDir: builtClient } : {});
+    config = parseConfig(process.argv.slice(2), process.env, builtClient ? { clientDir: builtClient } : {});
   } catch (e) {
     console.error(e instanceof Error ? e.message : e);
     process.exit(2);

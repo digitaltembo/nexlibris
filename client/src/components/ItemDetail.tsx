@@ -1,8 +1,6 @@
 import {
-  BOOK_FIELDS,
   type BookField,
   bookSize,
-  fieldLabel,
   fieldText,
   type FileRef,
   isFixedField,
@@ -12,6 +10,7 @@ import {
   type MetadataValue,
   userData,
 } from '@nexlibris/common';
+import { BOOK_FIELDS, fieldLabel } from '../library/fieldLabels';
 import { useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import styled from 'styled-components';
@@ -47,6 +46,7 @@ import {
   TagLabel,
   TagList,
 } from '../styles/ui';
+import { locale, t } from '../i18n';
 
 /**
  * A book that isn't the library's (on a connection that reads, or in a catalog on a server), shown
@@ -194,13 +194,13 @@ function detailFields(item: Item): [key: string, value: MetadataValue][] {
 }
 
 export function byline(item: Item): string {
-  return item.creators.map((c) => (c.role === 'aut' ? c.name : `${c.name} (${roleLabel(c.role).toLowerCase()})`)).join(', ');
+  return item.creators.map((c) => (c.role === 'aut' ? c.name : t('itemDetail.withRole', { name: c.name, role: roleLabel(c.role).toLocaleLowerCase(locale) }))).join(', ');
 }
 
 export function seriesLabel(item: Item): string | undefined {
   const { series, seriesIndex } = item.metadata;
   if (typeof series !== 'string' || !series) return undefined;
-  return seriesIndex !== undefined && seriesIndex !== null ? `${series} #${metadataToText(seriesIndex as MetadataValue)}` : series;
+  return seriesIndex !== undefined && seriesIndex !== null ? t('itemDetail.seriesIndex', { series, index: metadataToText(seriesIndex as MetadataValue) }) : series;
 }
 
 /**
@@ -225,29 +225,29 @@ function LibraryItemDetail({ item, onClose, onSelectTag, onRead = () => undefine
   // Carry on in the file last read, if it can still be read; otherwise start the best one.
   const resume = position && isReadable(position.file) ? position : undefined;
   const readable = resume?.file ?? preferredReadable(item);
-  const progress = resume?.progress !== undefined ? ` · ${Math.round(resume.progress * 100)}%` : '';
+  const progress = resume?.progress !== undefined ? t('itemDetail.progress', { percent: Math.round(resume.progress * 100) }) : '';
   const review = reviews[item.id]?.text;
   const writable = writableConnections(library).length > 0;
   const actions: MenuAction[] = [
-    { label: 'Edit', onSelect: () => setDraft(draftFromItem(item, review)) },
-    ...(convertibleFiles(item).length ? [{ label: 'Convert…', onSelect: () => setConverting(true) }] : []),
+    { label: t('itemDetail.edit'), onSelect: () => setDraft(draftFromItem(item, review)) },
+    ...(convertibleFiles(item).length ? [{ label: t('itemDetail.convert'), onSelect: () => setConverting(true) }] : []),
     ...(writable
       ? [
-          { label: 'Send to…', onSelect: () => setSending(true) },
-          { label: 'Add to…', onSelect: () => setAdding(true) },
+          { label: t('itemDetail.sendTo'), onSelect: () => setSending(true) },
+          { label: t('itemDetail.addTo'), onSelect: () => setAdding(true) },
         ]
       : []),
-    { label: 'Delete…', danger: true, onSelect: () => setConfirming(true) },
+    { label: t('itemDetail.delete'), danger: true, onSelect: () => setConfirming(true) },
   ];
 
   return (
-    <Panel aria-label={`Details for ${item.title}`}>
+    <Panel aria-label={t('itemDetail.details', { title: item.title })}>
       <Header>
         {draft ? <CoverPicker item={item} cover={cover} onChange={setCover} /> : <Cover item={item} />}
         <div>
           {draft ? (
             <TitleInput
-              aria-label="Title"
+              aria-label={t('itemDetail.title')}
               value={draft.title}
               onChange={(e) => setDraft({ ...draft, title: e.target.value })}
             />
@@ -275,22 +275,22 @@ function LibraryItemDetail({ item, onClose, onSelectTag, onRead = () => undefine
                       void deleteItems(backend, apply, [item]);
                     }}
                   >
-                    Delete
+                    {t('itemDetail.deleteConfirm')}
                   </Button>
                   <Button $variant="secondary" onClick={() => setConfirming(false)}>
-                    Cancel
+                    {t('common.cancel')}
                   </Button>
                 </>
               ) : (
                 <>
-                  {readable && <Button onClick={() => onRead(readable)}>{resume ? `Continue${progress}` : 'Read'}</Button>}
-                  <MenuButton label={`Actions for ${item.title}`} text="Actions" actions={actions} />
+                  {readable && <Button onClick={() => onRead(readable)}>{resume ? t('itemDetail.continue', { progress }) : t('itemDetail.read')}</Button>}
+                  <MenuButton label={t('itemDetail.actions', { title: item.title })} text={t('itemDetail.actionsText')} actions={actions} />
                 </>
               )}
             </Actions>
           )}
         </div>
-        <Button $variant="icon" aria-label="Close" onClick={onClose}>
+        <Button $variant="icon" aria-label={t('common.close')} onClick={onClose}>
           ×
         </Button>
       </Header>
@@ -321,7 +321,7 @@ function LibraryItemDetail({ item, onClose, onSelectTag, onRead = () => undefine
 function RemoteItemDetail({ item, remote, onClose, embedded }: { item: Item; remote: RemoteDetail; onClose(): void; embedded: boolean }) {
   const Box = embedded ? EmbeddedPanel : Panel;
   const pane = (
-    <Box aria-label={`Details for ${item.title}`}>
+    <Box aria-label={t('itemDetail.details', { title: item.title })}>
       <Header>
         <Cover item={item} />
         <div>
@@ -329,11 +329,11 @@ function RemoteItemDetail({ item, remote, onClose, embedded }: { item: Item; rem
           {item.metadata.subtitle && <MutedLine>{item.metadata.subtitle}</MutedLine>}
           {item.creators.length > 0 && <Line>{byline(item)}</Line>}
           {seriesLabel(item) && <MutedLine>{seriesLabel(item)}</MutedLine>}
-          {remote.owned && <Badge>In library{remote.owned.title !== item.title ? ` as “${remote.owned.title}”` : ''}</Badge>}
+          {remote.owned && <Badge>{remote.owned.title !== item.title ? t('itemDetail.inLibraryAs', { title: remote.owned.title }) : t('itemDetail.inLibrary')}</Badge>}
           <Actions>{remote.actions}</Actions>
         </div>
         {!embedded && (
-          <Button $variant="icon" aria-label="Close" onClick={onClose}>
+          <Button $variant="icon" aria-label={t('common.close')} onClick={onClose}>
             ×
           </Button>
         )}
@@ -341,7 +341,7 @@ function RemoteItemDetail({ item, remote, onClose, embedded }: { item: Item; rem
       <ItemDetails item={item} />
       {remote.files && (
         <PanelSection>
-          <SectionHeading>Files</SectionHeading>
+          <SectionHeading>{t('itemDetail.files')}</SectionHeading>
           {remote.files}
         </PanelSection>
       )}
@@ -365,7 +365,7 @@ function ItemDetails({ item, review, onSelectTag }: { item: Item; review?: strin
           <TagList>
             {item.tags.map((tag) =>
               onSelectTag ? (
-                <TagButton key={tag} onClick={() => onSelectTag(tag)} title={`Search for “${tag}”`}>
+                <TagButton key={tag} onClick={() => onSelectTag(tag)} title={t('itemDetail.searchFor', { tag })}>
                   {tag}
                 </TagButton>
               ) : (
@@ -380,21 +380,21 @@ function ItemDetails({ item, review, onSelectTag }: { item: Item; review?: strin
 
       {description && (
         <PanelSection>
-          <SectionHeading>About</SectionHeading>
+          <SectionHeading>{t('itemDetail.about')}</SectionHeading>
           <RichText text={description} />
         </PanelSection>
       )}
 
       {review && (
         <PanelSection>
-          <SectionHeading>Your review</SectionHeading>
+          <SectionHeading>{t('itemDetail.review')}</SectionHeading>
           <Prose>{review}</Prose>
         </PanelSection>
       )}
 
       {(fields.length > 0 || identifiers.length > 0) && (
         <PanelSection>
-          <SectionHeading>Details</SectionHeading>
+          <SectionHeading>{t('itemDetail.detailsHeading')}</SectionHeading>
           <Fields>
             {fields.map(([key, value]) => (
               <div key={key}>
@@ -423,16 +423,16 @@ function ItemView({ item, review, onSelectTag, onRead }: { item: Item; review: s
     <>
       <ItemDetails item={item} review={review} {...(onSelectTag && { onSelectTag })} />
       <PanelSection>
-        <SectionHeading>Files</SectionHeading>
+        <SectionHeading>{t('itemDetail.files')}</SectionHeading>
         <ItemFiles item={item} onRead={onRead} />
       </PanelSection>
 
       <ItemCatalogs item={item} />
 
       <Timestamps>
-        {item.files.length > 0 && `Size ${formatSize(bookSize(item))} · `}
-        Added {new Date(item.addedAt).toLocaleDateString()}
-        {item.updatedAt !== item.addedAt && ` · updated ${new Date(item.updatedAt).toLocaleDateString()}`}
+        {item.files.length > 0 && t('itemDetail.size', { size: formatSize(bookSize(item)) })}
+        {t('itemDetail.added', { date: new Date(item.addedAt).toLocaleDateString() })}
+        {item.updatedAt !== item.addedAt && t('itemDetail.updated', { date: new Date(item.updatedAt).toLocaleDateString() })}
       </Timestamps>
     </>
   );
@@ -474,12 +474,12 @@ function ItemEditor({ item, review, draft, cover, onChange, onDone }: EditorProp
       }}
     >
       <PanelSection>
-        <SectionHeading>Creators</SectionHeading>
+        <SectionHeading>{t('itemDetail.creators')}</SectionHeading>
         <CreatorsEditor creators={draft.creators} onChange={(creators) => set('creators', creators)} />
       </PanelSection>
 
       <PanelSection>
-        <SectionHeading>Tags</SectionHeading>
+        <SectionHeading>{t('itemDetail.tags')}</SectionHeading>
         <TagEditor
           tags={draft.tags}
           onAdd={(tags) =>
@@ -490,17 +490,17 @@ function ItemEditor({ item, review, draft, cover, onChange, onDone }: EditorProp
       </PanelSection>
 
       <PanelSection>
-        <SectionHeading>About</SectionHeading>
-        <textarea rows={4} placeholder="Description" value={draft.description} onChange={(e) => set('description', e.target.value)} />
+        <SectionHeading>{t('itemDetail.about')}</SectionHeading>
+        <textarea rows={4} placeholder={t('itemDetail.description')} value={draft.description} onChange={(e) => set('description', e.target.value)} />
       </PanelSection>
 
       <PanelSection>
-        <SectionHeading>Your review</SectionHeading>
-        <textarea rows={4} placeholder="What did you think?" value={draft.review} onChange={(e) => set('review', e.target.value)} />
+        <SectionHeading>{t('itemDetail.review')}</SectionHeading>
+        <textarea rows={4} placeholder={t('itemDetail.reviewPlaceholder')} value={draft.review} onChange={(e) => set('review', e.target.value)} />
       </PanelSection>
 
       <PanelSection>
-        <SectionHeading>Details</SectionHeading>
+        <SectionHeading>{t('itemDetail.detailsHeading')}</SectionHeading>
         <FieldInputs>
           {BOOK_FIELDS.map((field) => (
             <FieldInput key={field.key} field={field} value={draft.fields[field.key] ?? ''} onChange={(text) => set('fields', { ...draft.fields, [field.key]: text })} />
@@ -509,30 +509,30 @@ function ItemEditor({ item, review, draft, cover, onChange, onDone }: EditorProp
       </PanelSection>
 
       <PanelSection>
-        <SectionHeading>Other fields</SectionHeading>
-        <KeyValueEditor keyPlaceholder="field" entries={draft.metadata} onChange={(metadata) => set('metadata', metadata)} />
+        <SectionHeading>{t('itemDetail.otherFields')}</SectionHeading>
+        <KeyValueEditor keyPlaceholder={t('itemDetail.field')} entries={draft.metadata} onChange={(metadata) => set('metadata', metadata)} />
       </PanelSection>
 
       <PanelSection>
-        <SectionHeading>Identifiers</SectionHeading>
+        <SectionHeading>{t('itemDetail.identifiers')}</SectionHeading>
         <KeyValueEditor
-          keyPlaceholder="scheme (isbn, …)"
+          keyPlaceholder={t('itemDetail.scheme')}
           entries={draft.identifiers}
           onChange={(identifiers) => set('identifiers', identifiers)}
         />
       </PanelSection>
 
       <PanelSection>
-        <SectionHeading>Files</SectionHeading>
+        <SectionHeading>{t('itemDetail.files')}</SectionHeading>
         <EditableFiles item={item} files={draft.files} onChange={(files) => set('files', files)} />
       </PanelSection>
 
       <PanelFooter $sticky>
         <Button disabled={saving} onClick={() => void save()}>
-          {saving ? 'Saving…' : 'Save'}
+          {saving ? t('itemDetail.saving') : t('itemDetail.save')}
         </Button>
         <Button $variant="secondary" onClick={onDone}>
-          Cancel
+          {t('common.cancel')}
         </Button>
       </PanelFooter>
     </div>

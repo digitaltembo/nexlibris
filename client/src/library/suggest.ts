@@ -1,4 +1,6 @@
-import { fieldLabel, formatTerm, type Item, metadataKeys } from '@nexlibris/common';
+import { formatTerm, type Item, metadataKeys } from '@nexlibris/common';
+import { fieldLabel } from './fieldLabels';
+import { t } from '../i18n';
 
 /**
  * Completions for the search box: the word being typed (the one at the caret) becomes a field
@@ -53,7 +55,7 @@ const FIXED_VALUES: Record<string, string[]> = {
 /** Field names to complete, with what they're called. `text` and the cover flag aren't typed as fields. */
 const fieldNames = (fields: SearchField[]) => [
   ...fields.filter((f) => f.id !== 'text' && f.kind !== 'flag'),
-  { id: 'has', label: 'Has', kind: 'flag' as const },
+  { id: 'has', label: t('suggest.has'), kind: 'flag' as const },
 ];
 
 export function suggest(query: string, caret: number, items: Item[], fields: SearchField[], limit = 8): Suggestion[] {
@@ -89,8 +91,8 @@ export function suggest(query: string, caret: number, items: Item[], fields: Sea
   if (!typed || typed.startsWith('"')) return [];
   const out: Suggestion[] = [];
   const named = fieldNames(fields).filter((f) => f.id.toLowerCase().startsWith(typed.toLowerCase()) || starts(f.label, typed));
-  for (const f of named.slice(0, 2)) out.push({ label: `${f.id}:`, kind: 'Field', ...replace(`${negate ? '-' : ''}${f.id}:`) });
-  for (const [id, kind] of [['author', 'Author'], ['series', 'Series'], ['tag', 'Tag']] as const) {
+  for (const f of named.slice(0, 2)) out.push({ label: `${f.id}:`, kind: t('suggest.field'), ...replace(`${negate ? '-' : ''}${f.id}:`) });
+  for (const [id, kind] of [['author', t('suggest.author')], ['series', t('suggest.series')], ['tag', t('suggest.tag')]] as const) {
     for (const value of fieldSuggestions(items, id).filter((v) => starts(v, typed)).slice(0, 4)) {
       out.push({ label: value, kind, ...replace(formatTerm({ kind: 'field', field: id, values: [value], negate })) });
     }
@@ -110,21 +112,21 @@ export interface SearchField {
 }
 
 const BUILTIN_FIELDS: SearchField[] = [
-  { id: 'text', label: 'Anything', kind: 'text' },
-  { id: 'title', label: 'Title', kind: 'text' },
-  { id: 'author', label: 'Author', kind: 'text' },
-  { id: 'series', label: 'Series', kind: 'text' },
-  { id: 'tag', label: 'Tags', kind: 'set' },
-  { id: 'format', label: 'Format', kind: 'set' },
-  { id: 'rating', label: 'Rating', kind: 'rating' },
-  { id: 'added', label: 'Added', kind: 'date' },
-  { id: 'originallyPublished', label: 'First published', kind: 'date' },
-  { id: 'published', label: 'Edition published', kind: 'date' },
-  { id: 'publisher', label: 'Publisher', kind: 'text' },
-  { id: 'language', label: 'Language', kind: 'text' },
-  { id: 'pages', label: 'Pages', kind: 'number' },
-  { id: 'cover', label: 'Cover', kind: 'flag' },
-  { id: 'isbn', label: 'ISBN', kind: 'text' },
+  { id: 'text', label: t('suggest.fields.text'), kind: 'text' },
+  { id: 'title', label: t('suggest.fields.title'), kind: 'text' },
+  { id: 'author', label: t('suggest.fields.author'), kind: 'text' },
+  { id: 'series', label: t('suggest.fields.series'), kind: 'text' },
+  { id: 'tag', label: t('suggest.fields.tag'), kind: 'set' },
+  { id: 'format', label: t('suggest.fields.format'), kind: 'set' },
+  { id: 'rating', label: t('suggest.fields.rating'), kind: 'rating' },
+  { id: 'added', label: t('suggest.fields.added'), kind: 'date' },
+  { id: 'originallyPublished', label: t('suggest.fields.originallyPublished'), kind: 'date' },
+  { id: 'published', label: t('suggest.fields.published'), kind: 'date' },
+  { id: 'publisher', label: t('suggest.fields.publisher'), kind: 'text' },
+  { id: 'language', label: t('suggest.fields.language'), kind: 'text' },
+  { id: 'pages', label: t('suggest.fields.pages'), kind: 'number' },
+  { id: 'cover', label: t('suggest.fields.cover'), kind: 'flag' },
+  { id: 'isbn', label: t('suggest.fields.isbn'), kind: 'text' },
 ];
 
 /** Metadata the built-in fields cover or that isn't worth filtering on. */

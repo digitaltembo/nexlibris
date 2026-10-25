@@ -8,6 +8,7 @@ import { Muted } from '../styles/ui';
 import { Cover } from './Cover';
 import { EditIcon } from './icons';
 import { MenuEntry, MenuPanel } from './MenuButton';
+import { t } from '../i18n';
 
 const Frame = styled.div`
   position: relative;
@@ -178,7 +179,7 @@ export function CoverPicker({ item, cover, onChange, fetchFn }: Props) {
       onChange(picked);
       close(true);
     } else {
-      setStatus(`${file.name} isn’t an image.`);
+      setStatus(t('coverPicker.notImage', { name: file.name }));
     }
   };
 
@@ -195,7 +196,7 @@ export function CoverPicker({ item, cover, onChange, fetchFn }: Props) {
         fetchFn,
       );
       setChoices(found);
-      if (!found.length) setStatus('Open Library has no covers for this book.');
+      if (!found.length) setStatus(t('coverPicker.none'));
     } catch (e) {
       setStatus(e instanceof Error ? e.message : String(e));
     } finally {
@@ -225,7 +226,7 @@ export function CoverPicker({ item, cover, onChange, fetchFn }: Props) {
         onChange(fetched);
         close(true);
       } else {
-        setStatus('Couldn’t download that cover.');
+        setStatus(t('coverPicker.downloadFailed'));
       }
     } finally {
       setBusy(undefined);
@@ -234,11 +235,11 @@ export function CoverPicker({ item, cover, onChange, fetchFn }: Props) {
 
   return (
     <Frame>
-      {cover ? <BlobImage blob={cover.data} alt="New cover" /> : <Cover item={item} />}
+      {cover ? <BlobImage blob={cover.data} alt={t('coverPicker.newCover')} /> : <Cover item={item} />}
       <EditButton
         ref={button}
-        aria-label="Change cover"
-        title="Change cover"
+        aria-label={t('coverPicker.change')}
+        title={t('coverPicker.change')}
         aria-haspopup="dialog"
         aria-expanded={open}
         onClick={() => (open ? close(false) : setOpen(true))}
@@ -250,7 +251,7 @@ export function CoverPicker({ item, cover, onChange, fetchFn }: Props) {
         <Panel
           ref={panel}
           role="dialog"
-          aria-label="Change cover"
+          aria-label={t('coverPicker.change')}
           style={place ? { top: place.top, left: place.left } : { visibility: 'hidden' }}
           onKeyDown={(e) => {
             if (e.key !== 'Escape') return;
@@ -258,12 +259,12 @@ export function CoverPicker({ item, cover, onChange, fetchFn }: Props) {
             close(true);
           }}
         >
-          <MenuEntry onClick={() => fileInput.current?.click()}>Choose image…</MenuEntry>
+          <MenuEntry onClick={() => fileInput.current?.click()}>{t('coverPicker.choose')}</MenuEntry>
           <MenuEntry disabled={!!busy} onClick={() => void find()}>
-            {busy === 'search' ? 'Searching Open Library…' : 'Find on Open Library'}
+            {busy === 'search' ? t('coverPicker.searching') : t('coverPicker.find')}
           </MenuEntry>
           <MenuEntry disabled={!!busy} onClick={() => void generate()}>
-            {busy === 'generate' ? 'Generating…' : 'Generate'}
+            {busy === 'generate' ? t('coverPicker.generating') : t('coverPicker.generate')}
           </MenuEntry>
           {cover && (
             <MenuEntry
@@ -272,7 +273,7 @@ export function CoverPicker({ item, cover, onChange, fetchFn }: Props) {
                 close(true);
               }}
             >
-              Undo change
+              {t('coverPicker.undo')}
             </MenuEntry>
           )}
           {status && (
@@ -281,14 +282,14 @@ export function CoverPicker({ item, cover, onChange, fetchFn }: Props) {
             </Muted>
           )}
           {choices && choices.length > 0 && (
-            <Choices aria-label="Covers from Open Library">
+            <Choices aria-label={t('coverPicker.covers')}>
               {choices.map((choice) => (
                 <li key={choice.url}>
                   <Choice
                     $busy={busy === choice.url}
                     disabled={!!busy}
                     title={choice.label}
-                    aria-label={`Use the cover of ${choice.label}`}
+                    aria-label={t('coverPicker.use', { label: choice.label })}
                     onClick={() => void take(choice)}
                   >
                     <img src={choice.preview} alt="" loading="lazy" />

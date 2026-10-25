@@ -2,6 +2,8 @@
 # account only, unless NEXLIBRIS_SIGNUP says otherwise). Accounts from the command line:
 #   docker compose run --rm nexlibris add-account <name>
 # Every option is an environment variable (`docker compose run --rm nexlibris --help`).
+# This builds the image from the repository; a release's is published as ghcr.io/digitaltembo/nexlibris
+# (use it instead of `build: .` to run without the repository).
 services:
   nexlibris:
     build: .

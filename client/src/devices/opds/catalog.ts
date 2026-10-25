@@ -1,4 +1,5 @@
 import type { FileHash, Item, ItemId } from '@nexlibris/common';
+import { t } from '../../i18n';
 
 /**
  * A static OPDS 1.2 catalog, in the shape calibre3opds (`~/dev/calibre3opds`)
@@ -127,7 +128,7 @@ export function buildCatalog(books: CatalogBook[], options: CatalogOptions): Cat
       `<id>urn:uuid:${escapeXml(item.id)}</id>`,
       `<title>${escapeXml(item.title)}</title>`,
       `<updated>${escapeXml(item.updatedAt)}</updated>`,
-      ...(authorsOf(item).length ? authorsOf(item) : ['Unknown author']).map(
+      ...(authorsOf(item).length ? authorsOf(item) : [t('opdsExport.unknownAuthor')]).map(
         (name) => `<author><name>${escapeXml(name)}</name></author>`,
       ),
     ];
@@ -199,8 +200,8 @@ export function buildCatalog(books: CatalogBook[], options: CatalogOptions): Cat
       ),
     );
 
-  paged('navigation/titles', 'Books by title', sorted);
-  paged('navigation/recent', 'Recent books', recent);
+  paged('navigation/titles', t('opdsExport.byTitleFeed'), sorted);
+  paged('navigation/recent', t('opdsExport.recent'), recent);
 
   /** Feeds per author, tag or series, each listed in its `index.xml`. */
   const grouped = (kind: string, title: string, keysOf: (b: CatalogBook) => string[], order = (list: CatalogBook[]) => list) => {
@@ -217,11 +218,11 @@ export function buildCatalog(books: CatalogBook[], options: CatalogOptions): Cat
     navigation(`navigation/${kind}/index.xml`, title, entries.map(([key, g]) => [g.label, `navigation/${kind}/${key}/page-1.xml`]));
     for (const [key, group] of entries) paged(`navigation/${kind}/${key}`, group.label, order(group.books));
   };
-  grouped('authors', 'Authors', (b) => authorsOf(b.item));
-  grouped('series', 'Series', (b) => (series(b.item) ? [series(b.item)] : []), (list) =>
+  grouped('authors', t('opdsExport.authors'), (b) => authorsOf(b.item));
+  grouped('series', t('opdsExport.series'), (b) => (series(b.item) ? [series(b.item)] : []), (list) =>
     [...list].sort((a, b) => seriesIndex(a.item) - seriesIndex(b.item)),
   );
-  grouped('tags', 'Tags', (b) => b.item.tags);
+  grouped('tags', t('opdsExport.tags'), (b) => b.item.tags);
 
   // The user's categories: one with a single entry is its books' feed; others list their entries.
   const unique = (taken: Set<string>, base: string) => {
@@ -249,18 +250,18 @@ export function buildCatalog(books: CatalogBook[], options: CatalogOptions): Cat
     });
 
   navigation('navigation/index.xml', options.title, [
-    ['Recent books', 'navigation/recent/page-1.xml'],
-    ['By title', 'navigation/titles/page-1.xml'],
-    ['Authors', 'navigation/authors/index.xml'],
-    ['Series', 'navigation/series/index.xml'],
+    [t('opdsExport.recent'), 'navigation/recent/page-1.xml'],
+    [t('opdsExport.byTitle'), 'navigation/titles/page-1.xml'],
+    [t('opdsExport.authors'), 'navigation/authors/index.xml'],
+    [t('opdsExport.series'), 'navigation/series/index.xml'],
     ...custom,
-    ['Tags', 'navigation/tags/index.xml'],
+    [t('opdsExport.tags'), 'navigation/tags/index.xml'],
   ]);
 
   const recentPages = pages(recent.length);
   feed('index.xml', options.title, 'urn:nexlibris:root', [
     link('navigation/index.xml', 'start'),
-    link('navigation/index.xml', 'subsection', NAVIGATION, 'Browse'),
+    link('navigation/index.xml', 'subsection', NAVIGATION, t('opdsExport.browse')),
     ...opensearch(recent.length, 0),
     ...pagination('navigation/recent', 0, recentPages),
     ...recent.slice(0, pageSize).map((book) => entry(book)),
@@ -277,7 +278,7 @@ export function buildCatalog(books: CatalogBook[], options: CatalogOptions): Cat
     files.push({ path: SEARCH_INDEX_PATH, text: JSON.stringify({ pageSize, updated: now, books }) });
   }
   const termList = [...terms.keys()].sort();
-  navigation('search.xml', 'Search', termList.map((term) => [`Search: ${term}`, `search/${term}/page-1.xml`]));
+  navigation('search.xml', t('opdsExport.search'), termList.map((term) => [t('opdsExport.searchFor', { term }), `search/${term}/page-1.xml`]));
   for (const term of termList) paged(`search/${term}`, `Search: ${term}`, terms.get(term)!);
   files.push({
     path: 'searchDescription.xml',

@@ -1,5 +1,6 @@
 import type { Item } from '@nexlibris/common';
 import type { NewCover } from './editCover';
+import { t } from '../i18n';
 
 /**
  * A plain cover made for a book that has none: the title in a serif face over a field of one
@@ -80,7 +81,7 @@ export async function generateCover(item: Pick<Item, 'title' | 'creators'>, rand
       ? new OffscreenCanvas(COVER_WIDTH, COVER_HEIGHT)
       : Object.assign(document.createElement('canvas'), { width: COVER_WIDTH, height: COVER_HEIGHT });
   const context = canvas.getContext('2d') as OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D | null;
-  if (!context) throw new Error('There’s no canvas to draw a cover on here.');
+  if (!context) throw new Error(t('errors.noCanvas'));
   const palette = coverPalette(random);
   const inner = COVER_WIDTH - 2 * MARGIN;
 
@@ -132,7 +133,7 @@ export async function generateCover(item: Pick<Item, 'title' | 'creators'>, rand
   const data =
     canvas instanceof HTMLCanvasElement
       ? await new Promise<Blob>((resolve, reject) =>
-          canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('Couldn’t encode the cover.'))), 'image/jpeg', 0.92),
+          canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error(t('errors.encodeCover')))), 'image/jpeg', 0.92),
         )
       : await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.92 });
   return { data, mediaType: 'image/jpeg' };

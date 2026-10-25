@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import styled from 'styled-components';
+import { t } from '../i18n';
 
 export type MenuEntry = { label: string; onSelect(): void; disabled?: boolean } | 'separator';
 
@@ -95,12 +96,12 @@ export function AppMenu({ entries, onClose }: Props) {
   return (
     <Drawer
       ref={ref}
-      aria-label="Menu"
+      aria-label={t('appMenu.label')}
       onClose={onClose}
       // A click on the dialog element itself (not its contents) is a click on the backdrop.
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <h2>nexlibris</h2>
+      <h2>{t('app.name')}</h2>
       <ul>
         {entries.map((entry, i) =>
           entry === 'separator' ? (

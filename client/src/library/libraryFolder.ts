@@ -27,6 +27,7 @@ import { NativeStorage } from '../backends/nativeStorage';
 import { OpfsStorage } from '../backends/opfsStorage';
 import { placeBooks } from './fileLayout';
 import { forgetFolder, mayWrite, savedFolder, saveFolder } from './savedFolders';
+import { t } from '../i18n';
 
 /**
  * Where the library is kept, and moving it. By default, in the browser's own storage (OPFS) or
@@ -69,9 +70,9 @@ export const canShowFiles = () => current.app === 'desktop';
 /** Shows a stored file in the system's file manager, selected (see {@link canShowFiles}). */
 export async function showFileInFolder(hash: FileHash): Promise<void> {
   const { native, placed } = current;
-  if (!native || current.app !== 'desktop') throw new Error('Files can only be shown in the desktop app.');
+  if (!native || current.app !== 'desktop') throw new Error(t('libraryFolder.errors.desktopOnly'));
   const path = placed ? await placed.filePath(hash) : storedFilePath(hash);
-  if (!path) throw new Error('The file isn’t stored on this computer.');
+  if (!path) throw new Error(t('libraryFolder.errors.notHere'));
   await native.showFile({ path });
 }
 
@@ -108,13 +109,13 @@ export async function openBrowserLibrary(): Promise<LibraryBackend> {
   if (folder) {
     if (!(await mayWrite(folder, false))) throw new FolderPermissionNeeded(folder);
     const storage = OpfsStorage.at(folder);
-    if (!(await readLayout(storage))) throw new Error(`The folder “${folder.name}” no longer has the library in it.`);
+    if (!(await readLayout(storage))) throw new Error(t('libraryFolder.errors.noLibrary', { name: folder.name }));
     const placed = await PlacedLibraryBackend.open(storage, placeBooks);
     current = { kind: 'folder', name: folder.name, placed };
     return placed;
   }
   if (!navigator.storage?.getDirectory) {
-    throw new Error('This browser does not support the Origin Private File System, which nexlibris needs to store your library.');
+    throw new Error(t('libraryFolder.errors.noOpfs'));
   }
   current = { kind: 'browser' };
   return new StoredLibraryBackend(await OpfsStorage.open(...OPFS_LIBRARY));
@@ -126,7 +127,7 @@ export const forgetLibraryFolder = () => forgetFolder(LIBRARY_KEY);
 /** The library is in an account on the server, and nobody's signed in (or the server can't be reached). */
 export class SignInNeeded extends Error {
   constructor(readonly session: SessionInfo | undefined) {
-    super(session ? 'Sign in to open your library.' : 'Your library is in your nexlibris account, and its server can’t be reached.');
+    super(session ? t('libraryFolder.errors.signIn') : t('libraryFolder.errors.unreachable'));
     this.name = 'SignInNeeded';
   }
 }
@@ -162,18 +163,18 @@ async function missingIn(account: CloudAccount, hashes: FileHash[]): Promise<Set
  * checked there, then the library and its change log. Refused if the account has a library already.
  */
 export async function copyToCloud(local: LibraryBackend, account: CloudAccount, onProgress?: (progress: Progress) => void): Promise<void> {
-  if ((await account.api.status(null)).exists) throw new Error('Your account has a library already.');
+  if ((await account.api.status(null)).exists) throw new Error(t('libraryFolder.errors.accountHasLibrary'));
   const library = await local.getLibrary();
   const here: FileHash[] = [];
   for (const hash of libraryFiles(library)) if (await local.hasFile(hash)) here.push(hash);
   const sending = [...(await missingIn(account, here))];
   for (const [i, hash] of sending.entries()) {
     const data = await local.getFile(hash);
-    if (!data) throw new Error(`Couldn’t read the file ${hash.slice(0, 12)}….`);
+    if (!data) throw new Error(t('libraryFolder.errors.unreadable', { hash: hash.slice(0, 12) }));
     await account.backend.putFile(data);
     onProgress?.({ done: i + 1, total: sending.length });
   }
-  if ((await missingIn(account, here)).size) throw new Error('Some files didn’t reach your account. Try again.');
+  if ((await missingIn(account, here)).size) throw new Error(t('libraryFolder.errors.notReached'));
   await account.api.import({ library, changes: await local.getChanges(0) });
 }
 
@@ -182,7 +183,7 @@ export async function copyToCloud(local: LibraryBackend, account: CloudAccount, 
  * and the library. If anything fails, what was copied is deleted again.
  */
 export async function copyFromCloud(account: CloudAccount, storage: Tree, onProgress?: (progress: Progress) => void): Promise<void> {
-  if (await storage.exists('library.json')) throw new Error('This browser has a library of its own already. Open that one, or move it elsewhere first.');
+  if (await storage.exists('library.json')) throw new Error(t('libraryFolder.errors.browserHasLibrary'));
   const library = await account.backend.getLibrary();
   const changes = await account.backend.getChanges(0);
   const local = new StoredLibraryBackend(storage);
@@ -190,7 +191,7 @@ export async function copyFromCloud(account: CloudAccount, storage: Tree, onProg
   try {
     for (const [i, hash] of hashes.entries()) {
       const data = await account.backend.getFile(hash);
-      if (data && (await local.putFile(data)).hash !== hash) throw new Error(`The file ${hash.slice(0, 12)}… arrived changed.`);
+      if (data && (await local.putFile(data)).hash !== hash) throw new Error(t('libraryFolder.errors.changed', { hash: hash.slice(0, 12) }));
       onProgress?.({ done: i + 1, total: hashes.length });
     }
     await storage.writeText('changes.jsonl', changes.map((change) => JSON.stringify(change) + '\n').join(''));
@@ -207,7 +208,7 @@ export async function copyFromCloud(account: CloudAccount, storage: Tree, onProg
  * (sync pairings, the text index, thumbnails) stays behind; the index and thumbnails are made again.
  */
 export async function moveToCloud(backend: LibraryBackend, onProgress?: (progress: Progress) => void): Promise<void> {
-  if (current.kind !== 'browser') throw new Error('Move the library back into this browser’s storage first.');
+  if (current.kind !== 'browser') throw new Error(t('libraryFolder.errors.backFirst'));
   await copyToCloud(backend, signedInAccount(), onProgress);
   // In the account and checked: the browser's copy goes.
   await (await OpfsStorage.open(...OPFS_LIBRARY)).removeTree('');
@@ -230,7 +231,7 @@ export async function moveFromCloud(onProgress?: (progress: Progress) => void): 
  * (`openDeviceLibrary`): a folder of the user's isn't the app's to delete.
  */
 export async function copyAppLibraryToCloud(backend: LibraryBackend, onProgress?: (progress: Progress) => void): Promise<void> {
-  if (!current.native) throw new Error('Only the apps keep their library this way.');
+  if (!current.native) throw new Error(t('libraryFolder.errors.appsOnly'));
   await copyToCloud(backend, signedInAccount(), onProgress);
   setWantsCloud(true);
 }
@@ -293,7 +294,7 @@ export async function relocate(
 ): Promise<void> {
   const fromData = from.placed ? DATA_PREFIX : '';
   const toData = to.layout ? DATA_PREFIX : '';
-  if ((await to.tree.exists(`${toData}library.json`)) || (await readLayout(to.tree))) throw new Error('That folder has a library already.');
+  if ((await to.tree.exists(`${toData}library.json`)) || (await readLayout(to.tree))) throw new Error(t('libraryFolder.errors.folderHasLibrary'));
 
   const sources = new Map<FileHash, string>();
   if (from.placed) {
@@ -329,11 +330,11 @@ export async function relocate(
   try {
     for (const [i, step] of steps.entries()) {
       const data = await from.tree.readBlob(step.from);
-      if (!data) throw new Error(`Couldn’t read ${step.from}.`);
+      if (!data) throw new Error(t('libraryFolder.errors.couldntRead', { path: step.from }));
       await to.tree.writeBlob(step.to, data);
       written.push(step.to);
       const copy = await to.tree.readBlob(step.to);
-      if (copy?.size !== data.size) throw new Error(`${step.to} didn’t copy whole.`);
+      if (copy?.size !== data.size) throw new Error(t('libraryFolder.errors.notWhole', { path: step.to }));
       onProgress?.({ done: i + 1, total: steps.length });
     }
     if (to.layout) {
@@ -376,7 +377,7 @@ export async function browserFolderHolds(folder: FileSystemDirectoryHandle): Pro
 
 /** Opens the library already in a folder picked in the browser, leaving this one where it is. */
 export async function openBrowserFolder(folder: FileSystemDirectoryHandle): Promise<void> {
-  if (!(await mayWrite(folder))) throw new Error('nexlibris wasn’t given permission to use that folder.');
+  if (!(await mayWrite(folder))) throw new Error(t('libraryFolder.errors.noPermission'));
   await saveFolder(LIBRARY_KEY, folder);
   announceMove();
 }
@@ -393,12 +394,12 @@ export async function moveBrowserLibrary(
 ): Promise<void> {
   const saved = current.kind === 'folder' ? await savedFolder(LIBRARY_KEY) : undefined;
   if (to && saved) {
-    if (await saved.isSameEntry(to.folder)) throw new Error('The library is in that folder already.');
+    if (await saved.isSameEntry(to.folder)) throw new Error(t('libraryFolder.errors.already'));
     if ((await saved.resolve(to.folder)) || (await to.folder.resolve(saved))) {
-      throw new Error('The library can’t move into its own folder, or into one its folder is in.');
+      throw new Error(t('libraryFolder.errors.intoItself'));
     }
   }
-  if (to && !(await mayWrite(to.folder))) throw new Error('nexlibris wasn’t given permission to use that folder.');
+  if (to && !(await mayWrite(to.folder))) throw new Error(t('libraryFolder.errors.noPermission'));
   const source = saved ? { tree: OpfsStorage.at(saved), placed: true } : { tree: await OpfsStorage.open(...OPFS_LIBRARY), placed: false };
   const target = to ? { tree: OpfsStorage.at(to.folder), layout: to.layout } : { tree: await OpfsStorage.open(...OPFS_LIBRARY) };
   await relocate(source, target, to ? placesFor(library, to.layout) : new Map(), onProgress);

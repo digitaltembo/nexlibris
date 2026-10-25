@@ -1,4 +1,5 @@
 import type { Item, SortKey } from '@nexlibris/common';
+import { t } from '../i18n';
 
 export type BuiltinColumn =
   | 'cover'
@@ -16,19 +17,19 @@ export type BuiltinColumn =
 export type ColumnId = BuiltinColumn | `field:${string}`;
 
 export const BUILTIN_COLUMNS: { id: BuiltinColumn; label: string; sort?: SortKey }[] = [
-  { id: 'cover', label: 'Cover' },
-  { id: 'creators', label: 'Creators', sort: 'author' },
+  { id: 'cover', label: t('columns.cover') },
+  { id: 'creators', label: t('columns.creators'), sort: 'author' },
   // What title and author sort by: the stored sort fields, else the forms worked out from the title and names.
-  { id: 'titleSort', label: 'Title sort', sort: 'title' },
-  { id: 'authorSort', label: 'Author sort', sort: 'author' },
-  { id: 'series', label: 'Series', sort: 'series' },
-  { id: 'tags', label: 'Tags' },
-  { id: 'rating', label: 'Rating', sort: 'rating' },
-  { id: 'formats', label: 'Formats' },
+  { id: 'titleSort', label: t('columns.titleSort'), sort: 'title' },
+  { id: 'authorSort', label: t('columns.authorSort'), sort: 'author' },
+  { id: 'series', label: t('columns.series'), sort: 'series' },
+  { id: 'tags', label: t('columns.tags') },
+  { id: 'rating', label: t('columns.rating'), sort: 'rating' },
+  { id: 'formats', label: t('columns.formats') },
   // As Calibre's: the largest file's size.
-  { id: 'size', label: 'Size (MB)', sort: 'size' },
-  { id: 'added', label: 'Added', sort: 'added' },
-  { id: 'updated', label: 'Updated' },
+  { id: 'size', label: t('columns.size'), sort: 'size' },
+  { id: 'added', label: t('columns.added'), sort: 'added' },
+  { id: 'updated', label: t('columns.updated') },
 ];
 
 export const DEFAULT_COLUMNS: ColumnId[] = ['cover', 'creators', 'series', 'tags', 'rating', 'formats', 'added'];

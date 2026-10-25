@@ -4,6 +4,7 @@ import type { SettingField } from '../devices/types';
 import type { Converter } from '@nexlibris/tools/formats/convert/converters';
 import { Muted, SmallSelect } from '../styles/ui';
 import { formatLabel } from './ItemFiles';
+import { t } from '../i18n';
 
 /** A labelled field: its label over its input, help below. */
 export const Field = styled.label`
@@ -42,13 +43,13 @@ export function useOptionValues(fields: SettingField[]) {
 }
 
 /** A path's formats in turn, e.g. "MOBI → EPUB → EPUB (X4)". */
-export const pathLabel = (from: string, path: Converter[]) => [from, ...path.map((c) => c.to)].map(formatLabel).join(' → ');
+export const pathLabel = (from: string, path: Converter[]) => [from, ...path.map((c) => c.to)].map(formatLabel).join(t('convertOptions.pathSeparator'));
 
 /** Said of a conversion made by way of other formats, each step of which can lose something. */
 export function IndirectNote({ children }: { children: ReactNode }) {
   return (
     <Note role="note">
-      {children} Each step can lose some formatting, so a direct conversion is better where there is one.
+      {children} {t('convertOptions.indirect')}
     </Note>
   );
 }

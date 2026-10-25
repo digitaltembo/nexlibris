@@ -77,14 +77,24 @@ pub fn parse(value: &Value) -> Vec<PageMenu> {
 pub fn build<R: Runtime>(app: &AppHandle<R>, menus: &[PageMenu]) -> tauri::Result<Menu<R>> {
   let mac = cfg!(target_os = "macos");
   let mut lifted: Vec<MenuItemKind<R>> = Vec::new();
+  let mut about: Option<MenuItemKind<R>> = None;
   let mut top: Vec<MenuItemKind<R>> = Vec::new();
   for menu in menus {
-    let items = convert(app, &menu.items, mac, &mut lifted)?;
+    let items = convert(app, &menu.items, mac, &mut lifted, &mut about)?;
+    // A menu whose items all went to the app menu (Help, on macOS) is left out.
+    if items.is_empty() {
+      continue;
+    }
     top.push(MenuItemKind::Submenu(submenu(app, &menu.label, items)?));
   }
   let separator = || PredefinedMenuItem::separator(app).map(MenuItemKind::Predefined);
   if mac {
-    let mut items = vec![MenuItemKind::Predefined(PredefinedMenuItem::about(app, None, None)?)];
+    // The page's own About, if it lifts one, in place of the system's About panel.
+    let first = match about {
+      Some(item) => item,
+      None => MenuItemKind::Predefined(PredefinedMenuItem::about(app, None, None)?),
+    };
+    let mut items = vec![first];
     if !lifted.is_empty() {
       items.push(separator()?);
       items.append(&mut lifted);
@@ -129,19 +139,25 @@ fn convert<R: Runtime>(
   items: &[Item],
   mac: bool,
   lifted: &mut Vec<MenuItemKind<R>>,
+  about: &mut Option<MenuItemKind<R>>,
 ) -> tauri::Result<Vec<MenuItemKind<R>>> {
   let mut converted: Vec<(bool, MenuItemKind<R>)> = Vec::new();
   for item in items {
     let made = match item {
       Item::Separator => MenuItemKind::Predefined(PredefinedMenuItem::separator(app)?),
       Item::Role(role) => role_item(app, role)?,
-      Item::Submenu { label, items } => MenuItemKind::Submenu(submenu(app, label, convert(app, items, mac, lifted)?)?),
+      Item::Submenu { label, items } => MenuItemKind::Submenu(submenu(app, label, convert(app, items, mac, lifted, about)?)?),
       Item::Command { id, label, accelerator, enabled, checked, app_menu } => {
+        let is_about = id == "about";
         let id = format!("{PAGE_PREFIX}{id}");
         let made = match checked {
           Some(checked) => MenuItemKind::Check(CheckMenuItem::with_id(app, id, label, *enabled, *checked, accelerator.as_deref())?),
           None => MenuItemKind::MenuItem(MenuItem::with_id(app, id, label, *enabled, accelerator.as_deref())?),
         };
+        if mac && *app_menu && is_about {
+          *about = Some(made);
+          continue;
+        }
         if mac && *app_menu {
           lifted.push(made);
           continue;

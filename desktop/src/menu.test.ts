@@ -45,6 +45,15 @@ describe('menuTemplate', () => {
     expect(view[4]).toEqual({ role: 'togglefullscreen' });
   });
 
+  it('puts the page’s About first in the macOS app menu, in place of the system’s', () => {
+    const withAbout: NativeMenu[] = [
+      { label: 'Help', items: [{ id: 'about', label: 'About nexlibris', appMenu: true }] },
+      ...menus,
+    ];
+    const template = menuTemplate(withAbout, { platform: 'darwin', appName: 'nexlibris', send: () => undefined });
+    expect(labels(submenu(template[0])).slice(0, 4)).toEqual(['About nexlibris', 'separator', 'Settings…', 'separator']);
+  });
+
   it('keeps app-menu items in place elsewhere, with Quit in the first menu', () => {
     const template = menuTemplate(menus, { platform: 'win32', appName: 'nexlibris', send: () => undefined });
     expect(labels(template)).toEqual(['File', 'View', 'windowMenu']);

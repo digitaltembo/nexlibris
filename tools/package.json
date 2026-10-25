@@ -1,6 +1,7 @@
 {
   "name": "@nexlibris/tools",
   "version": "0.0.0",
+  "description": "Books' files in the browser and under Node: metadata and covers, writing metadata, conversion, full-text extraction, zips",
   "private": true,
   "type": "module",
   "exports": {

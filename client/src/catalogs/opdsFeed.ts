@@ -1,5 +1,6 @@
 import { formatFromName, type FormatId } from '@nexlibris/tools/formats/formats';
 import { parseXml } from '@nexlibris/tools/formats/xml';
+import { t } from '../i18n';
 
 /**
  * Reading OPDS 1 catalogs (Atom feeds), as served by Project Gutenberg, calibre's content server,
@@ -263,7 +264,7 @@ const rank = (download: OpdsDownload) => {
 export function parseOpdsFeed(xml: string, url: string): OpdsFeed {
   const doc = parseXml(xml);
   const root = doc?.documentElement;
-  if (!root || root.localName !== 'feed') throw new Error('That address doesn’t serve an OPDS catalog (an Atom feed).');
+  if (!root || root.localName !== 'feed') throw new Error(t('errors.notOpds'));
   const own = links(root, url);
   const next = own.find((l) => l.rel === 'next')?.href;
   const self = own.find((l) => l.rel === 'self')?.href ?? url;

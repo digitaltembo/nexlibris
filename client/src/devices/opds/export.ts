@@ -12,6 +12,7 @@ import { FORMATS, isFormatId } from '@nexlibris/tools/formats/formats';
 import { catalogFiles } from '../selection';
 import type { ConnectionType } from '../types';
 import { buildCatalog, type CatalogBook, type CatalogFile } from './catalog';
+import { t } from '../../i18n';
 
 /** Where a catalog is written: a zip, a folder on disk, … */
 export interface CatalogSink {
@@ -135,7 +136,7 @@ export async function exportCatalog(
       key = file.cover;
       read = async () => {
         const cover = await backend.getFile(file.cover);
-        if (!cover) throw new Error('A cover is missing from the library.');
+        if (!cover) throw new Error(t('errors.coverMissing'));
         return cover;
       };
     } else {
@@ -145,7 +146,7 @@ export async function exportCatalog(
       book = { itemId: item.id, hash: ref.hash, size: ref.size };
       read = async () => {
         const stored = await backend.getFile(ref.hash);
-        if (!stored) throw new Error(`${item.title}: the file is missing from the library.`);
+        if (!stored) throw new Error(t('errors.bookFileMissing', { title: item.title }));
         return stored;
       };
     }

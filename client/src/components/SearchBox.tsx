@@ -1,5 +1,6 @@
 import styled from 'styled-components';
 import { SearchIcon } from './icons';
+import { t } from '../i18n';
 
 const Box = styled.div`
   position: relative;
@@ -94,17 +95,17 @@ interface Props {
 
 /** The search in the top bar: what's searched for, opening the search dialog, with a button to clear it. */
 export function SearchBox({ value, inText, placeholder, onOpen, onClear }: Props) {
-  const label = value ? `${inText ? 'Search inside books' : 'Search'}: ${value}` : 'Search';
+  const label = value ? t(inText ? 'searchBox.searchInsideFor' : 'searchBox.searchFor', { value }) : t('searchBox.search');
   return (
     <Box>
       <Trigger $actions={value ? 1 : 0} aria-label={label} aria-haspopup="dialog" onClick={onOpen}>
         <SearchIcon />
-        {value && inText && <ModeLabel>Inside books</ModeLabel>}
+        {value && inText && <ModeLabel>{t('searchBox.insideBooks')}</ModeLabel>}
         {value ? <span>{value}</span> : <Placeholder>{placeholder}</Placeholder>}
       </Trigger>
       <Actions>
         {value && (
-          <InnerButton aria-label="Clear search" title="Clear search" onClick={onClear}>
+          <InnerButton aria-label={t('searchBox.clear')} title={t('searchBox.clear')} onClick={onClear}>
             ×
           </InnerButton>
         )}

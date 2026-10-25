@@ -1,6 +1,7 @@
 {
   "name": "@nexlibris/crosspoint-tools",
   "version": "0.0.0",
+  "description": "Files for CrossPoint e-readers (Xteink X4 and X3): optimized EPUBs, sleep images, StarDict dictionaries, fonts and the reader's library index",
   "private": true,
   "type": "module",
   "exports": {

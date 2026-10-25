@@ -64,6 +64,7 @@ import { CameraScanner } from './CameraScanner';
 import { KeptBooks, PeerKeptBooks } from './KeptBooks';
 import { Modal, ModalFooter } from './Modal';
 import { QrCode } from './QrCode';
+import { t, tn, type TextKey } from '../i18n';
 
 const Section = styled.section`
   margin-top: 16px;
@@ -132,8 +133,8 @@ const Form = styled.form`
 `;
 
 const errorMessage = (e: unknown) => (e instanceof Error ? e.message : String(e));
-const plural = (n: number, word: string, many = `${word}s`) => `${n} ${n === 1 ? word : many}`;
-const when = (iso: string | undefined) => (iso ? new Date(iso).toLocaleString() : 'never');
+const when = (iso: string | undefined) => (iso ? new Date(iso).toLocaleString() : t('sync.never'));
+const counted = (key: TextKey, count: number, vars: Record<string, string | number> = {}) => t(key, { ...vars, count, n: count });
 
 /**
  * Sync between instances (M6), as connections (`ConnectionsDialog`): pairing with another
@@ -141,10 +142,14 @@ const when = (iso: string | undefined) => (iso ? new Date(iso).toLocaleString() 
  * with one, and hosting (the desktop app on the network, the Android and iOS apps over Bluetooth).
  */
 
-const TRANSPORT_LABEL: Record<Transport, string> = { network: 'over the network', bluetooth: 'over Bluetooth', folder: 'through a folder' };
+const TRANSPORT_LABEL: Record<Transport, TextKey> = {
+  network: 'sync.transport.network',
+  bluetooth: 'sync.transport.bluetooth',
+  folder: 'sync.transport.folder',
+};
 
 /** How a paired instance is reached, for a connection's line, e.g. "over Bluetooth". */
-export const transportLabel = (pairing: Pairing) => (isOwnServer(pairing.address) ? 'through your account' : TRANSPORT_LABEL[transportOf(pairing.address)]);
+export const transportLabel = (pairing: Pairing) => t(isOwnServer(pairing.address) ? 'sync.transport.account' : TRANSPORT_LABEL[transportOf(pairing.address)]);
 
 /** How to pair: reaching another device as this one's hub, or (`host`) letting another reach this one. */
 export type PairHow = 'network' | 'bluetooth' | 'folder' | 'server' | 'host';
@@ -161,40 +166,38 @@ export function PairChoices({ onChoose }: { onChoose(how: PairHow): void }) {
   return (
     <Section>
       <Muted as="p">
-        Each device keeps the whole library, and syncs its changes with the ones it’s connected to. Books’ files go along too:
-        the books chosen for each device, all of them to start with.
+        {t('sync.pairIntro')}
       </Muted>
       <Choices>
         {canHost() && (
           <Button $variant="secondary" onClick={() => onChoose('host')}>
-            {inDesktopApp() ? 'Let a device pair with this computer…' : 'Let a computer pair with this phone over Bluetooth…'}
+            {inDesktopApp() ? t('sync.hostDesktop') : t('sync.hostPhone')}
           </Button>
         )}
         {account && (
           <Button $variant="secondary" onClick={() => onChoose('server')}>
-            Your account on {session!.name}…
+            {t('sync.account', { name: session!.name })}
           </Button>
         )}
         {canSyncOverNetwork() && (
           <Button $variant="secondary" onClick={() => onChoose('network')}>
-            A computer on this network…
+            {t('sync.network')}
           </Button>
         )}
         {canSyncOverBluetooth() && (
           <Button $variant="secondary" onClick={() => onChoose('bluetooth')}>
-            A phone over Bluetooth…
+            {t('sync.bluetooth')}
           </Button>
         )}
         {canSyncThroughFolder() && (
           <Button $variant="secondary" onClick={() => onChoose('folder')}>
-            {inIosApp() ? 'A computer through a folder…' : inMobileApp() ? 'A computer by USB…' : 'A phone by USB, or a folder…'}
+            {inIosApp() ? t('sync.folderIos') : inMobileApp() ? t('sync.folderPhone') : t('sync.folder')}
           </Button>
         )}
       </Choices>
       {none && !canHost() && (
         <Muted as="p">
-          This browser can’t reach other devices: use Chrome or Edge (over Bluetooth, or with a folder), or open nexlibris
-          over plain http on the same network as the desktop app.
+          {t('sync.noWay')}
         </Muted>
       )}
     </Section>
@@ -305,43 +308,42 @@ function NetworkHosting({ listed }: { listed(origin: string): boolean }) {
   const shownCode =
     code && (status?.peers.length ?? 0) <= pairedBefore.current && Date.parse(code.expiresAt) > checkedAt ? code : undefined;
 
-  if (!status) return error ? <ErrorText>{error}</ErrorText> : <Muted as="p">Loading…</Muted>;
+  if (!status) return error ? <ErrorText>{error}</ErrorText> : <Muted as="p">{t('sync.loading')}</Muted>;
   const address = status.addresses[0];
 
   return (
     <>
       <Section>
-        <h3>Let devices pair with this computer</h3>
+        <h3>{t('sync.hostTitle')}</h3>
         <Muted as="p">
-          Lets the nexlibris app on your phone (or a browser on this network) sync with this library while nexlibris is
-          open here. Each device needs pairing once.
+          {t('sync.hostExplain')}
         </Muted>
         <Row>
           <Button
             $variant={status.enabled ? 'secondary' : 'primary'}
             onClick={() => void run(() => syncHost().setEnabled({ enabled: !status.enabled }).finally(() => setCode(undefined)))}
           >
-            {status.enabled ? 'Turn off' : 'Turn on'}
+            {status.enabled ? t('sync.turnOff') : t('sync.turnOn')}
           </Button>
           {status.enabled && (
             <Button $variant="secondary" disabled={!address} onClick={() => newCode(keep)}>
-              Pair a device…
+              {t('sync.pairDevice')}
             </Button>
           )}
         </Row>
         {status.enabled && !address && !status.error && (
-          <Muted as="p">This computer isn’t on a network, so nothing can reach it.</Muted>
+          <Muted as="p">{t('sync.noNetwork')}</Muted>
         )}
         {status.error && <ErrorText>{status.error}</ErrorText>}
       </Section>
 
       {shownCode && address && (
         <Section>
-          <h3>Pair a device</h3>
-          <Muted as="p">In nexlibris on the other device, add a Nexlibris twin (“A computer on this network”), and scan this or enter the address and code.</Muted>
+          <h3>{t('sync.pairTitle')}</h3>
+          <Muted as="p">{t('sync.pairHow')}</Muted>
           <p>
             <KeptBooks
-              name="the device"
+              name={t('sync.theDevice')}
               query={keep}
               onChange={(query) => {
                 setKeep(query);
@@ -349,28 +351,28 @@ function NetworkHosting({ listed }: { listed(origin: string): boolean }) {
               }}
             />
           </p>
-          <QrCode text={pairingText(address, shownCode.code)} label={`Pairing code ${shownCode.code} for ${address}`} />
+          <QrCode text={pairingText(address, shownCode.code)} label={t('sync.qrLabel', { code: shownCode.code, address })} />
           <p>
             <Code>{address}</Code>
             <br />
             <Code>{shownCode.code}</Code>
           </p>
-          <Muted as="p">The code works once, for the next 10 minutes.</Muted>
+          <Muted as="p">{t('sync.codeOnce')}</Muted>
         </Section>
       )}
 
       {status.peers.some((peer) => !listed(peer.origin)) && (
         <Section>
           {/* Those without a connection yet: the rest are listed as connections, with Forget there. */}
-          <h3>Paired, not synced yet</h3>
+          <h3>{t('sync.notSyncedYet')}</h3>
           <List>
             {status.peers.filter((peer) => !listed(peer.origin)).map((peer) => (
               <li key={peer.origin}>
                 <span>{peer.name}</span>
-                <Muted>last synced {when(peer.lastSyncedAt)}</Muted>
+                <Muted>{t('sync.lastSynced', { when: when(peer.lastSyncedAt) })}</Muted>
                 <Spacer />
                 <Button $variant="secondary" $size="small" onClick={() => void run(() => syncHost().unpair({ origin: peer.origin }))}>
-                  Forget
+                  {t('sync.forget')}
                 </Button>
                 <PeerKeptBooks origin={peer.origin} name={peer.name} />
               </li>
@@ -398,7 +400,7 @@ type Step =
  */
 export type SyncDirection = 'both' | 'from' | 'to';
 
-const DIRECTION_TITLE: Record<SyncDirection, string> = { both: 'Sync', from: 'Sync from', to: 'Sync to' };
+const DIRECTION_TITLE: Record<SyncDirection, TextKey> = { both: 'sync.direction.both', from: 'sync.direction.from', to: 'sync.direction.to' };
 
 /** The sync's choices for a direction, or just some books (`only`). */
 function directionOptions(direction: SyncDirection, only?: { pull?: ItemId[]; push?: ItemId[] }): Pick<SyncOptions, 'pull' | 'push'> {
@@ -490,7 +492,7 @@ export function SyncInstance({
       await refresh();
     } catch (e) {
       await refresh();
-      setError(`${errorMessage(e)} Nothing is lost: sync again to finish.`);
+      setError(t('sync.interrupted', { message: errorMessage(e) }));
       setStep({ kind: 'ready' });
       return;
     }
@@ -530,12 +532,12 @@ export function SyncInstance({
   const busy = step.kind === 'previewing' || step.kind === 'syncing' || step.kind === 'files';
 
   return (
-    <Modal title={`${DIRECTION_TITLE[direction]} ${name}`} onClose={busy ? () => undefined : onClose}>
+    <Modal title={t('sync.title', { direction: t(DIRECTION_TITLE[direction]), name })} onClose={busy ? () => undefined : onClose}>
       <Muted as="p">
-        Synced {describeAddress(pairing.address)} · last synced {when(pairing.lastSyncedAt)}
+        {t('sync.synced', { how: describeAddress(pairing.address), when: when(pairing.lastSyncedAt) })}
       </Muted>
 
-      {step.kind === 'previewing' && <Muted as="p">Comparing with {name}…</Muted>}
+      {step.kind === 'previewing' && <Muted as="p">{t('sync.comparing', { name })}</Muted>}
 
       {(step.kind === 'preview' || step.kind === 'syncing') && (
         <PreviewView
@@ -557,11 +559,11 @@ export function SyncInstance({
 
       <ModalFooter>
         <Button $variant="secondary" disabled={busy} onClick={onBack}>
-          Back
+          {t('sync.back')}
         </Button>
         {(step.kind === 'ready' || step.kind === 'done') && (
-          <Button $variant="secondary" onClick={() => void forget()} title="Pair again to sync with it">
-            Unpair
+          <Button $variant="secondary" onClick={() => void forget()} title={t('sync.unpairTitle')}>
+            {t('sync.unpair')}
           </Button>
         )}
         <Spacer />
@@ -569,32 +571,38 @@ export function SyncInstance({
           <>
             <Button
               $variant="secondary"
-              title={`Brings every book ${name} shows this device that it doesn’t have.`}
+              title={t('sync.fromTitle', { name })}
               onClick={() => (setDirection('from'), void preview({ direction: 'from' }))}
             >
-              Sync from…
+              {t('sync.syncFrom')}
             </Button>
             <Button
               $variant="secondary"
-              title={`Sends every book in this device’s catalog for ${name} that it doesn’t have.`}
+              title={t('sync.toTitle', { name })}
               onClick={() => (setDirection('to'), void preview({ direction: 'to' }))}
             >
-              Sync to…
+              {t('sync.syncTo')}
             </Button>
-            <Button onClick={() => (setDirection('both'), void preview({ direction: 'both' }))}>Both ways…</Button>
+            <Button onClick={() => (setDirection('both'), void preview({ direction: 'both' }))}>{t('sync.bothWays')}</Button>
           </>
         )}
         {(step.kind === 'preview' || step.kind === 'syncing') && (
           <>
             <Button $variant="secondary" disabled={step.kind === 'syncing'} onClick={() => setStep({ kind: 'ready' })}>
-              Cancel
+              {t('common.cancel')}
             </Button>
             <Button disabled={step.kind === 'syncing'} onClick={() => void sync(step.preview)}>
-              {step.kind === 'syncing' ? 'Syncing…' : only?.pull ? 'Download' : only?.push ? 'Send' : DIRECTION_TITLE[direction]}
+              {step.kind === 'syncing'
+                ? t('sync.syncing')
+                : only?.pull
+                  ? t('sync.download')
+                  : only?.push
+                    ? t('sync.send')
+                    : t(DIRECTION_TITLE[direction])}
             </Button>
           </>
         )}
-        {step.kind === 'done' && <Button onClick={onClose}>Done</Button>}
+        {step.kind === 'done' && <Button onClick={onClose}>{t('common.done')}</Button>}
       </ModalFooter>
     </Modal>
   );
@@ -610,7 +618,7 @@ function BackFooter({ onBack, busy }: { onBack(): void; busy?: boolean }) {
   return (
     <ModalFooter>
       <Button $variant="secondary" disabled={busy} onClick={onBack}>
-        Back
+        {t('sync.back')}
       </Button>
     </ModalFooter>
   );
@@ -646,21 +654,20 @@ function PairNetwork({ onPaired, onBack }: PairProps) {
   return (
     <>
       <Section>
-        <h3>Pair with a computer</h3>
+        <h3>{t('sync.pairComputer')}</h3>
         <Muted as="p">
-          In nexlibris on your computer, open Connections, choose Add connection, Nexlibris twin, then “Let a device pair
-          with this computer”: turn it on and choose “Pair a device”. Then scan the code it shows, or enter its address and code here.
+          {t('sync.pairComputerHow')}
         </Muted>
         {scanning ? (
           <CameraScanner
             reader={qrReader}
             square
-            hint="Hold the QR code inside the frame."
-            otherwise="Enter the address and code instead."
+            hint={t('sync.qrHint')}
+            otherwise={t('sync.qrOtherwise')}
             onError={(message) => (setError(message), setScanning(false))}
             onValue={(text) => {
               const parsed = parsePairingText(text);
-              if (!parsed) return setError('That QR code isn’t a nexlibris pairing code.');
+              if (!parsed) return setError(t('sync.notPairingCode'));
               setScanning(false);
               void pair(parsed.address, parsed.code);
             }}
@@ -668,27 +675,27 @@ function PairNetwork({ onPaired, onBack }: PairProps) {
         ) : (
           cameraAvailable() && (
             <Button disabled={busy} onClick={() => (setError(undefined), setScanning(true))}>
-              Scan QR code
+              {t('sync.scanQr')}
             </Button>
           )
         )}
         <Form onSubmit={submit}>
           <label>
-            Address
+            {t('sync.address')}
             <input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="http://192.168.0.11:47811" inputMode="url" />
           </label>
           <label>
-            Code
+            {t('sync.code')}
             <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="K3Q9-TX2M" autoCapitalize="characters" />
           </label>
           <Row>
             <Button type="submit" $variant="secondary" disabled={busy || !address.trim() || !code.trim()}>
-              {busy ? 'Pairing…' : 'Pair'}
+              {busy ? t('sync.pairing') : t('sync.pair')}
             </Button>
           </Row>
         </Form>
       </Section>
-      {Object.keys(library.items).length > 0 && <FirstSyncChoice value={first} onChange={setFirst} hub="the computer" />}
+      {Object.keys(library.items).length > 0 && <FirstSyncChoice value={first} onChange={setFirst} hub={t('sync.theComputer')} />}
       {error && <ErrorText>{error}</ErrorText>}
       <BackFooter onBack={onBack} busy={busy} />
     </>
@@ -722,20 +729,21 @@ function PairServer({ onPaired, onBack }: PairProps) {
   return (
     <>
       <Section>
-        <h3>Keep a copy in your account</h3>
+        <h3>{t('sync.accountTitle')}</h3>
         <Muted as="p">
-          This library stays {choosesServer() ? 'on this device' : 'in this browser'}, and your account{session?.account && ` (${session.account.name})`} on{' '}
-          {session?.name ?? 'this server'} keeps a copy, which it syncs with as with another device. Your other devices can connect
-          to your account the same way, and each syncs through it. Choose which books’ files stay here as well afterwards; the rest
-          are fetched from your account when you open them.
+          {t('sync.accountExplain', {
+            where: choosesServer() ? t('sync.onDevice') : t('sync.inBrowser'),
+            account: session?.account ? t('sync.accountName', { name: session.account.name }) : '',
+            server: session?.name ?? t('sync.thisServer'),
+          })}
         </Muted>
         <Row>
           <Button $variant="primary" disabled={busy || !session?.account} onClick={() => void pair()}>
-            {busy ? 'Connecting…' : 'Connect'}
+            {busy ? t('sync.connecting') : t('sync.connect')}
           </Button>
         </Row>
       </Section>
-      {Object.keys(library.items).length > 0 && <FirstSyncChoice value={first} onChange={setFirst} hub="your account" />}
+      {Object.keys(library.items).length > 0 && <FirstSyncChoice value={first} onChange={setFirst} hub={t('sync.yourAccount')} />}
       {error && <ErrorText>{error}</ErrorText>}
       <BackFooter onBack={onBack} busy={busy} />
     </>
@@ -780,28 +788,25 @@ function PairBluetooth({ onPaired, onBack }: PairProps) {
   return (
     <>
       <Section>
-        <h3>Pair with a phone over Bluetooth</h3>
+        <h3>{t('sync.bluetoothTitle')}</h3>
         <Muted as="p">
-          In nexlibris on your phone, open Connections, choose Add connection, Nexlibris twin, then “Let a computer pair with
-          this phone over Bluetooth”: turn it on and choose “Pair a device”. Then choose the phone here, and enter the code it
-          shows. Syncing over Bluetooth is slow for books’ files: the phone can keep only some of them here, chosen as it shows
-          the code (or later, by editing this computer’s connection there).
+          {t('sync.bluetoothHow')}
         </Muted>
         <Row>
           <Button $variant={link ? 'secondary' : 'primary'} disabled={busy} onClick={() => void choose()}>
-            {link ? 'Choose another phone…' : 'Choose the phone…'}
+            {link ? t('sync.anotherPhone') : t('sync.choosePhone')}
           </Button>
-          {link && <Muted>Connected to {link.name}</Muted>}
+          {link && <Muted>{t('sync.connectedTo', { name: link.name })}</Muted>}
         </Row>
         {link && (
           <Form onSubmit={(e) => void pair(e)}>
             <label>
-              Code shown on {link.name}
+              {t('sync.codeOn', { name: link.name })}
               <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="K3Q9-TX2M" autoCapitalize="characters" />
             </label>
             <Row>
               <Button type="submit" disabled={busy || !code.trim()}>
-                {busy ? 'Pairing…' : 'Pair'}
+                {busy ? t('sync.pairing') : t('sync.pair')}
               </Button>
             </Row>
           </Form>
@@ -848,7 +853,7 @@ function PairFolder({ onPaired, onBack }: PairProps) {
       const handle = inMobileApp() ? undefined : await chooseFolder();
       if (!inMobileApp() && !handle) return setBusy(false);
       const { hub } = openFolder(handle);
-      const label = handle?.name ?? appPath ?? 'sync folder';
+      const label = handle?.name ?? appPath ?? t('sync.syncFolder');
       const pairing = await pairWithHub(backend, hub.client, `${FOLDER_PREFIX}${label}`, '', instanceName());
       if (handle) await saveFolder(folderKey(pairing.hub.origin), handle);
       onPaired(pairing);
@@ -863,10 +868,9 @@ function PairFolder({ onPaired, onBack }: PairProps) {
       <Section>
         {inIosApp() ? (
           <>
-            <h3>Sync with a computer through a folder</h3>
+            <h3>{t('sync.iosTitle')}</h3>
             <Muted as="p">
-              This iPhone syncs through a folder that the computer reaches too: on a USB drive plugged into the iPhone, then
-              into the computer, or in iCloud Drive on both. Make one for it (say, nexlibris-sync) and choose it.
+              {t('sync.iosHow')}
             </Muted>
             {appPath && (
               <p>
@@ -874,17 +878,14 @@ function PairFolder({ onPaired, onBack }: PairProps) {
               </p>
             )}
             <Muted as="p">
-              Sync here, take the drive to the computer (or let iCloud Drive catch up), and in nexlibris on the computer add a
-              Nexlibris twin (“A phone by USB, or a folder”) and choose that folder. Then sync here again to take what the
-              computer sent. Books’ files are only kept in the folder until the other side has them.
+              {t('sync.iosThen')}
             </Muted>
           </>
         ) : inMobileApp() ? (
           <>
-            <h3>Sync with a computer by USB</h3>
+            <h3>{t('sync.usbTitle')}</h3>
             <Muted as="p">
-              This phone syncs through a folder in its storage, which a computer can open when the phone is plugged in by
-              USB. Make one for it (say, nexlibris-sync in Documents) and choose it.
+              {t('sync.usbHow')}
             </Muted>
             {appPath && (
               <p>
@@ -892,31 +893,27 @@ function PairFolder({ onPaired, onBack }: PairProps) {
               </p>
             )}
             <Muted as="p">
-              Sync here, plug the phone in, and in nexlibris on the computer add a Nexlibris twin (“A phone by
-              USB”) and choose that folder on the phone. Then sync here again to take what the computer sent. Books’ files are only kept in the folder until
-              the other side has them.
+              {t('sync.usbThen')}
             </Muted>
           </>
         ) : (
           <>
-            <h3>Sync with a phone by USB, or through a folder</h3>
+            <h3>{t('sync.folderTitle')}</h3>
             <Muted as="p">
-              Plug the phone in by USB, with its storage open on this computer (on a Mac that takes an app that mounts it,
-              such as MacDroid), and choose the folder the phone syncs through (say <Code>Documents/nexlibris-sync</Code>).
-              Sync on the phone before and after.
+              {tn('sync.folderHow', { folder: <Code>{t('sync.folderExample')}</Code> })}
             </Muted>
-            <Muted as="p">Any folder two devices both reach works the same way: a USB stick, or a shared or synced folder.</Muted>
+            <Muted as="p">{t('sync.anyFolder')}</Muted>
           </>
         )}
         <Row>
           {inMobileApp() && (
             <Button $variant={appPath ? 'secondary' : 'primary'} disabled={busy || appPath === undefined} onClick={() => void chooseOnPhone()}>
-              {appPath ? 'Choose another folder…' : 'Choose a folder…'}
+              {appPath ? t('sync.anotherFolder') : t('sync.chooseFolder')}
             </Button>
           )}
           {(!inMobileApp() || appPath) && (
             <Button disabled={busy} onClick={() => void pair()}>
-              {busy ? 'Pairing…' : inMobileApp() ? 'Use this folder' : 'Choose the folder…'}
+              {busy ? t('sync.pairing') : inMobileApp() ? t('sync.useFolder') : t('sync.chooseTheFolder')}
             </Button>
           )}
         </Row>
@@ -971,36 +968,36 @@ function BluetoothHosting({ listed }: { listed(origin: string): boolean }) {
 
   return (
     <Section>
-      <h3>Let a computer pair with this phone over Bluetooth</h3>
+      <h3>{t('sync.btHostTitle')}</h3>
       <Muted as="p">
-        Lets a computer sync with this phone over Bluetooth while nexlibris is open here: in Chrome or Edge, or the desktop
-        app, with no network needed.
+        {t('sync.btHostExplain')}
       </Muted>
       <Row>
         <Button $variant={status?.enabled ? 'secondary' : 'primary'} disabled={!status || busy} onClick={() => void toggle()}>
-          {status?.enabled ? 'Turn off' : 'Turn on'}
+          {status?.enabled ? t('sync.turnOff') : t('sync.turnOn')}
         </Button>
         {status?.running && (
           <Button $variant="secondary" onClick={() => setCode(bluetoothSyncHub()?.newCode({ keepFiles: keep }))}>
-            Pair a device…
+            {t('sync.pairDevice')}
           </Button>
         )}
       </Row>
       {status?.running && (
         <Muted as="p">
-          On{status.name && ` as “${status.name}”`}
-          {status.connected > 0 && ` · ${plural(status.connected, 'device')} connected`}.
+          {status.name ? t('sync.onAs', { name: status.name }) : t('sync.on')}
+          {status.connected > 0 && counted('sync.connected', status.connected)}
+          {t('sync.end')}
         </Muted>
       )}
       {status?.enabled && !status.running && status.error && <ErrorText>{status.error}</ErrorText>}
       {code && (
         <>
           <Muted as="p">
-            On the computer, add a Nexlibris twin (“A phone over Bluetooth”), choose {status?.name ? `“${status.name}”` : 'this phone'}, and enter:
+            {t('sync.btPairHow', { phone: status?.name ? t('sync.quoted', { name: status.name }) : t('sync.thisPhone') })}
           </Muted>
           <p>
             <KeptBooks
-              name="the computer"
+              name={t('sync.theComputer')}
               query={keep}
               onChange={(query) => {
                 setKeep(query);
@@ -1011,7 +1008,7 @@ function BluetoothHosting({ listed }: { listed(origin: string): boolean }) {
           <p>
             <Code>{code.code}</Code>
           </p>
-          <Muted as="p">The code works once, for the next 10 minutes.</Muted>
+          <Muted as="p">{t('sync.codeOnce')}</Muted>
         </>
       )}
       {peers.some((peer) => !listed(peer.origin)) && (
@@ -1019,14 +1016,14 @@ function BluetoothHosting({ listed }: { listed(origin: string): boolean }) {
           {peers.filter((peer) => !listed(peer.origin)).map((peer) => (
             <li key={peer.origin}>
               <span>{peer.name}</span>
-              <Muted>last synced {when(peer.lastSyncedAt)}</Muted>
+              <Muted>{t('sync.lastSynced', { when: when(peer.lastSyncedAt) })}</Muted>
               <Spacer />
               <Button
                 $variant="secondary"
                 $size="small"
                 onClick={() => void bluetoothSyncHub()?.unpair(peer.origin).then(() => setPeers((all) => all.filter((p) => p.origin !== peer.origin)))}
               >
-                Forget
+                {t('sync.forget')}
               </Button>
               <PeerKeptBooks origin={peer.origin} name={peer.name} />
             </li>
@@ -1041,15 +1038,13 @@ function BluetoothHosting({ listed }: { listed(origin: string): boolean }) {
 function FirstSyncChoice({ value, onChange, hub }: { value: FirstSyncMode; onChange(mode: FirstSyncMode): void; hub: string }) {
   return (
     <Section>
-      <h3>First sync</h3>
+      <h3>{t('sync.firstSync')}</h3>
       <label>
-        <input type="radio" checked={value === 'combine'} onChange={() => onChange('combine')} /> Combine this library with{' '}
-        {hub}’s (a book in both shows up twice)
+        <input type="radio" checked={value === 'combine'} onChange={() => onChange('combine')} /> {t('sync.combine', { hub })}
       </label>
       <br />
       <label>
-        <input type="radio" checked={value === 'replace'} onChange={() => onChange('replace')} /> Replace this library with{' '}
-        {hub}’s
+        <input type="radio" checked={value === 'replace'} onChange={() => onChange('replace')} /> {t('sync.replace', { hub })}
       </label>
     </Section>
   );
@@ -1071,76 +1066,91 @@ function PreviewView({
   const { plan, truth, first, libraries } = preview;
   const nothing = plan.ours.length === 0 && plan.theirs.length === 0;
   const titles = (ids: ItemId[], library: typeof libraries.ours) => ids.map((id) => library.items[id]?.title ?? id);
-  const name = (side: Side) => (side === 'theirs' ? hubName : 'this device');
+  const name = (side: Side) => (side === 'theirs' ? hubName : t('sync.thisDevice'));
   return (
     <>
       {first && Object.keys(libraries.ours.items).length > 0 && Object.keys(libraries.theirs.items).length > 0 && (
         <FirstSyncChoice value={first} onChange={(mode) => !busy && onFirst(mode)} hub={hubName} />
       )}
       <Section>
-        <h3>{nothing ? 'Already in sync' : 'What will change'}</h3>
+        <h3>{nothing ? t('sync.inSync') : t('sync.willChange')}</h3>
         {!nothing && (
           <Muted as="p">
-            {plural(plan.ours.length, 'change')} from {hubName} to apply here, {plural(plan.theirs.length, 'change')} to send to it.
+            {t('sync.changeCounts', {
+              ours: counted('sync.changes', plan.ours.length),
+              theirs: counted('sync.changes', plan.theirs.length),
+              hub: hubName,
+            })}
           </Muted>
         )}
         {first === 'replace' && (
-          <Muted as="p">This library will become a copy of {hubName}’s: books only here are removed.</Muted>
+          <Muted as="p">{t('sync.becomesCopy', { hub: hubName })}</Muted>
         )}
         {first !== 'replace' && preview.pulled.length > 0 && (
           <Muted as="p">
-            Brings {plural(preview.pulled.length, 'book')} here: <BookTitles titles={titles(preview.pulled, libraries.theirs)} />
+            {tn('sync.brings', {
+              books: counted('sync.books', preview.pulled.length),
+              titles: <BookTitles titles={titles(preview.pulled, libraries.theirs)} />,
+            })}
           </Muted>
         )}
         {preview.pushed.length > 0 && (
           <Muted as="p">
-            Sends {plural(preview.pushed.length, 'book')} to {hubName}: <BookTitles titles={titles(preview.pushed, libraries.ours)} />
+            {tn('sync.sends', {
+              books: counted('sync.books', preview.pushed.length),
+              hub: hubName,
+              titles: <BookTitles titles={titles(preview.pushed, libraries.ours)} />,
+            })}
           </Muted>
         )}
         {preview.offer.length > 0 && (
           <Muted as="p">
-            {plural(preview.offer.length, 'other book')} in this device’s catalog for {hubName} {preview.offer.length === 1 ? 'is' : 'are'}{' '}
-            offered to it: it can ask for them, and they come with a later sync.
+            {counted('sync.offered', preview.offer.length, { hub: hubName })}
           </Muted>
         )}
         {preview.keptOff && (
           <Muted as="p">
-            Deleted here, so kept off this device, but not deleted on {hubName}: <BookTitles titles={titles(preview.keptOff, libraries.theirs)} />
+            {tn('sync.keptOff', { hub: hubName, titles: <BookTitles titles={titles(preview.keptOff, libraries.theirs)} /> })}
           </Muted>
         )}
         {preview.keptHere && (
           <Muted as="p">
-            Deleted on {hubName}, so not sent there again, but kept here: <BookTitles titles={titles(preview.keptHere, libraries.ours)} />
+            {tn('sync.keptHere', { hub: hubName, titles: <BookTitles titles={titles(preview.keptHere, libraries.ours)} /> })}
           </Muted>
         )}
       </Section>
       {first !== 'replace' && (
         <Section>
-          <h3>Where they disagree</h3>
+          <h3>{t('sync.disagree')}</h3>
           <label>
-            <input type="radio" checked={truth === 'theirs'} disabled={busy} onChange={() => onTruth('theirs')} /> Keep {hubName}’s
+            <input type="radio" checked={truth === 'theirs'} disabled={busy} onChange={() => onTruth('theirs')} /> {t('sync.keepTheirs', { hub: hubName })}
           </label>{' '}
           <label>
-            <input type="radio" checked={truth === 'ours'} disabled={busy} onChange={() => onTruth('ours')} /> Keep this device’s
+            <input type="radio" checked={truth === 'ours'} disabled={busy} onChange={() => onTruth('ours')} /> {t('sync.keepOurs')}
           </label>
           {plan.conflicts.length === 0 ? (
-            <Muted as="p">Nothing was changed differently on both.</Muted>
+            <Muted as="p">{t('sync.noConflicts')}</Muted>
           ) : (
             <Conflicts>
               {plan.conflicts.map((conflict, i) => {
                 const view = describeConflict(conflict, libraries);
                 return (
                   <li key={i}>
-                    <strong>{view.what}</strong>: {view.theirs} ({hubName}
-                    {conflict.winner === 'theirs' ? ', kept' : ''}) / {view.ours} (this device
-                    {conflict.winner === 'ours' ? ', kept' : ''})
+                    {tn('sync.conflict', {
+                      what: <strong>{view.what}</strong>,
+                      theirs: view.theirs,
+                      hub: hubName,
+                      theirsKept: conflict.winner === 'theirs' ? t('sync.kept') : '',
+                      ours: view.ours,
+                      oursKept: conflict.winner === 'ours' ? t('sync.kept') : '',
+                    })}
                   </li>
                 );
               })}
             </Conflicts>
           )}
           <Muted as="p">
-            Otherwise {name(truth)} wins, except for reading positions: they keep whichever is newer.
+            {t('sync.otherwise', { side: name(truth) })}
           </Muted>
         </Section>
       )}
@@ -1151,18 +1161,26 @@ function PreviewView({
 function FilesProgress({ progress, hubName }: { progress?: FileProgress; hubName: string }) {
   return (
     <Section>
-      <h3>Synced; now the files</h3>
+      <h3>{t('sync.nowFiles')}</h3>
       <Muted as="p">
         {!progress
-          ? `Checking which files ${hubName} needs…`
-          : progress.direction === 'upload'
-            ? `Sending files to ${hubName}: ${progress.done} of ${progress.total}`
-            : `Fetching files from ${hubName}: ${progress.done} of ${progress.total}`}
+          ? t('sync.checkingFiles', { hub: hubName })
+          : t(progress.direction === 'upload' ? 'sync.sendingFiles' : 'sync.fetchingFiles', {
+              hub: hubName,
+              done: progress.done,
+              total: progress.total,
+            })}
       </Muted>
       {progress?.direction === 'download' && progress.books !== undefined && (
         <Muted as="p">
-          {plural(progress.books, 'book’s file', 'books’ files')} and {plural(progress.total - progress.books, 'cover')}
-          {progress.notKept ? `; ${plural(progress.notKept, 'book’s file', 'books’ files')} not chosen for here, left on ${hubName} until opened` : ''}.
+          {t('sync.fetchCounts', {
+            files: counted('sync.bookFiles', progress.books),
+            covers: counted('sync.covers', progress.total - progress.books),
+          })}
+          {progress.notKept
+            ? t('sync.notChosen', { files: counted('sync.bookFiles', progress.notKept), hub: hubName })
+            : ''}
+          {t('sync.end')}
         </Muted>
       )}
       {progress && <progress value={progress.done} max={Math.max(progress.total, 1)} />}
@@ -1176,7 +1194,8 @@ function BookTitles({ titles }: { titles: string[] }) {
   return (
     <>
       {shown.join(', ')}
-      {titles.length > shown.length && ` and ${titles.length - shown.length} more`}.
+      {titles.length > shown.length && t('sync.titlesMore', { count: titles.length - shown.length })}
+      {t('sync.end')}
     </>
   );
 }
@@ -1196,43 +1215,51 @@ function ResultView({
 }) {
   return (
     <Section>
-      <h3>Synced</h3>
+      <h3>{t('sync.done')}</h3>
       <Muted as="p">
-        {plural(result.received, 'change')} from {hubName}, {plural(result.sent, 'change')} sent
-        {result.conflicts.length > 0 && `, ${plural(result.conflicts.length, 'disagreement')} settled`}
-        {result.pulled.length > 0 && `; ${plural(result.pulled.length, 'book')} brought here`}
-        {result.pushed.length > 0 && `; ${plural(result.pushed.length, 'book')} sent`}.
+        {t('sync.resultChanges', {
+          received: counted('sync.changes', result.received),
+          sent: counted('sync.changes', result.sent),
+          hub: hubName,
+        })}
+        {result.conflicts.length > 0 && counted('sync.disagreements', result.conflicts.length)}
+        {result.pulled.length > 0 && counted('sync.broughtHere', result.pulled.length)}
+        {result.pushed.length > 0 && counted('sync.booksSent', result.pushed.length)}
+        {t('sync.end')}
       </Muted>
       {result.repaired.length > 0 && (
         <Muted as="p">
-          The check afterwards found {plural(result.repaired.length, 'item')} that still differed, and copied them from the
-          source of truth.
+          {counted('sync.repaired', result.repaired.length)}
         </Muted>
       )}
       {files && (files.uploaded > 0 || files.downloaded > 0 || files.notKept > 0 || files.notSent > 0) && (
         <Muted as="p">
-          {plural(files.downloaded, 'file')} fetched, {plural(files.uploaded, 'file')} sent
+          {t('sync.fileCounts', {
+            fetched: counted('sync.files', files.downloaded),
+            sent: counted('sync.files', files.uploaded),
+          })}
           {files.notKept > 0 &&
-            (throughFolder
-              ? `; ${plural(files.notKept, 'book file')} not kept here`
-              : `; ${plural(files.notKept, 'book file')} left on ${hubName} until opened`)}
-          {files.notSent > 0 && `; ${plural(files.notSent, 'book file')} not chosen for ${hubName}, so kept only here`}
-          .
+            t(throughFolder ? 'sync.notKeptHere' : 'sync.leftOn', {
+              files: counted('sync.bookFileCount', files.notKept),
+              hub: hubName,
+            })}
+          {files.notSent > 0 && t('sync.notSent', { files: counted('sync.bookFileCount', files.notSent), hub: hubName })}
+          {t('sync.end')}
         </Muted>
       )}
       {files && files.unavailable > 0 && (
         <Muted as="p">
           {throughFolder
-            ? `${plural(files.unavailable, 'file')} aren’t in the folder yet: the device that has them adds them when it next syncs there. Sync here again after that.`
-            : `${plural(files.unavailable, 'file')} aren’t on ${hubName} yet: another device has them and hasn’t synced since. They’ll come on a later sync.`}
+            ? counted('sync.unavailableFolder', files.unavailable)
+            : counted('sync.unavailable', files.unavailable, { hub: hubName })}
         </Muted>
       )}
       {files && files.failed.length > 0 && (
         <ErrorText>
-          {plural(files.failed.length, 'file')} couldn’t be moved ({files.failed[0]!.message}). Sync again to retry.
+          {counted('sync.failed', files.failed.length, { message: files.failed[0]!.message })}
         </ErrorText>
       )}
-      {filesError && <ErrorText>The files weren’t moved: {filesError} Sync again to retry.</ErrorText>}
+      {filesError && <ErrorText>{t('sync.filesError', { message: filesError })}</ErrorText>}
     </Section>
   );
 }

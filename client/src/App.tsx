@@ -33,6 +33,8 @@ import { ItemDetail } from './components/ItemDetail';
 import { LibraryGrid, type CollectionProps } from './components/LibraryGrid';
 import { LibraryList } from './components/LibraryList';
 import { SearchBox } from './components/SearchBox';
+import { AboutDialog } from './components/AboutDialog';
+import { isNewLibrary } from './library/firstRun';
 import { SearchDialog, type SearchMode } from './components/SearchDialog';
 import { TextResults } from './components/TextResults';
 import { useTextIndex } from './fulltext/TextIndexContext';
@@ -64,6 +66,7 @@ import { followWindowColors } from './styles/windowColors';
 import { openReaderWindow, readsInWindows, serveReaderWindows } from './library/readerWindow';
 import { choosesServer, useServerSession } from './library/account';
 import { bookElement, restoreAnchor, topAnchor, type ScrollAnchor } from './library/scrollAnchor';
+import { t } from './i18n';
 
 /**
  * The top bar and the breadcrumbs, held at the top while the books scroll under them. Its height is
@@ -103,6 +106,21 @@ const Toolbar = styled.header<{ $withPanel: boolean }>`
     margin: 0 8px 0 0;
     font-size: 1.15rem;
     letter-spacing: 0.02em;
+  }
+`;
+
+/** The name in the top bar, which opens About. */
+const NameButton = styled.button.attrs({ type: 'button' })`
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  cursor: pointer;
+
+  &:hover {
+    color: var(--highlight);
   }
 `;
 
@@ -215,6 +233,8 @@ export function App() {
   const [settings, setSettings] = useState<{ tab: SettingsTab }>();
   const openSettings = (tab: SettingsTab = 'appearance') => setSettings({ tab });
   const [cleaningUp, setCleaningUp] = useState(false);
+  /** About, shown at first on a new library (`welcome`, with Get started). */
+  const [about, setAbout] = useState<'about' | 'welcome' | undefined>(() => (isNewLibrary(library) ? 'welcome' : undefined));
   const [menuOpen, setMenuOpen] = useState(false);
   const menuBar = hasMenuBar();
   /** The search dialog, open in one mode or the other. */
@@ -225,7 +245,8 @@ export function App() {
   const session = useServerSession();
   // The apps can always choose a server; a page has accounts only if it came from one.
   const hasAccounts = !!session || choosesServer();
-  const accountLabel = session && !session.account ? 'Sign in…' : 'Account…';
+  const signingIn = !!session && !session.account;
+  const accountLabel = signingIn ? t('app.signIn') : t('app.account');
   const [addingByIsbn, setAddingByIsbn] = useState(false);
   const [selectionState, setSelectionState] = useState<SelectionState>(NO_SELECTION);
   const { selection, previewId } = selectionState;
@@ -347,6 +368,7 @@ export function App() {
   useBackToClose(menuOpen, () => setMenuOpen(false));
   useBackToClose(settings !== undefined, () => setSettings(undefined));
   useBackToClose(cleaningUp, () => setCleaningUp(false));
+  useBackToClose(about !== undefined, () => setAbout(undefined));
   useBackToClose(searching !== false, () => setSearching(false));
   useBackToClose(reading !== undefined, closeReader);
 
@@ -395,7 +417,7 @@ export function App() {
       // One book imported: open it, unless that would drop a selection of several.
       if (touched.length === 1 && selectionRef.current.selection.size < 2) openItem(touched[0]!.id);
     } catch (e) {
-      setLastImport({ added: [], merged: [], skipped: [{ name: 'Import', reason: e instanceof Error ? e.message : String(e) }], warnings: [] });
+      setLastImport({ added: [], merged: [], skipped: [{ name: t('app.importFailed'), reason: e instanceof Error ? e.message : String(e) }], warnings: [] });
     } finally {
       resumeIndexing();
       importStop.current = undefined;
@@ -414,7 +436,7 @@ export function App() {
     );
 
   const addBlankItem = async () => {
-    const item = createItem({ title: 'Untitled' });
+    const item = createItem({ title: t('app.untitled') });
     await apply([{ type: 'addItem', item }]);
     openItem(item.id);
   };
@@ -530,43 +552,45 @@ export function App() {
   };
 
   const menuEntries: MenuEntry[] = [
-    { label: 'Search inside books…', onSelect: () => openSearch('text') },
+    { label: t('app.menu.searchInside'), onSelect: () => openSearch('text') },
     'separator',
-    { label: importProgress ? importProgressLabel(importProgress) : 'Import files…', onSelect: startImport, disabled: importBusy },
-    ...(importProgress ? [] : [{ label: 'Import folder…', onSelect: startImportFolder, disabled: importBusy }]),
-    { label: 'New item', onSelect: () => void addBlankItem() },
-    { label: 'Add by ISBN…', onSelect: () => setAddingByIsbn(true) },
+    { label: importProgress ? importProgressLabel(importProgress) : t('app.menu.importFiles'), onSelect: startImport, disabled: importBusy },
+    ...(importProgress ? [] : [{ label: t('app.menu.importFolder'), onSelect: startImportFolder, disabled: importBusy }]),
+    { label: t('app.menu.newItem'), onSelect: () => void addBlankItem() },
+    { label: t('app.menu.addByIsbn'), onSelect: () => setAddingByIsbn(true) },
     'separator',
-    { label: 'Select all', onSelect: selectAll, disabled: items.length === 0 },
+    { label: t('app.menu.selectAll'), onSelect: selectAll, disabled: items.length === 0 },
     'separator',
-    { label: 'Connections…', onSelect: () => openSettings('connections') },
-    { label: 'Backup…', onSelect: () => openSettings('backup') },
-    { label: 'Library folder…', onSelect: () => openSettings('folder') },
+    { label: t('app.menu.connections'), onSelect: () => openSettings('connections') },
+    { label: t('app.menu.backup'), onSelect: () => openSettings('backup') },
+    { label: t('app.menu.libraryFolder'), onSelect: () => openSettings('folder') },
     ...(hasAccounts ? [{ label: accountLabel, onSelect: () => openSettings('account') }] : []),
     'separator',
-    { label: 'Browse categories…', onSelect: () => openSettings('categories') },
-    { label: 'Clean up library…', onSelect: () => setCleaningUp(true) },
-    { label: 'Settings…', onSelect: () => openSettings() },
+    { label: t('app.menu.categories'), onSelect: () => openSettings('categories') },
+    { label: t('app.menu.cleanup'), onSelect: () => setCleaningUp(true) },
+    { label: t('app.menu.settings'), onSelect: () => openSettings() },
+    'separator',
+    { label: t('app.menu.about'), onSelect: () => setAbout('about') },
   ];
 
   const menuBarMenus: MenuBar[] = [
     {
-      label: 'File',
+      label: t('app.menuBar.file'),
       items: [
-        { id: 'import', label: 'Import Files…', accelerator: 'CmdOrCtrl+O', enabled: !importBusy, run: startImport },
-        { id: 'importFolder', label: 'Import Folder…', accelerator: 'CmdOrCtrl+Shift+O', enabled: !importBusy, run: startImportFolder },
-        { id: 'newItem', label: 'New Item', accelerator: 'CmdOrCtrl+N', run: () => void addBlankItem() },
-        { id: 'addByIsbn', label: 'Add by ISBN…', run: () => setAddingByIsbn(true) },
+        { id: 'import', label: t('app.menuBar.importFiles'), accelerator: 'CmdOrCtrl+O', enabled: !importBusy, run: startImport },
+        { id: 'importFolder', label: t('app.menuBar.importFolder'), accelerator: 'CmdOrCtrl+Shift+O', enabled: !importBusy, run: startImportFolder },
+        { id: 'newItem', label: t('app.menuBar.newItem'), accelerator: 'CmdOrCtrl+N', run: () => void addBlankItem() },
+        { id: 'addByIsbn', label: t('app.menuBar.addByIsbn'), run: () => setAddingByIsbn(true) },
         { type: 'separator' },
-        { id: 'backup', label: 'Backup…', run: () => openSettings('backup') },
-        { id: 'libraryFolder', label: 'Library Folder…', run: () => openSettings('folder') },
-        ...(hasAccounts ? [{ id: 'account', label: accountLabel.replace('Sign in', 'Sign In'), run: () => openSettings('account') }] : []),
+        { id: 'backup', label: t('app.menuBar.backup'), run: () => openSettings('backup') },
+        { id: 'libraryFolder', label: t('app.menuBar.libraryFolder'), run: () => openSettings('folder') },
+        ...(hasAccounts ? [{ id: 'account', label: signingIn ? t('app.menuBar.signIn') : t('app.menuBar.account'), run: () => openSettings('account') }] : []),
         { type: 'separator' },
-        { id: 'settings', label: 'Settings…', accelerator: 'CmdOrCtrl+,', appMenu: true, run: () => openSettings() },
+        { id: 'settings', label: t('app.menuBar.settings'), accelerator: 'CmdOrCtrl+,', appMenu: true, run: () => openSettings() },
       ],
     },
     {
-      label: 'Edit',
+      label: t('app.menuBar.edit'),
       items: [
         { role: 'undo' },
         { role: 'redo' },
@@ -574,20 +598,20 @@ export function App() {
         { role: 'cut' },
         { role: 'copy' },
         { role: 'paste' },
-        { id: 'selectAll', label: 'Select All', accelerator: 'CmdOrCtrl+A', run: selectAllCommand },
+        { id: 'selectAll', label: t('app.menuBar.selectAll'), accelerator: 'CmdOrCtrl+A', run: selectAllCommand },
         { type: 'separator' },
-        { id: 'deselectAll', label: 'Deselect All', enabled: selection.size > 0, run: clearSelection },
+        { id: 'deselectAll', label: t('app.menuBar.deselectAll'), enabled: selection.size > 0, run: clearSelection },
         { type: 'separator' },
-        { id: 'find', label: 'Find…', accelerator: 'CmdOrCtrl+F', run: () => openSearch('books') },
-        { id: 'findText', label: 'Find Inside Books…', accelerator: 'CmdOrCtrl+Shift+F', run: () => openSearch('text') },
+        { id: 'find', label: t('app.menuBar.find'), accelerator: 'CmdOrCtrl+F', run: () => openSearch('books') },
+        { id: 'findText', label: t('app.menuBar.findText'), accelerator: 'CmdOrCtrl+Shift+F', run: () => openSearch('text') },
       ],
     },
     {
-      label: 'View',
+      label: t('app.menuBar.view'),
       items: [
         ...VIEWS.map((v, i) => ({
           id: `view:${v.id}`,
-          label: `as ${v.label}`,
+          label: t('app.menuBar.viewAs', { view: v.label }),
           ...(i < 9 && { accelerator: `CmdOrCtrl+${i + 1}` }),
           kind: 'radio' as const,
           checked: view === v.id,
@@ -595,7 +619,7 @@ export function App() {
         })),
         { type: 'separator' },
         {
-          label: 'Sort By',
+          label: t('app.menuBar.sortBy'),
           submenu: [
             ...Object.entries(SORT_LABELS).map(([key, label]) => ({
               id: `sort:${key}`,
@@ -605,19 +629,19 @@ export function App() {
               run: () => setSort({ key: key as SortKey, desc: DEFAULT_DESC[key as SortKey] }),
             })),
             { type: 'separator' },
-            { id: 'sort:desc', label: 'Descending', kind: 'checkbox', checked: sort.desc, run: () => setSort({ ...sort, desc: !sort.desc }) },
+            { id: 'sort:desc', label: t('app.menuBar.descending'), kind: 'checkbox', checked: sort.desc, run: () => setSort({ ...sort, desc: !sort.desc }) },
           ],
         },
         {
           id: 'columns',
-          label: 'Columns…',
+          label: t('app.menuBar.columns'),
           run: () => {
             setView('list');
             openSettings();
           },
         },
         {
-          label: 'Appearance',
+          label: t('app.menuBar.appearance'),
           submenu: APPEARANCES.map((a) => ({
             id: `appearance:${a.id}`,
             label: a.label,
@@ -638,34 +662,39 @@ export function App() {
       ],
     },
     {
-      label: 'Go',
+      label: t('app.menuBar.go'),
       items: [
-        { id: 'go:library', label: 'Library', accelerator: 'CmdOrCtrl+Shift+L', run: () => navigate([]) },
-        { id: 'go:up', label: 'Up a Level', accelerator: 'CmdOrCtrl+[', enabled: path.length > 0, run: () => navigate(parentPath(path)) },
+        { id: 'go:library', label: t('app.menuBar.library'), accelerator: 'CmdOrCtrl+Shift+L', run: () => navigate([]) },
+        { id: 'go:up', label: t('app.menuBar.up'), accelerator: 'CmdOrCtrl+[', enabled: path.length > 0, run: () => navigate(parentPath(path)) },
         { type: 'separator' },
-        { id: 'go:all', label: 'All Books', run: () => navigate(ALL_BOOKS) },
-        { id: 'go:reading', label: 'Currently Reading', run: () => navigate(['reading']) },
-        { id: 'go:authors', label: 'Authors', run: () => navigate(['authors']) },
-        { id: 'go:series', label: 'Series', run: () => navigate(['series']) },
+        { id: 'go:all', label: t('app.menuBar.allBooks'), run: () => navigate(ALL_BOOKS) },
+        { id: 'go:reading', label: t('app.menuBar.reading'), run: () => navigate(['reading']) },
+        { id: 'go:authors', label: t('app.menuBar.authors'), run: () => navigate(['authors']) },
+        { id: 'go:series', label: t('app.menuBar.series'), run: () => navigate(['series']) },
         ...[...categories]
           .sort((a, b) => a.name.localeCompare(b.name))
           .map((c) => ({ id: `go:category:${c.id}`, label: c.name, run: () => navigate(['category', c.id]) })),
-        { id: 'go:tags', label: 'Tags', run: () => navigate(['tags']) },
+        { id: 'go:tags', label: t('app.menuBar.tags'), run: () => navigate(['tags']) },
         ...(sources.length || readable.length ? [{ type: 'separator' as const }] : []),
         ...sources.map((c) => ({ id: `go:source:${c.id}`, label: c.name, run: () => navigate(['source', c.id]) })),
         ...readable.map((c) => ({ id: `go:connection:${c.id}`, label: c.name, run: () => navigate(['connection', c.id]) })),
       ],
     },
     {
-      label: 'Library',
+      label: t('app.menuBar.libraryMenu'),
       items: [
-        { id: 'bulkEdit', label: 'Bulk Edit…', enabled: selectedItems.length > 0, run: () => setBulkEditing(true) },
-        { id: 'bulkConvert', label: 'Bulk Convert…', enabled: selectedItems.length > 0, run: () => setBulkConverting(true) },
+        { id: 'bulkEdit', label: t('app.menuBar.bulkEdit'), enabled: selectedItems.length > 0, run: () => setBulkEditing(true) },
+        { id: 'bulkConvert', label: t('app.menuBar.bulkConvert'), enabled: selectedItems.length > 0, run: () => setBulkConverting(true) },
         { type: 'separator' },
-        { id: 'categories', label: 'Browse Categories…', run: () => openSettings('categories') },
-        { id: 'cleanup', label: 'Clean Up Library…', run: () => setCleaningUp(true) },
-        { id: 'connections', label: 'Connections…', run: () => openSettings('connections') },
+        { id: 'categories', label: t('app.menuBar.categories'), run: () => openSettings('categories') },
+        { id: 'cleanup', label: t('app.menuBar.cleanup'), run: () => setCleaningUp(true) },
+        { id: 'connections', label: t('app.menuBar.connections'), run: () => openSettings('connections') },
       ],
+    },
+    {
+      label: t('app.menuBar.help'),
+      // On macOS the app menu's About, in place of the system's.
+      items: [{ id: 'about', label: t('app.menuBar.about'), appMenu: true, run: () => setAbout('about') }],
     },
   ];
   useMenuBar(menuBar ? menuBarMenus : []);
@@ -714,9 +743,13 @@ export function App() {
               <MenuIcon />
             </MenuButton>
           )}
-          <h1>nexlibris</h1>
+          <h1>
+            <NameButton title={t('app.aboutTitle')} onClick={() => setAbout('about')}>
+              {t('app.name')}
+            </NameButton>
+          </h1>
           <SearchBox
-            placeholder={`Search ${allItems.length} ${allItems.length === 1 ? 'item' : 'items'}…`}
+            placeholder={t('app.searchPlaceholder', { count: allItems.length })}
             value={textQuery || query}
             inText={textQuery !== ''}
             onOpen={() => openSearch()}
@@ -733,26 +766,24 @@ export function App() {
             />
           ) : (
             indexing && (
-              <Activity role="status" title="Reading books’ text so it can be searched">
-                <Muted>
-                  Indexing text {indexing.done + 1}/{indexing.total}
-                </Muted>
+              <Activity role="status" title={t('app.indexingTitle')}>
+                <Muted>{t('app.indexing', { done: indexing.done + 1, total: indexing.total })}</Muted>
               </Activity>
             )
           )}
           {hasSelection && (
-            <Activity aria-label="Selection">
-              <Muted>{selectedItems.length} selected</Muted>
+            <Activity aria-label={t('app.selection')}>
+              <Muted>{t('app.selected', { count: selectedItems.length })}</Muted>
               <Button $variant="secondary" $size="small" aria-pressed={showBulk} onClick={() => setBulkEditing(true)}>
-                Bulk edit
+                {t('app.bulkEdit')}
               </Button>
               <Button $variant="secondary" $size="small" onClick={() => setBulkConverting(true)}>
-                Bulk convert
+                {t('app.bulkConvert')}
               </Button>
               {items.some((i) => !selection.has(i.id)) && (
-                <SubtleButton onClick={selectAll}>Select all{query && ' shown'}</SubtleButton>
+                <SubtleButton onClick={selectAll}>{query ? t('app.selectAllShown') : t('app.selectAll')}</SubtleButton>
               )}
-              <Button $variant="icon" aria-label="Clear selection" title="Clear selection" onClick={clearSelection}>
+              <Button $variant="icon" aria-label={t('app.clearSelection')} title={t('app.clearSelection')} onClick={clearSelection}>
                 ×
               </Button>
             </Activity>
@@ -794,12 +825,12 @@ export function App() {
                   navigate(c.path);
                 },
               })),
-              ...(textQuery ? [{ label: `Inside books: “${textQuery}”`, onSelect: () => undefined }] : []),
+              ...(textQuery ? [{ label: t('app.insideBooks', { query: textQuery }), onSelect: () => undefined }] : []),
             ]}
           >
             {!textQuery && <CrumbCount>{viewCount(browsed)}</CrumbCount>}
             {!textQuery && (path.length === 0 || path[0] === 'category') && (
-              <CrumbAction onClick={() => openSettings('categories')}>Edit categories…</CrumbAction>
+              <CrumbAction onClick={() => openSettings('categories')}>{t('app.editCategories')}</CrumbAction>
             )}
             {!textQuery && <ViewSwitcher view={view} onView={setView} onSettings={() => openSettings()} />}
           </Breadcrumbs>
@@ -820,33 +851,33 @@ export function App() {
       {lastImport && (
         <Notice $withPanel={withPanel} role="status">
           <span>
-            {lastImport.stopped && 'Stopped. '}
-            Imported {lastImport.added.length} item{lastImport.added.length === 1 ? '' : 's'}
-            {lastImport.merged.length > 0 &&
-              `, and added files to ${lastImport.merged.length} book${lastImport.merged.length === 1 ? '' : 's'} already in the library`}
-            {importKnown > 0 && `; ${importKnown} file${importKnown === 1 ? ' was' : 's were'} in the library already`}
-            {importSkipped.length > 0 && `; skipped ${importSkipped.length}`}.
+            {lastImport.stopped && t('app.import.stopped')}
+            {t('app.import.imported', { count: lastImport.added.length })}
+            {lastImport.merged.length > 0 && t('app.import.merged', { count: lastImport.merged.length })}
+            {importKnown > 0 && t('app.import.known', { count: importKnown })}
+            {importSkipped.length > 0 && t('app.import.skipped', { count: importSkipped.length })}
+            {t('app.import.end')}
           </span>
           {(lastImport.merged.length > 0 || importSkipped.length > 0 || lastImport.warnings.length > 0) && (
             <ul>
               {lastImport.merged.map((m) => (
                 <li key={`m${m.item.id}`}>
-                  {m.names.join(', ')}: added to “{m.item.title}”
+                  {t('app.import.addedTo', { names: m.names.join(', '), title: m.item.title })}
                 </li>
               ))}
               {importSkipped.map((s, i) => (
                 <li key={`s${i}`}>
-                  {s.name}: {s.reason}
+                  {t('app.import.problem', { name: s.name, reason: s.reason })}
                 </li>
               ))}
               {lastImport.warnings.map((w, i) => (
                 <li key={`w${i}`}>
-                  {w.name}: {w.message}
+                  {t('app.import.problem', { name: w.name, reason: w.message })}
                 </li>
               ))}
             </ul>
           )}
-          <Button $variant="icon" aria-label="Dismiss" onClick={() => setLastImport(undefined)}>
+          <Button $variant="icon" aria-label={t('app.dismiss')} onClick={() => setLastImport(undefined)}>
             ×
           </Button>
         </Notice>
@@ -861,10 +892,9 @@ export function App() {
       >
         {allItems.length === 0 && browsed.kind !== 'source' && browsed.kind !== 'connection' && !((sources.length || readable.length) && path.length === 0) ? (
           <Empty>
-            <p>Your library is empty.</p>
+            <p>{t('app.empty')}</p>
             <Muted as="p">
-              Drop EPUB, PDF, MOBI, AZW3, CBZ, CBR, TXT or RTF files, or a folder of them such as a Calibre library,
-              anywhere on this page, or choose {menuBar ? 'File → Import Files… or Import Folder…' : 'Import files… or Import folder… from the menu'}.
+              {t('app.emptyHint', { how: menuBar ? t('app.emptyHowMenuBar') : t('app.emptyHowMenu') })}
             </Muted>
           </Empty>
         ) : textQuery ? (
@@ -901,7 +931,7 @@ export function App() {
         ) : items.length === 0 ? (
           <Empty>
             <Muted>
-              {query ? `Nothing here matches “${query}”.` : 'Nothing here.'}
+              {query ? t('app.noMatch', { query }) : t('app.nothingHere')}
             </Muted>
           </Empty>
         ) : view === 'list' ? (
@@ -987,6 +1017,16 @@ export function App() {
         />
       )}
       {bulkConverting && <BulkConvertDialog items={selectedItems} onClose={() => setBulkConverting(false)} />}
+      {about && (
+        <AboutDialog
+          firstRun={about === 'welcome'}
+          onClose={() => setAbout(undefined)}
+          onGetStarted={() => {
+            setAbout(undefined);
+            startImport();
+          }}
+        />
+      )}
       {cleaningUp && (
         <CleanupDialog
           onClose={() => setCleaningUp(false)}
@@ -995,7 +1035,7 @@ export function App() {
         />
       )}
       {menuOpen && <AppMenu entries={menuEntries} onClose={() => setMenuOpen(false)} />}
-      {dragging && <DropOverlay>Drop files to import</DropOverlay>}
+      {dragging && <DropOverlay>{t('app.dropFiles')}</DropOverlay>}
       {reading && readingItem && (
         <Reader key={reading.file.hash} item={readingItem} file={reading.file} at={reading.at} onClose={closeReader} />
       )}

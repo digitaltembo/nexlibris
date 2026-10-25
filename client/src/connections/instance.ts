@@ -1,5 +1,6 @@
 import type { InstanceType } from '../devices/types';
 import { INSTANCE_TYPE } from '../sync/instances';
+import { t } from '../i18n';
 
 /**
  * Another instance of nexlibris: its connection's catalog is what it's shown (what it can browse and
@@ -9,7 +10,7 @@ import { INSTANCE_TYPE } from '../sync/instances';
 export const instanceType: InstanceType = {
   access: 'instance',
   id: INSTANCE_TYPE,
-  label: 'Nexlibris twin',
+  label: t('connectionTypes.instance'),
   activation: 'manual',
   read: true,
   write: { single: true },

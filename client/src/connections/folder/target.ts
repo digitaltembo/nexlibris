@@ -1,4 +1,5 @@
 import type { DeviceTarget, RemoteFile } from '../../devices/types';
+import { t } from '../../i18n';
 
 /**
  * A folder the user picked, as a device: paths are absolute from its root (`/Frank Herbert/Dune.epub`).
@@ -60,7 +61,7 @@ export class FolderTarget implements DeviceTarget {
   async download(path: string): Promise<Blob> {
     const { dir, name } = split(path);
     const folder = await this.folder(dir, false);
-    if (!folder) throw new Error(`${path} isn’t there.`);
+    if (!folder) throw new Error(t('errors.notThere', { path }));
     return (await folder.getFileHandle(name)).getFile();
   }
 

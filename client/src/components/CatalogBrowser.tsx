@@ -23,6 +23,7 @@ import { Modal, ModalFooter } from './Modal';
 import { ItemDetail } from './ItemDetail';
 import { EntryCards } from './BrowseEntries';
 import { Cover, GeneratedCover } from './Cover';
+import { t } from '../i18n';
 
 /**
  * A page of an OPDS catalog the library browses (`catalogs/`): the places it links to, then its
@@ -65,13 +66,13 @@ interface PlaceInfo {
   thumbnail?: string;
 }
 
-const plural = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString()} ${n === 1 ? one : many}`;
 
 /** A place's count as words: of books where its page holds only books, else entries; "+" where there are more pages. */
 function countOf(feed: OpdsFeed): string {
   const books = feed.entries.every((e) => e.kind === 'book');
-  const text = plural(feed.entries.length, books ? 'book' : 'entry', books ? 'books' : 'entries');
-  return feed.next ? text.replace(/^([\d,.\s]+)/, '$1+') : text;
+  const vars = { count: feed.entries.length, n: feed.entries.length.toLocaleString() };
+  if (feed.next) return books ? t('catalogBrowser.booksMore', vars) : t('catalogBrowser.entriesMore', vars);
+  return books ? t('catalogBrowser.books', vars) : t('catalogBrowser.entries', vars);
 }
 
 /**
@@ -104,7 +105,7 @@ function usePlaceInfo(backend: LibraryBackend, places: OpdsNavigation[]): Map<st
 /** Under a place's name: how many it holds where that's known, else its own words if they're short (Gutenberg's author). */
 function placeDetail(place: OpdsNavigation, info: PlaceInfo | undefined): string | undefined {
   if (info?.detail) return info.detail;
-  if (place.count !== undefined) return plural(place.count, 'book');
+  if (place.count !== undefined) return t('catalogBrowser.placeBooks', { count: place.count, n: place.count.toLocaleString() });
   return place.detail && place.detail.length <= 60 ? place.detail : undefined;
 }
 
@@ -181,13 +182,13 @@ export function CatalogBrowser({ device, root, step, onOpen, view = 'grid', list
     }
   };
 
-  if (state.kind === 'loading') return <Muted as="p">Reading {device.name}…</Muted>;
+  if (state.kind === 'loading') return <Muted as="p">{t('catalogBrowser.reading', { name: device.name })}</Muted>;
   if (state.kind === 'failed') {
     return (
       <>
         <ErrorText role="alert">{state.message}</ErrorText>
         <Button $variant="secondary" $size="small" onClick={() => setCheck((n) => n + 1)}>
-          Try again
+          {t('common.tryAgain')}
         </Button>
       </>
     );
@@ -216,7 +217,7 @@ export function CatalogBrowser({ device, root, step, onOpen, view = 'grid', list
   const decor: CollectionDecor = {
     coverUrl: (item) => byId.get(item.id)?.thumbnail ?? placeCovers.get(item.id),
     ...(fetchImage && { fetchImage }),
-    badge: (item) => (owned.get(byId.get(item.id)!) ? 'In library' : undefined),
+    badge: (item) => (owned.get(byId.get(item.id)!) ? t('catalogBrowser.inLibrary') : undefined),
   };
   const collection: CollectionProps = {
     items,
@@ -234,15 +235,15 @@ export function CatalogBrowser({ device, root, step, onOpen, view = 'grid', list
           {feed.subtitle && <Muted> {feed.subtitle}</Muted>}
         </div>
         <Muted>
-          {state.stale ? `Couldn’t check it: ${state.stale}` : `Read ${when(state.pages[0]!.checkedAt)}`}{' '}
-          <LinkButton onClick={() => setCheck((n) => n + 1)}>Check now</LinkButton>
+          {state.stale ? t('catalogBrowser.stale', { error: state.stale }) : t('catalogBrowser.read', { when: when(state.pages[0]!.checkedAt) })}{' '}
+          <LinkButton onClick={() => setCheck((n) => n + 1)}>{t('catalogBrowser.checkNow')}</LinkButton>
         </Muted>
       </Heading>
       {feed.sections.length > 0 && (
         <Sections>
           {feed.sections.map((s) => (
             <Button key={s.href} $variant="secondary" $size="small" onClick={() => onOpen(s.href, s.title)}>
-              {s.title} ›
+              {t('catalogBrowser.more', { title: s.title })}
             </Button>
           ))}
         </Sections>
@@ -282,11 +283,11 @@ export function CatalogBrowser({ device, root, step, onOpen, view = 'grid', list
           )}
         </CollectionDecorContext.Provider>
       )}
-      {!entries.length && !feed.sections.length && <Muted as="p">{terms !== undefined ? `Nothing found for “${terms}”.` : 'Nothing here.'}</Muted>}
+      {!entries.length && !feed.sections.length && <Muted as="p">{terms !== undefined ? t('catalogBrowser.nothingFor', { terms }) : t('catalogBrowser.nothing')}</Muted>}
       {last.feed.next && (
         <More>
           <Button $variant="secondary" disabled={state.more === 'loading'} onClick={() => void loadMore()}>
-            {state.more === 'loading' ? 'Loading…' : 'Load more'}
+            {state.more === 'loading' ? t('catalogBrowser.loading') : t('catalogBrowser.loadMore')}
           </Button>
           {state.more && state.more !== 'loading' && <ErrorText role="alert">{state.more}</ErrorText>}
         </More>
@@ -313,11 +314,14 @@ export function CatalogBrowser({ device, root, step, onOpen, view = 'grid', list
 function when(iso: string): string {
   const date = new Date(iso);
   const sameDay = date.toDateString() === new Date().toDateString();
-  return sameDay ? `today at ${date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : `on ${date.toLocaleDateString()}`;
+  return sameDay
+    ? t('catalogBrowser.today', { time: date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) })
+    : t('catalogBrowser.on', { date: date.toLocaleDateString() });
 }
 
-const sizeOf = (bytes: number) => (bytes >= 1e6 ? `${(bytes / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1e3))} KB`);
-const downloadLabel = (d: OpdsDownload) => d.title ?? d.format?.toUpperCase() ?? d.type ?? 'File';
+const sizeOf = (bytes: number) =>
+  bytes >= 1e6 ? t('size.megabytes', { count: (bytes / 1e6).toFixed(1) }) : t('size.kilobytes', { count: Math.max(1, Math.round(bytes / 1e3)) });
+const downloadLabel = (d: OpdsDownload) => d.title ?? d.format?.toUpperCase() ?? d.type ?? t('catalogBrowser.file');
 
 /**
  * A catalog's book in the details pane, read-only (`ItemDetail`'s `remote`): what the catalog says
@@ -374,10 +378,10 @@ export function CatalogBook({
       const [skipped] = imported.skipped;
       setResult(
         imported.added.length
-          ? { text: `Added to the library.` }
+          ? { text: t('catalogBrowser.added') }
           : imported.merged.length
-            ? { text: `Added the file to “${imported.merged[0]!.item.title}”.` }
-            : { text: skipped ? `Not added: ${skipped.reason}.` : 'Not added.', error: true },
+            ? { text: t('catalogBrowser.addedFile', { title: imported.merged[0]!.item.title }) }
+            : { text: skipped ? t('catalogBrowser.notAddedBecause', { reason: skipped.reason }) : t('catalogBrowser.notAdded'), error: true },
       );
     } catch (e) {
       setResult(e instanceof CantDownload ? { text: e.message, link: e.url, error: true } : { text: errorMessage(e), error: true });
@@ -396,17 +400,17 @@ export function CatalogBook({
       remote={{
         ...(owned && { owned }),
         actions: reading ? (
-          <Muted>Reading its page…</Muted>
+          <Muted>{t('catalogBrowser.readingPage')}</Muted>
         ) : loaded.error ? (
           <ErrorText as="span" role="alert">
-            Couldn’t read its page: {loaded.error}
+            {t('catalogBrowser.pageFailed', { error: loaded.error })}
           </ErrorText>
         ) : first ? (
           <Button disabled={!!adding} onClick={() => void add(first)}>
-            {adding === first.href ? 'Adding…' : owned ? 'Add again' : 'Add to library'}
+            {adding === first.href ? t('catalogBrowser.adding') : owned ? t('catalogBrowser.addAgain') : t('catalogBrowser.add')}
           </Button>
         ) : (
-          <Muted>{book.downloads.length ? 'nexlibris can’t read its downloads' : 'The catalog offers no download'}</Muted>
+          <Muted>{book.downloads.length ? t('catalogBrowser.cantRead') : t('catalogBrowser.noDownload')}</Muted>
         ),
         ...(book.downloads.length > 0 && {
           files: (
@@ -415,14 +419,14 @@ export function CatalogBook({
                 <li key={d.href}>
                   <span>
                     {downloadLabel(d)}
-                    {d.length && <Muted> · {sizeOf(d.length)}</Muted>}
+                    {d.length && <Muted>{t('catalogBrowser.size', { size: sizeOf(d.length) })}</Muted>}
                   </span>
                   {d.format ? (
                     <Button $variant="secondary" $size="small" disabled={!!adding} onClick={() => void add(d)}>
-                      {adding === d.href ? 'Adding…' : 'Add to library'}
+                      {adding === d.href ? t('catalogBrowser.adding') : t('catalogBrowser.add')}
                     </Button>
                   ) : (
-                    <Muted>nexlibris can’t read this format</Muted>
+                    <Muted>{t('catalogBrowser.cantReadFormat')}</Muted>
                   )}
                 </li>
               ))}
@@ -436,7 +440,7 @@ export function CatalogBook({
                 {result.error ? <ErrorText as="span">{result.text}</ErrorText> : result.text}{' '}
                 {result.link && (
                   <a href={result.link} target="_blank" rel="noopener noreferrer">
-                    Download it
+                    {t('catalogBrowser.downloadIt')}
                   </a>
                 )}
               </p>
@@ -445,7 +449,7 @@ export function CatalogBook({
               <Sections>
                 {book.related.map((r) => (
                   <Button key={r.href} $variant="secondary" $size="small" disabled={!!adding} onClick={() => onOpen(r.href, r.title)}>
-                    {r.title} ›
+                    {t('catalogBrowser.more', { title: r.title })}
                   </Button>
                 ))}
               </Sections>
@@ -461,7 +465,7 @@ export function CatalogBook({
       {detail}
       <ModalFooter>
         <Button $variant="secondary" disabled={!!adding} onClick={onClose}>
-          Close
+          {t('common.close')}
         </Button>
       </ModalFooter>
     </Modal>

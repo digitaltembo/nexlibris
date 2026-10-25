@@ -5,6 +5,7 @@ import { inCatalog, takeOutOfDevice } from '../devices/selection';
 import { useLibrary } from '../library/LibraryContext';
 import { Button, Muted, PanelSection, SectionHeading, Spacer } from '../styles/ui';
 import { formatLabel } from './ItemFiles';
+import { t } from '../i18n';
 
 const Row = styled.li`
   display: flex;
@@ -39,7 +40,7 @@ export function ItemCatalogs({ item }: { item: Item }) {
   if (!holding.length) return null;
   return (
     <PanelSection>
-      <SectionHeading>In catalogs</SectionHeading>
+      <SectionHeading>{t('itemCatalogs.heading')}</SectionHeading>
       <List>
         {holding.map((device) => {
           const type = connectionType(device.type)!;
@@ -51,14 +52,19 @@ export function ItemCatalogs({ item }: { item: Item }) {
               <div>
                 <span>{device.name}</span>
                 <Muted>
-                  {[type.label, formats?.length && `only ${formats.join(', ')}`, !device.items.includes(item.id) && 'added by its search', sent ? 'sent' : 'not sent yet']
+                  {[
+                    type.label,
+                    formats?.length && t('itemCatalogs.only', { formats: formats.join(t('common.listJoin')) }),
+                    !device.items.includes(item.id) && t('itemCatalogs.bySearch'),
+                    sent ? t('itemCatalogs.sent') : t('itemCatalogs.notSent'),
+                  ]
                     .filter(Boolean)
-                    .join(' · ')}
+                    .join(t('common.list'))}
                 </Muted>
               </div>
               <Spacer />
               <Button $variant="secondary" $size="small" onClick={() => void apply(takeOutOfDevice(library, device, [item.id]))}>
-                Remove from catalog
+                {t('itemCatalogs.remove')}
               </Button>
             </Row>
           );

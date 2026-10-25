@@ -2,6 +2,7 @@ import styled, { css, keyframes } from 'styled-components';
 import { NARROW } from '../styles/GlobalStyle';
 import { Button, Muted } from '../styles/ui';
 import { formatSize } from './ItemFiles';
+import { t } from '../i18n';
 
 /** Where an import has got to: each phase it can be in, with what's known of it. */
 export type ImportProgressState =
@@ -102,23 +103,23 @@ const count = (n: number) => n.toLocaleString();
 function describe(progress: ImportProgressState): { label: string; detail?: string; fraction?: number } {
   switch (progress.phase) {
     case 'finding':
-      return { label: 'Finding files…' };
+      return { label: t('importProgress.finding') };
     case 'reading':
-      return { label: `Reading folder… ${count(progress.found)} ${progress.found === 1 ? 'file' : 'files'}` };
+      return { label: t('importProgress.reading', { count: progress.found, n: count(progress.found) }) };
     case 'copying': {
       const { files, totalFiles, bytes, totalBytes } = progress;
       return {
-        label: `Copying ${count(Math.min(files + 1, totalFiles))} of ${count(totalFiles)} ${totalFiles === 1 ? 'file' : 'files'}`,
-        detail: totalBytes ? `${formatSize(bytes)} of ${formatSize(totalBytes)}` : undefined,
+        label: t('importProgress.copying', { count: totalFiles, n: count(Math.min(files + 1, totalFiles)), total: count(totalFiles) }),
+        detail: totalBytes ? t('importProgress.copied', { done: formatSize(bytes), total: formatSize(totalBytes) }) : undefined,
         // By bytes when the sizes are known: one big file shouldn't look like a stall.
         fraction: totalBytes ? bytes / totalBytes : totalFiles ? files / totalFiles : undefined,
       };
     }
     case 'importing':
       // Until the files are sorted into books, how many there are isn't known.
-      if (!progress.total) return { label: 'Importing…' };
+      if (!progress.total) return { label: t('importProgress.importing') };
       return {
-        label: `Importing ${count(Math.min(progress.done + 1, progress.total))} of ${count(progress.total)} ${progress.total === 1 ? 'book' : 'books'}`,
+        label: t('importProgress.importingBooks', { count: progress.total, n: count(Math.min(progress.done + 1, progress.total)), total: count(progress.total) }),
         fraction: progress.done / progress.total,
       };
   }
@@ -150,15 +151,15 @@ export function ImportProgress({ progress, onStop }: Props) {
         <Fill $sweeping={percent === undefined} style={fraction === undefined ? undefined : { width: `${fraction * 100}%` }} />
       </Track>
       <Text>
-        <Line title={detail ? `${label} · ${detail}` : label}>
+        <Line title={detail ? t('importProgress.detail', { label, detail }) : label}>
           {label}
-          {detail && ` · ${detail}`}
+          {detail && `${t('common.list')}${detail}`}
         </Line>
         {current && <Current title={current}>{current.split('/').pop()}</Current>}
       </Text>
       {onStop && (
         <Button $variant="secondary" $size="small" onClick={onStop}>
-          Stop
+          {t('importProgress.stop')}
         </Button>
       )}
     </Wrap>

@@ -1,4 +1,5 @@
 import { authorSortKey, firstPublished, formatYear, type Item, titleSortKey } from '@nexlibris/common';
+import { t } from '../i18n';
 
 /**
  * Where a book goes on a device, as a path template: `/Books/<author>/<title>/`, with the file
@@ -33,17 +34,17 @@ const metadata = (item: Item, key: string) => {
 };
 
 export const PLACEHOLDERS: Placeholder[] = [
-  { key: 'title', label: 'Title', value: (item) => item.title },
-  { key: 'titleSort', label: 'Title sort', value: titleSortKey },
-  { key: 'author', label: 'First author', value: (item) => authors(item)[0]?.name ?? '' },
-  { key: 'authors', label: 'All authors, joined by “&”', value: (item) => authors(item).map((c) => c.name).join(' & ') },
-  { key: 'authorSort', label: 'Author sort', value: authorSortKey },
-  { key: 'series', label: 'Series', value: (item) => metadata(item, 'series') },
-  { key: 'seriesIndex', label: 'Number in series', value: (item) => metadata(item, 'seriesIndex') },
-  { key: 'year', label: 'Year first published', value: (item) => formatYear(firstPublished(item)) },
-  { key: 'publisher', label: 'Publisher', value: (item) => metadata(item, 'publisher') },
-  { key: 'language', label: 'Language', value: (item) => metadata(item, 'language') },
-  { key: 'isbn', label: 'ISBN', value: (item) => item.identifiers.isbn ?? '' },
+  { key: 'title', label: t('placeholders.title'), value: (item) => item.title },
+  { key: 'titleSort', label: t('placeholders.titleSort'), value: titleSortKey },
+  { key: 'author', label: t('placeholders.author'), value: (item) => authors(item)[0]?.name ?? '' },
+  { key: 'authors', label: t('placeholders.authors'), value: (item) => authors(item).map((c) => c.name).join(' & ') },
+  { key: 'authorSort', label: t('placeholders.authorSort'), value: authorSortKey },
+  { key: 'series', label: t('placeholders.series'), value: (item) => metadata(item, 'series') },
+  { key: 'seriesIndex', label: t('placeholders.seriesIndex'), value: (item) => metadata(item, 'seriesIndex') },
+  { key: 'year', label: t('placeholders.year'), value: (item) => formatYear(firstPublished(item)) },
+  { key: 'publisher', label: t('placeholders.publisher'), value: (item) => metadata(item, 'publisher') },
+  { key: 'language', label: t('placeholders.language'), value: (item) => metadata(item, 'language') },
+  { key: 'isbn', label: t('placeholders.isbn'), value: (item) => item.identifiers.isbn ?? '' },
 ];
 
 /** `<author sort>`, `<Author-Sort>` and `<authorsort>` are all `authorSort`. */
@@ -66,11 +67,11 @@ export function templateProblems(template: string): string[] {
   const problems: string[] = [];
   for (const [, inside] of template.matchAll(PLACEHOLDER)) {
     const { placeholder } = lookup(inside!);
-    if (!placeholder) problems.push(`<${inside}> isn’t a detail nexlibris knows.`);
+    if (!placeholder) problems.push(t('placeholders.unknown', { name: inside }));
   }
   const outside = template.replace(TOKEN, '');
-  if (/[<>]/.test(outside)) problems.push('A < or > doesn’t pair up.');
-  if (/[[\]]/.test(outside)) problems.push('A [ or ] doesn’t pair up (and sections can’t be nested).');
+  if (/[<>]/.test(outside)) problems.push(t('placeholders.angles'));
+  if (/[[\]]/.test(outside)) problems.push(t('placeholders.brackets'));
   return problems;
 }
 
@@ -111,7 +112,7 @@ export const expandFolder = (template: string, item: Item) => `/${segments(templ
  */
 export function expandPath(folderTemplate: string, fileTemplate: string, item: Item, extension: string, n = 1): string {
   const name = segments(fileTemplate.trim() || DEFAULT_FILE_NAME, item);
-  const base = name.pop() || 'Untitled';
+  const base = name.pop() || t('app.untitled');
   return `/${[...segments(folderTemplate, item), ...name, n === 1 ? base : `${base} (${n})`].join('/')}.${extension}`;
 }
 

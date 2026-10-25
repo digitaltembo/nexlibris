@@ -6,6 +6,7 @@ import { FORMATS, type FormatId } from '@nexlibris/tools/formats/formats';
 import { canUseFolders, mayWrite, savedFolder } from '../../library/savedFolders';
 import { describe, downloadBook, readManifest, writeManifest } from './manifest';
 import { FolderTarget } from './target';
+import { t } from '../../i18n';
 
 /**
  * A folder as a connection: a backup, or an external drive (a USB stick, a reader that mounts as
@@ -23,9 +24,9 @@ export const folderKey = (deviceId: string) => `folder:${deviceId}`;
 /** Where each book goes: the folders, then its file name, which gets each format as its extension. */
 const SAVE_PATH: SettingField = {
   key: 'path',
-  label: 'Save path',
+  label: t('connectionTypes.folder.savePath'),
   default: '<authorSort>/<title>',
-  help: `Folders and file name, from ${PLACEHOLDERS.map((p) => `<${p.key}>`).join(', ')}; [ … ] for a part kept only when everything in it has a value. A book in several formats gets a file in each (Dune.epub, Dune.x4.epub).`,
+  help: t('connectionTypes.folder.savePathHelp', { placeholders: PLACEHOLDERS.map((p) => `<${p.key}>`).join(', ') }),
   check: (path, _settings, library: Library) => {
     const problems = templateProblems(path);
     const sample = Object.values(library.items).find((i) => i.creators.length) ?? Object.values(library.items)[0];
@@ -36,11 +37,12 @@ const SAVE_PATH: SettingField = {
 
 const FORMATS_SETTING: SettingField = {
   key: 'formats',
-  label: 'Formats',
+  label: t('connectionTypes.formats'),
   kind: 'some',
   default: '',
   choices: (Object.keys(FORMATS) as FormatId[]).map((format) => ({ value: format, label: FORMATS[format].label })),
-  help: 'Each book is written in every format it has, or, if you pick some, in every one of those it has.',
+  noun: { one: t('connectionTypes.formatNoun.one'), many: t('connectionTypes.formatNoun.many') },
+  help: t('connectionTypes.folder.formatsHelp'),
 };
 
 /** The folder's name, as it was picked, for showing it. */
@@ -56,8 +58,8 @@ function splitPath(path: string) {
 /** The folder picked for a connection on this computer, once allowed to write to it (asked for if `ask`, which needs a click). */
 export async function connectionFolder(device: Device, ask = true): Promise<FileSystemDirectoryHandle> {
   const handle = await savedFolder(folderKey(device.id));
-  if (!handle) throw new Error(`This computer doesn’t know where ${device.name} is. Edit it and choose its folder.`);
-  if (!(await mayWrite(handle, ask))) throw new Error(`nexlibris wasn’t allowed to use the folder “${handle.name}”.`);
+  if (!handle) throw new Error(t('connectionTypes.folder.unknown', { name: device.name }));
+  if (!(await mayWrite(handle, ask))) throw new Error(t('errors.folderNotAllowed', { name: handle.name }));
   return handle;
 }
 
@@ -68,23 +70,23 @@ export async function connectionFolder(device: Device, ask = true): Promise<File
  */
 async function folderMissing(device: Device): Promise<string | undefined> {
   const handle = await savedFolder(folderKey(device.id));
-  if (!handle) return 'No folder chosen on this device';
+  if (!handle) return t('connectionTypes.folder.noneChosen');
   if ((await handle.queryPermission?.({ mode: 'read' })) !== 'granted') return undefined;
   try {
     await handle.values().next();
     return undefined;
   } catch {
-    return `The folder “${handle.name}” isn’t there`;
+    return t('connectionTypes.folder.gone', { name: handle.name });
   }
 }
 
 export const folderType: FilesType = {
   access: 'files',
   id: FOLDER_TYPE,
-  label: 'Folder',
+  label: t('connectionTypes.folder.label'),
   read: true,
   write: { single: true },
-  unavailable: () => (canUseFolders() ? undefined : 'This browser can’t be given folders: use Chrome, Edge or the desktop app.'),
+  unavailable: () => (canUseFolders() ? undefined : t('connectionTypes.folder.noFolders')),
   activation: folderMissing,
   formats: (device) => pickedChoices(device, FORMATS_SETTING) as FormatId[],
   settings: [SAVE_PATH, FORMATS_SETTING],
@@ -98,7 +100,7 @@ export const folderType: FilesType = {
     const files = target instanceof FolderTarget ? await target.walk() : (listing ?? (await listDevice(device, folderType, target, library)).files);
     const manifest = await readManifest(target);
     const books = files.map((file) => describe(manifest, file)).sort((a, b) => (b.modified ?? '').localeCompare(a.modified ?? ''));
-    return { books, ...(!manifest && files.length > 0 && { note: 'This folder has no nexlibris manifest yet, so its books are known by their file names.' }) };
+    return { books, ...(!manifest && files.length > 0 && { note: t('connectionTypes.folder.noManifest') }) };
   },
   download: (_device, target, book, backend) => downloadBook(target, book.path, backend),
   afterSync: (device, target, library, backend) => writeManifest(device, target, library, backend),

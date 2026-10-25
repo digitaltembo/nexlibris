@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 /**
  * Calling an object's methods in a worker, as promises: `workerClient` in the page, `serveWorker`
  * in the worker. Arguments and results are structured-cloned (Blobs cheaply, by reference).
@@ -24,7 +25,7 @@ export function workerClient<T extends object>(worker: Worker): Remote<T> {
   });
   // A worker that fails to load or crashes fails what's waiting on it, rather than leaving it hanging.
   worker.addEventListener('error', (e) => {
-    for (const call of pending.values()) call.reject(new Error(e.message || 'The worker stopped.'));
+    for (const call of pending.values()) call.reject(new Error(e.message || t('errors.workerStopped')));
     pending.clear();
   });
   return new Proxy({} as Remote<T>, {

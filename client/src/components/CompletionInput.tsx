@@ -2,6 +2,7 @@ import { useEffect, useId, useLayoutEffect, useRef, useState, type InputHTMLAttr
 import styled from 'styled-components';
 import { completeTag, completions as complete, tagCompletions } from '../library/completion';
 import { MenuEntry, MenuPanel } from './MenuButton';
+import { t } from '../i18n';
 
 interface Props extends Omit<InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange'> {
   /** Comma-separated tags, or with `single`, one value. */
@@ -104,7 +105,7 @@ export function CompletionInput({ value, onChange, candidates, exclude, single, 
         <MenuPanel
           id={listId}
           role="listbox"
-          aria-label="Suggestions"
+          aria-label={t('completion.suggestions')}
           style={place ? { top: place.top, left: place.left, minWidth: place.minWidth } : { visibility: 'hidden' }}
         >
           {completions.map((tag, i) => (

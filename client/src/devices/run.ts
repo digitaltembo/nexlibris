@@ -2,6 +2,7 @@ import type { Device, Library, LibraryBackend, Operation, PlacedFile } from '@ne
 import { parentOf, type SyncPlan } from './plan';
 import { takeOutOfDevice } from './selection';
 import type { DeviceTarget } from './types';
+import { t } from '../i18n';
 
 export interface SyncProgress {
   done: number;
@@ -82,7 +83,7 @@ export async function runSync(
         await ensureFolder(parentOf(upload.path));
         const file = upload.file;
         const data = await backend.getFile(file.hash);
-        if (!data) throw new Error('The file is missing from the library.');
+        if (!data) throw new Error(t('errors.libraryFileMissing'));
         await target.upload(upload.path, data);
         placed[upload.path] = { itemId: upload.item.id, hash: file.hash, size: data.size };
       } catch (e) {

@@ -8,6 +8,7 @@ import { LockScroll } from '../styles/GlobalStyle';
 import { Button, Muted, Status } from '../styles/ui';
 import { setReaderColors } from '../styles/windowColors';
 import { epubierFormat } from './epubierFormat';
+import { t } from '../i18n';
 
 const Shell = styled.div<{ $titleBar?: boolean }>`
   position: fixed;
@@ -166,7 +167,7 @@ export function BookReader({ title, file, load, position, onPosition, onClose }:
 
   useEffect(() => {
     const previous = document.title;
-    document.title = `${title} · nexlibris`;
+    document.title = t('reader.title', { title });
     return () => {
       document.title = previous;
     };
@@ -175,13 +176,13 @@ export function BookReader({ title, file, load, position, onPosition, onClose }:
   const Viewer = format && VIEWERS[format];
   const body =
     data === undefined ? (
-      <Status>Opening…</Status>
+      <Status>{t('common.opening')}</Status>
     ) : data === null ? (
-      <Status $error>{fetchError ?? 'This file is missing from storage.'}</Status>
+      <Status $error>{fetchError ?? t('reader.missing')}</Status>
     ) : !Viewer ? (
       <Status>There’s no viewer for {file.format} files yet.</Status>
     ) : (
-      <Suspense fallback={<Status>Loading viewer…</Status>}>
+      <Suspense fallback={<Status>{t('reader.loading')}</Status>}>
         <Viewer
           data={data}
           format={format}
@@ -203,7 +204,7 @@ export function BookReader({ title, file, load, position, onPosition, onClose }:
     );
   }
   return (
-    <Shell data-covers-window role="dialog" aria-label={`Reading ${title}`}>
+    <Shell data-covers-window role="dialog" aria-label={t('reader.reading', { title })}>
       <LockScroll />
       <Bar>
         <Button $variant="secondary" onClick={onClose}>

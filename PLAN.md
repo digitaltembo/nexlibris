@@ -12,14 +12,14 @@ Status as of 2026-10-21. Milestones are listed in the order they're planned; num
 | **M1 Calibre-lite** | Nearly done. **Left:** prove it on the 1,123-book Calibre library, Kindle parsing, storage in a Web Worker. |
 | **M6 Sync** | Works over LAN, Bluetooth and a USB folder; a phone sees only the books chosen for it, and deleting there leaves the hub's copy. **Left:** matching books on a first sync, a real phone. |
 | **M13 Connections** | Built: connections that read, write or both, each writer with a catalog (Add to…, Send to…, search); additive syncs; files behind their details; OPDS, static export (Cloudflare), instances and folders built in; CrossPoint a plugin with the X4/X3 formats. **Left:** folders in the apps, browsing connections by author/series, exposure on the folder hub and server, checking it by hand. |
-| **M7 Apps** | Android and desktop both work; an iOS app, the same shell as Android's, is written and its native side tested on macOS. **Left:** running iOS on a device, packaging and signing, native restore, a real X4. |
-| **M4 Server** | Started: accounts, a library per account (books' files on disk or in S3, GCS or B2), moving a browser's library there and back, or syncing with it; the desktop and phone apps sign in to a server at an address the user gives, and open the account's library or sync with it; OPDS feeds served live, as OPDS 1.2 XML or 2.0 JSON. a Docker image. **Left:** scoping, the calibre3opds web client, publishing the image. |
+| **M7 Apps** | Android and desktop both work; an iOS app, the same shell as Android's, is written and its native side tested on macOS. Releases are built and published from a GitHub release (`.github/workflows/release.yml`, RELEASING.md). **Left:** running iOS on a device, a first release (an Android keystore; an Apple account for TestFlight and a signed macOS app), native restore, a real X4. |
+| **M4 Server** | Started: accounts, a library per account (books' files on disk or in S3, GCS or B2), moving a browser's library there and back, or syncing with it; the desktop and phone apps sign in to a server at an address the user gives, and open the account's library or sync with it; OPDS feeds served live, as OPDS 1.2 XML or 2.0 JSON. a Docker image. Releases publish the image (ghcr.io) and the server on npm. **Left:** scoping, the calibre3opds web client. |
 | **M8 Background work** | Full-text search done, its work in a worker with the text stored compressed. **Left:** jobs manager, OCR, Kindle books' text. |
 | **M9 Loans** | Researched, not started. |
 | **M10 Reader devices** | Not started. |
 | **M11 Sharing**, **M12 Other media** | Long shots: not before M4. M12 planned: audiobooks, music, video and images, after large-file groundwork. |
 
-**Next:** check M13 by hand and finish M1 and M6, then M7's packaging, then the rest of M4.
+**Next:** check M13 by hand and finish M1 and M6, then M7's first release, then the rest of M4.
 
 ## Vision
 
@@ -77,10 +77,10 @@ Built: connections by what they do (read, write, or both: `devices/types.ts`), e
 ### M7 — Apps
 Android and desktop already run on real hardware (Android on a Pixel 7a, the desktop app on macOS). What's left is making them installable and closing their gaps.
 - **iOS:** build and run it in Xcode (it was written without one: its native side, `ios/NexlibrisKit`, builds and passes its tests on macOS, and the UIKit shell typechecks against Mac Catalyst), then on an iPhone: storage, import, saving, the library and sync folders (iCloud Drive too), sync over the network and hosting it over Bluetooth, ISBN scanning, a CrossPoint reader.
-- **iOS:** signing and TestFlight; Bluetooth hosting in the background (`bluetooth-peripheral`), which iOS stops when the app isn't open.
-- **Android:** release signing.
+- **iOS:** an Apple developer account, then TestFlight (the release workflow archives and uploads once its secrets are set, RELEASING.md); Bluetooth hosting in the background (`bluetooth-peripheral`), which iOS stops when the app isn't open.
+- **Android:** a release keystore, kept safe and given to the release workflow (signing is set up; without it the APK is unsigned).
 - **Android:** restore natively. A restore still writes every file over the bridge (~60 s for 335 MB).
-- **Desktop:** packaging (`.app` and installers), so it no longer runs from the repo.
+- **Desktop:** a first release of the Tauri app's installers (built by the release workflow for macOS, Windows and Linux) checked on each; a Developer ID for macOS, as it's only signed ad hoc without one, and perhaps Windows code signing.
 - **Android:** a sync with a real X4 (its calls to the reader now go through the app, as the page can't call plain http).
 - **Desktop:** a sync and an OPDS round trip with a real X4.
 
@@ -97,7 +97,6 @@ Built: `server/` serves the web app, accounts (sign-in by a session cookie; sign
   - API keys for metadata lookups, including ISBN sources beyond Open Library;
   - optional Calibre CLI (`ebook-convert`) for formats with no TS converter;
   - reaching CrossPoint readers for `https://` browser clients (the Android app relays its own calls).
-- **Deployment:** a Docker image is built from the repo (`Dockerfile`, `compose.yaml`); publish it (to a registry, from CI).
 
 **Done when:** a browser and the phone each sync with the server, and it serves a catalog.
 

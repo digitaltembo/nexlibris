@@ -9,6 +9,7 @@ import { parseOpf, type OpfMetadata } from '@nexlibris/tools/formats/opf';
 import { parseFile } from '@nexlibris/tools/formats/parseFile';
 import { runConversion } from './convert';
 import { coverColor } from '@nexlibris/tools/coverColor';
+import { t } from '../i18n';
 
 export interface ImportResult {
   added: Item[];
@@ -35,7 +36,7 @@ export interface ImportOptions {
 }
 
 /** The reason given for skipping a file the library already has; reports count these rather than list them. */
-export const ALREADY_IN_LIBRARY = 'already in the library';
+export const ALREADY_IN_LIBRARY = t('errors.alreadyInLibrary');
 
 const kindleToEpub = CONVERTERS.find((c) => c.id === 'kindle-epub')!;
 
@@ -142,7 +143,7 @@ export async function importFiles(
   for (const file of rest) {
     const format = formatFromName(file.name);
     if (!format) {
-      result.skipped.push({ name: file.name, reason: 'unsupported file type' });
+      result.skipped.push({ name: file.name, reason: t('errors.unsupported') });
       continue;
     }
     const picked = { file, format };
@@ -299,7 +300,7 @@ async function importBook(
     try {
       item.files.push(await runConversion(backend, item, kindle.ref, kindle.candidate.file, [kindleToEpub]));
     } catch (e) {
-      result.warnings.push({ name: kindle.candidate.file.name, message: `couldn't convert to EPUB: ${errorMessage(e)}` });
+      result.warnings.push({ name: kindle.candidate.file.name, message: t('errors.couldntConvert', { message: errorMessage(e) }) });
     }
   }
   return { item, existing, rating: calibre?.opf?.calibre.rating };
@@ -314,9 +315,9 @@ async function readSidecars(
   if (opf) {
     try {
       read.opf = parseOpf(new TextDecoder().decode(await opf.arrayBuffer()), opf.name);
-      if (!read.opf) throw new Error('it has no metadata');
+      if (!read.opf) throw new Error(t('errors.noMetadata'));
     } catch (e) {
-      result.warnings.push({ name: pathOf(opf), message: `couldn't read Calibre's metadata: ${errorMessage(e)}` });
+      result.warnings.push({ name: pathOf(opf), message: t('errors.couldntReadOpf', { message: errorMessage(e) }) });
     }
   }
   if (cover) {
@@ -324,7 +325,7 @@ async function readSidecars(
       const mediaType = coverType(cover.name)!;
       read.cover = { data: new Blob([await cover.arrayBuffer()], { type: mediaType }), mediaType };
     } catch (e) {
-      result.warnings.push({ name: pathOf(cover), message: `couldn't read the cover: ${errorMessage(e)}` });
+      result.warnings.push({ name: pathOf(cover), message: t('errors.couldntReadCover', { message: errorMessage(e) }) });
     }
   }
   return read;

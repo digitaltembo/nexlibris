@@ -14,6 +14,7 @@ import { canSyncThroughFolder, isFolderAddress, pairedFolder } from './folder';
 import { fileFetched, hubFiles } from './files';
 import { folderKeepRule } from './instances';
 import { canSyncOverNetwork, canSyncWithServer, hubClient, instanceName, isOwnServer } from './hub';
+import { t } from '../i18n';
 
 /**
  * Reaching a paired hub however it's paired, from its address: over the network (`http…`), over
@@ -86,5 +87,5 @@ export async function fetchFromHub(backend: LibraryBackend, hash: FileHash): Pro
       reasons.push(`${pairing.hub.name}: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
-  throw new Error(`This file isn’t on this device, and couldn’t be fetched (${reasons.join('; ')})`);
+  throw new Error(t('errors.notFetched', { reasons: reasons.join('; ') }));
 }

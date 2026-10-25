@@ -97,6 +97,9 @@ export default new Proxy({}, { get: (_, cp) => ({ dec: tables[cp] || tables[1252
 }
 
 export default defineConfig({
+  // Where the app is served from: `/` everywhere but a static host's subfolder, such as GitHub Pages'
+  // `/nexlibris/` (`NEXLIBRIS_BASE=/nexlibris/ npm run build -w client`).
+  base: process.env.NEXLIBRIS_BASE || '/',
   plugins: [react(), pdfjsAssets(), epubierAssets(), rtfCodepages()],
   // One copy of each, epubier's too (and when it's linked from ../../epubierjs, which has its own for development).
   resolve: { dedupe: ['epubjs', 'pdfjs-dist', '@lingo-reader/mobi-parser', 'jszip', 'rtf.js'] },

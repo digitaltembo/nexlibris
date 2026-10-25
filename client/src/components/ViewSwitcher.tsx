@@ -1,6 +1,7 @@
 import styled from 'styled-components';
 import { VIEWS, type View } from '../views/views';
 import { EyeIcon } from './icons';
+import { t } from '../i18n';
 
 const Bar = styled.div`
   display: inline-flex;
@@ -45,11 +46,11 @@ export function ViewSwitcher({ view, onView, onSettings }: { view: View; onView(
   return (
     <Bar>
       {onSettings && (
-        <Choice aria-label="View settings" title="View settings" onClick={onSettings}>
+        <Choice aria-label={t('viewSwitcher.settings')} title={t('viewSwitcher.settings')} onClick={onSettings}>
           <EyeIcon />
         </Choice>
       )}
-      <Group role="group" aria-label="View">
+      <Group role="group" aria-label={t('viewSwitcher.label')}>
         {VIEWS.map((v) => (
           <Choice key={v.id} aria-pressed={view === v.id} aria-label={v.label} title={v.label} onClick={() => onView(v.id)}>
             {v.icon}

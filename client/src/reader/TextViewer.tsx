@@ -19,6 +19,7 @@ const TextDoc = styled.pre`
 `;
 import type { ViewerProps } from './Reader';
 import { useScrollFraction } from './scroll';
+import { t } from '../i18n';
 
 export function PlainTextViewer({ data, position, onPosition }: ViewerProps) {
   const [text, setText] = useState<string>();
@@ -34,6 +35,6 @@ export function PlainTextViewer({ data, position, onPosition }: ViewerProps) {
     };
   }, [data]);
 
-  if (text === undefined) return <Status>Opening…</Status>;
+  if (text === undefined) return <Status>{t('common.opening')}</Status>;
   return <TextDoc ref={docRef}>{text}</TextDoc>;
 }

@@ -11,6 +11,7 @@ import { useLibrary } from '../library/LibraryContext';
 import { Button, Muted, Spacer } from '../styles/ui';
 import { SyncDevice } from './ConnectionsDialog';
 import { Modal, ModalFooter } from './Modal';
+import { t } from '../i18n';
 
 const Row = styled.div`
   display: flex;
@@ -59,7 +60,7 @@ export function SendTo({ items, onClose }: { items: Item[]; onClose(): void }) {
   const loneType = lone && connectionType(lone.type);
   const only = lone && loneType && isFiles(loneType) && takesSingle(loneType) && status(lone).active ? lone : undefined;
   const sending = chosen ?? only;
-  const what = items.length === 1 ? `“${items[0]!.title}”` : `${items.length} books`;
+  const what = items.length === 1 ? t('sendTo.one', { title: items[0]!.title }) : t('sendTo.many', { count: items.length });
   const ids = items.map((item) => item.id);
 
   if (sending) {
@@ -91,8 +92,8 @@ export function SendTo({ items, onClose }: { items: Item[]; onClose(): void }) {
     }
   }
   return (
-    <Modal title={`Send ${what}`} onClose={onClose}>
-      {connections.length === 0 && <Muted as="p">There are no connections to send to yet. Add one under Connections.</Muted>}
+    <Modal title={t('sendTo.title', { what })} onClose={onClose}>
+      {connections.length === 0 && <Muted as="p">{t('sendTo.none')}</Muted>}
       {connections.map((device) => {
         const type = connectionType(device.type)!;
         const missing = items.filter((item) => !inCatalog(library, device, item.id));
@@ -100,13 +101,13 @@ export function SendTo({ items, onClose }: { items: Item[]; onClose(): void }) {
         return (
           <Row key={device.id}>
             <span>
-              {device.name} <Muted>({type.label})</Muted>
-              {!active && <Muted title={reason}> (inactive)</Muted>}
+              {device.name} <Muted>{t('addTo.type', { type: type.label })}</Muted>
+              {!active && <Muted title={reason}>{t('sendTo.inactive')}</Muted>}
             </span>
             <Spacer />
             {!active ? (
-              <Button $variant="secondary" $size="small" disabled title={`${reason ?? 'Inactive'}. Activate it under Connections.`}>
-                {sendsNow(device) ? 'Send' : 'Add for next sync'}
+              <Button $variant="secondary" $size="small" disabled title={t('sendTo.inactiveTitle', { reason: reason ?? t('sendTo.inactiveReason') })}>
+                {sendsNow(device) ? t('sendTo.send') : t('sendTo.addForNext')}
               </Button>
             ) : sendsNow(device) ? (
               <Button
@@ -114,19 +115,19 @@ export function SendTo({ items, onClose }: { items: Item[]; onClose(): void }) {
                 // In its catalog first: an instance is sent only what its catalog holds.
                 onClick={() => void apply(missing.length ? addToDevice(device, missing.map((item) => item.id)) : []).then(() => setSending(device))}
               >
-                Send
+                {t('sendTo.send')}
               </Button>
             ) : missing.length ? (
               <Button
                 $variant="secondary"
                 $size="small"
-                title={isServed(type) ? 'Added to its catalog: the server serves it at once.' : 'Added to its catalog: it goes with the connection’s next sync.'}
+                title={isServed(type) ? t('sendTo.servedTitle') : t('sendTo.nextTitle')}
                 onClick={() => void apply(addToDevice(device, missing.map((item) => item.id)))}
               >
-                {isServed(type) ? 'Add' : 'Add for next sync'}
+                {isServed(type) ? t('sendTo.add') : t('sendTo.addForNext')}
               </Button>
             ) : (
-              <Muted>In its catalog</Muted>
+              <Muted>{t('addTo.inCatalog')}</Muted>
             )}
           </Row>
         );
@@ -134,7 +135,7 @@ export function SendTo({ items, onClose }: { items: Item[]; onClose(): void }) {
       <ModalFooter>
         <Spacer />
         <Button $variant="secondary" onClick={onClose}>
-          Close
+          {t('common.close')}
         </Button>
       </ModalFooter>
     </Modal>

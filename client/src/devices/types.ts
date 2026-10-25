@@ -58,6 +58,8 @@ export interface Catalog {
 
 /** A setting a connection type asks for when adding or editing a connection. Values are stored as strings. */
 export interface SettingField extends OptionField {
+  /** For a `some` setting: what one choice is and what several are ("format", "formats"), for its chips. */
+  noun?: { one: string; many: string };
   /** Checks a value as it's typed (with the connection's other settings), giving problems and an example of its effect. */
   check?(value: string, settings: Record<string, string>, library: Library): { problems?: string[]; example?: string };
 }

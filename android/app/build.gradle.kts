@@ -1,7 +1,23 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
 }
+
+/**
+ * Release signing, from the environment (CI: `ANDROID_KEYSTORE`, a path, and `ANDROID_KEYSTORE_PASSWORD`,
+ * `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`) or, on a computer, android/keystore.properties with
+ * `storeFile`, `storePassword`, `keyAlias` and `keyPassword` (never committed). Without either, release
+ * builds are unsigned.
+ */
+val keystoreProperties = Properties().apply {
+    val file = rootProject.file("keystore.properties")
+    if (file.isFile) file.inputStream().use { load(it) }
+}
+fun signingValue(env: String, property: String): String? =
+    providers.environmentVariable(env).orNull?.takeIf { it.isNotEmpty() } ?: keystoreProperties.getProperty(property)
+val releaseKeystore = signingValue("ANDROID_KEYSTORE", "storeFile")
 
 android {
     namespace = "org.nexlibris.app"
@@ -14,13 +30,26 @@ android {
         // java.nio.file (atomic moves) and java.util.Base64 need 26.
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.2.0"
+        // A release's, from its tag (scripts/release/version.mjs): -PversionCode=… -PversionName=…
+        versionCode = providers.gradleProperty("versionCode").orNull?.toInt() ?: 1
+        versionName = providers.gradleProperty("versionName").orNull ?: "0.0.0-dev"
+    }
+
+    signingConfigs {
+        if (releaseKeystore != null) {
+            create("release") {
+                storeFile = rootProject.file(releaseKeystore)
+                storePassword = signingValue("ANDROID_KEYSTORE_PASSWORD", "storePassword")
+                keyAlias = signingValue("ANDROID_KEY_ALIAS", "keyAlias")
+                keyPassword = signingValue("ANDROID_KEY_PASSWORD", "keyPassword")
+            }
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
+            signingConfigs.findByName("release")?.let { signingConfig = it }
         }
     }
 

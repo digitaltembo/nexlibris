@@ -12,6 +12,7 @@ import styled from 'styled-components';
 import { useLibrary } from '../library/LibraryContext';
 import { Button, Muted, Spacer } from '../styles/ui';
 import { Modal, ModalFooter } from './Modal';
+import { t, tn } from '../i18n';
 
 const CategoryBox = styled.fieldset`
   margin: 16px 0 0;
@@ -84,7 +85,7 @@ export function CategoriesDialog({ onClose }: Props) {
 
   const save = async () => {
     const cleaned = draft.map((c) => ({ ...c, name: c.name.trim(), entries: c.entries.filter((e) => e.query.trim()) }));
-    if (cleaned.some((c) => !c.name)) return setError('Each category needs a name.');
+    if (cleaned.some((c) => !c.name)) return setError(t('categories.needsName'));
     const ops: Operation[] = [
       ...saved.filter((c) => !cleaned.some((d) => d.id === c.id)).map((c): Operation => ({ type: 'removeCategory', id: c.id })),
       ...cleaned
@@ -100,10 +101,9 @@ export function CategoriesDialog({ onClose }: Props) {
   };
 
   return (
-    <Modal title="Browse categories" onClose={onClose}>
+    <Modal title={t('categories.title')} onClose={onClose}>
       <Muted as="p">
-        Your own categories, shown in the Library between Series and Tags. Each entry opens the books its search finds
-        (say <code>tag:Fantasy</code>); a category with one entry opens its books directly.
+        {tn('categories.explain', { example: <code>{t('categories.example')}</code> })}
       </Muted>
       <datalist id={tagListId}>
         {tags.map((tag) => (
@@ -114,13 +114,13 @@ export function CategoriesDialog({ onClose }: Props) {
         <CategoryBox key={category.id}>
           <NameRow>
             <input
-              aria-label="Category name"
-              placeholder="Name, e.g. Moods"
+              aria-label={t('categories.name')}
+              placeholder={t('categories.namePlaceholder')}
               value={category.name}
               onChange={(e) => update(category.id, (c) => ({ ...c, name: e.target.value }))}
             />
             <Button $variant="secondary" $size="small" onClick={() => setDraft(draft.filter((c) => c.id !== category.id))}>
-              Remove
+              {t('common.remove')}
             </Button>
           </NameRow>
           <Entries>
@@ -129,20 +129,20 @@ export function CategoriesDialog({ onClose }: Props) {
                 update(category.id, (c) => ({ ...c, entries: c.entries.map((e, i) => (i === index ? { ...e, ...patch } : e)) }));
               const count = matches(entry.query);
               return [
-                <input key={`l${index}`} aria-label="Entry name" placeholder="Name" value={entry.label} onChange={(e) => set({ label: e.target.value })} />,
+                <input key={`l${index}`} aria-label={t('categories.entryName')} placeholder={t('categories.entryNamePlaceholder')} value={entry.label} onChange={(e) => set({ label: e.target.value })} />,
                 <input
                   key={`q${index}`}
-                  aria-label="Entry search"
-                  placeholder="tag:Fantasy"
+                  aria-label={t('categories.entrySearch')}
+                  placeholder={t('categories.example')}
                   list={tagListId}
                   value={entry.query}
                   onChange={(e) => set({ query: e.target.value })}
                 />,
-                <Muted key={`c${index}`}>{count === undefined ? '' : `${count} book${count === 1 ? '' : 's'}`}</Muted>,
+                <Muted key={`c${index}`}>{count === undefined ? '' : t('common.books', { count })}</Muted>,
                 <Button
                   key={`r${index}`}
                   $variant="icon"
-                  aria-label={`Remove entry ${entry.label || entry.query}`}
+                  aria-label={t('categories.removeEntry', { entry: entry.label || entry.query })}
                   onClick={() => update(category.id, (c) => ({ ...c, entries: c.entries.filter((_, i) => i !== index) }))}
                 >
                   ×
@@ -155,22 +155,22 @@ export function CategoriesDialog({ onClose }: Props) {
             $size="small"
             onClick={() => update(category.id, (c) => ({ ...c, entries: [...c.entries, blankEntry()] }))}
           >
-            Add entry
+            {t('categories.addEntry')}
           </AddEntry>
         </CategoryBox>
       ))}
       <p>
         <Button $variant="secondary" onClick={() => setDraft([...draft, createCategory({ name: '', entries: [blankEntry()] })])}>
-          New category
+          {t('categories.new')}
         </Button>
       </p>
       {error && <ErrorText>{error}</ErrorText>}
       <ModalFooter>
         <Spacer />
         <Button $variant="secondary" onClick={onClose}>
-          Cancel
+          {t('common.cancel')}
         </Button>
-        <Button onClick={() => void save()}>Save</Button>
+        <Button onClick={() => void save()}>{t('common.save')}</Button>
       </ModalFooter>
     </Modal>
   );

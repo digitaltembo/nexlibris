@@ -10,6 +10,7 @@ import {
 import { inMobileApp, mobileTransport } from '../backends/mobileBridge';
 import { OpfsStorage } from '../backends/opfsStorage';
 import { canUseFolders, mayWrite, savedFolder } from '../library/savedFolders';
+import { t } from '../i18n';
 
 /**
  * Sync through a shared folder (see `common/src/folderHub.ts`). In the Android app it's a folder
@@ -82,9 +83,9 @@ export interface OpenFolder {
 export function openFolder(handle?: FileSystemDirectoryHandle): OpenFolder {
   if (inMobileApp()) {
     const { storage, copy } = appFolder();
-    return { hub: openFolderHub(storage, { name: 'Sync folder' }), copy };
+    return { hub: openFolderHub(storage, { name: t('errors.syncFolder') }), copy };
   }
-  if (!handle) throw new Error('Choose the folder first.');
+  if (!handle) throw new Error(t('errors.chooseFolderFirst'));
   return { hub: openFolderHub(new HandleStorage(handle), { name: handle.name }), handle };
 }
 
@@ -105,9 +106,9 @@ export async function chooseFolder(): Promise<FileSystemDirectoryHandle | undefi
 export async function pairedFolder(hubOrigin: string, interactive: boolean): Promise<OpenFolder> {
   if (inMobileApp()) return openFolder();
   const handle = await savedFolder(folderKey(hubOrigin));
-  if (!handle) throw new Error('This computer doesn’t remember the sync folder. Pair with it again.');
+  if (!handle) throw new Error(t('errors.forgotFolder'));
   if (!(await mayWrite(handle, interactive))) {
-    throw new Error(interactive ? `nexlibris wasn’t allowed to use the folder “${handle.name}”.` : 'Sync with the folder first.');
+    throw new Error(interactive ? t('errors.folderNotAllowed', { name: handle.name }) : t('errors.folderFirst'));
   }
   return openFolder(handle);
 }

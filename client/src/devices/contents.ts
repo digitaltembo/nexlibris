@@ -5,6 +5,7 @@ import { chooseFile, desiredFiles, isCurrent, type Wanted } from './plan';
 import { addToDevice, deviceItems, itemFiles, takeOutOfDevice } from './selection';
 export { matchItem } from './match';
 import { isFiles, type ConnectionType, type DeviceTarget, type RemoteBook } from './types';
+import { t } from '../i18n';
 
 /**
  * What's on a connection, set against the library: the books a sync put there and how they stand,
@@ -91,7 +92,7 @@ export function linkOperations(library: Library, device: Device, type: Connectio
     .filter((file) => book.path.toLowerCase().endsWith(`.${file.format}`))
     .sort((a, b) => b.format.length - a.format.length)[0];
   const choice = named ? { file: named } : chooseFile(item, device, type);
-  if (!choice) throw new Error(`${item.title} has no file this connection takes.`);
+  if (!choice) throw new Error(t('errors.noFileTaken', { title: item.title }));
   const ops: Operation[] = [];
   if (!deviceItems(library, device).some((i) => i.id === item.id)) ops.push(...addToDevice(device, [item.id]));
   const placed: PlacedFile = { itemId: item.id, hash: choice.file.hash, size: book.size, linked: true, found: true };
@@ -124,7 +125,7 @@ export async function importFromConnection(
   target: DeviceTarget,
   book: RemoteBook,
 ): Promise<{ item: Item; linked: boolean }> {
-  if (!target.download) throw new Error('This device can’t send files back.');
+  if (!target.download) throw new Error(t('errors.cantSendBack'));
   // A connection that knows its books' details (a folder's manifest) brings them in as it has them.
   const described = isFiles(type) && type.download ? await type.download(device, target, book, backend) : undefined;
   if (described) {

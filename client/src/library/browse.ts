@@ -1,5 +1,6 @@
 import { type Category, filterItems, type Item, type ItemId, type SearchContext, type Sort } from '@nexlibris/common';
 import { stepTitle } from '../catalogs/titles';
+import { t, type TextKey } from '../i18n';
 
 /**
  * Browsing the library by category, as calibre3opds's catalog navigation does: from the Library,
@@ -36,7 +37,7 @@ export interface BrowseEntry {
 }
 
 export type BrowseView =
-  | { kind: 'entries'; entries: BrowseEntry[]; noun: string; nouns: string }
+  | { kind: 'entries'; entries: BrowseEntry[]; /** How many there are, in words: plural forms' key. */ count: CountKey }
   | {
       kind: 'books';
       items: Item[];
@@ -74,8 +75,9 @@ export interface Crumb {
 }
 
 const byLabel = (a: string, b: string) => a.localeCompare(b, undefined, { sensitivity: 'base' });
-const plural = (n: number, noun: string, nouns = `${noun}s`) => `${n} ${n === 1 ? noun : nouns}`;
-const books = (n: number) => plural(n, 'book');
+type CountKey = Extract<TextKey, `browse.counts.${string}`>;
+const plural = (count: number, key: CountKey) => t(key, { count });
+const books = (n: number) => plural(n, 'browse.counts.books');
 const seriesOf = (item: Item) => (typeof item.metadata.series === 'string' ? item.metadata.series.trim() : '');
 const tagKey = (tag: string) => tag.trim().toLowerCase();
 /** Its authors, else whoever made it (as the OPDS catalog has them). */
@@ -147,22 +149,20 @@ function samples() {
 
 interface Grouping {
   label: string;
-  noun: string;
-  nouns: string;
+  count: CountKey;
   sort?: Sort;
   group(items: Item[]): { key: string; label: string; items: Item[] }[];
 }
 
 const GROUPINGS: Record<'authors' | 'series' | 'tags', Grouping> = {
-  authors: { label: 'Authors', noun: 'author', nouns: 'authors', group: (items) => groups(items, authorsOf, (key) => key) },
+  authors: { label: t('browse.authors'), count: 'browse.counts.authors', group: (items) => groups(items, authorsOf, (key) => key) },
   series: {
-    label: 'Series',
-    noun: 'series',
-    nouns: 'series',
+    label: t('browse.series'),
+    count: 'browse.counts.series',
     sort: SERIES_SORT,
     group: (items) => groups(items, (item) => (seriesOf(item) ? [seriesOf(item)] : []), (key) => key),
   },
-  tags: { label: 'Tags', noun: 'tag', nouns: 'tags', group: (items) => groups(items, tagsOf, tagLabel) },
+  tags: { label: t('browse.tags'), count: 'browse.counts.tags', group: (items) => groups(items, tagsOf, tagLabel) },
 };
 
 
@@ -193,27 +193,26 @@ export function browse(
     const sampleOf = samples();
     const grouped = (name: keyof typeof GROUPINGS): BrowseEntry => {
       const found = GROUPINGS[name].group(items);
-      return { label: GROUPINGS[name].label, detail: plural(found.length, GROUPINGS[name].noun, GROUPINGS[name].nouns), path: [name], sample: sampleOf(found.flatMap((g) => g.items), [name]) };
+      return { label: GROUPINGS[name].label, detail: plural(found.length, GROUPINGS[name].count), path: [name], sample: sampleOf(found.flatMap((g) => g.items), [name]) };
     };
     const custom = [...categories]
       .sort((a, b) => byLabel(a.name, b.name))
       .map((category): BrowseEntry => {
         const matched = [...new Set(category.entries.flatMap((e) => filterItems(items, e.query, context)))];
-        const detail = category.entries.length === 1 ? books(matched.length) : plural(category.entries.length, 'entry', 'entries');
+        const detail = category.entries.length === 1 ? books(matched.length) : plural(category.entries.length, 'browse.counts.entries');
         return { label: category.name, detail, path: ['category', category.id], sample: sampleOf(matched, ['category', category.id]) };
       });
     return {
       kind: 'entries',
-      noun: 'category',
-      nouns: 'categories',
+      count: 'browse.counts.categories',
       entries: [
-        { label: 'All books', detail: books(items.length), path: ALL_BOOKS, sample: sampleOf(items, ALL_BOOKS) },
-        { label: 'Currently reading', detail: books(readingOf(items, reading).length), path: ['reading'], sample: readingOf(items, reading)[0] },
+        { label: t('browse.allBooks'), detail: books(items.length), path: ALL_BOOKS, sample: sampleOf(items, ALL_BOOKS) },
+        { label: t('browse.reading'), detail: books(readingOf(items, reading).length), path: ['reading'], sample: readingOf(items, reading)[0] },
         grouped('authors'),
         grouped('series'),
         ...custom,
         grouped('tags'),
-        ...sources.map((source): BrowseEntry => ({ label: source.name, detail: 'Catalog', path: ['source', source.id] })),
+        ...sources.map((source): BrowseEntry => ({ label: source.name, detail: t('browse.catalog'), path: ['source', source.id] })),
         ...connections.map((c): BrowseEntry => ({ label: c.name, detail: c.label, path: ['connection', c.id] })),
       ],
     };
@@ -227,8 +226,7 @@ export function browse(
       const sampleOf = samples();
       return {
         kind: 'entries',
-        noun: grouping.noun,
-        nouns: grouping.nouns,
+        count: grouping.count,
         entries: found
           .sort((a, b) => byLabel(a.label, b.label))
           .map((g) => ({ label: g.label, detail: books(g.items.length), path: [kind, g.key], sample: sampleOf(g.items, [kind, g.key]) })),
@@ -246,8 +244,7 @@ export function browse(
       const sampleOf = samples();
       return {
         kind: 'entries',
-        noun: 'entry',
-        nouns: 'entries',
+        count: 'browse.counts.entries',
         entries: category.entries.map((_, index) => {
           const matched = entryBooks(index);
           const path = ['category', key, String(index)];
@@ -264,11 +261,11 @@ export function browse(
 
 /** The way to `path`, from the Library, for the breadcrumbs. */
 export function crumbs(items: Item[], path: BrowsePath, categories: Category[], sources: SourceRef[] = [], connections: SourceRef[] = []): Crumb[] {
-  const trail: Crumb[] = [{ label: 'Library', path: [] }];
+  const trail: Crumb[] = [{ label: t('browse.library'), path: [] }];
   const [kind, key, sub] = path;
   const add = (label: string, to: BrowsePath) => trail.push({ label, path: to });
-  if (kind === 'all') add('All books', ALL_BOOKS);
-  else if (kind === 'reading') add('Currently reading', ['reading']);
+  if (kind === 'all') add(t('browse.allBooks'), ALL_BOOKS);
+  else if (kind === 'reading') add(t('browse.reading'), ['reading']);
   else if (kind === 'authors' || kind === 'series' || kind === 'tags') {
     add(GROUPINGS[kind].label, [kind]);
     if (key !== undefined) {
@@ -302,6 +299,6 @@ export const parentPath = (path: BrowsePath): BrowsePath => path.slice(0, -1);
 /** How many of what a view shows, e.g. "12 books" or "34 authors". */
 export function viewCount(view: BrowseView): string | undefined {
   if (view.kind === 'books') return books(view.items.length);
-  if (view.kind === 'entries') return plural(view.entries.length, view.noun, view.nouns);
+  if (view.kind === 'entries') return plural(view.entries.length, view.count);
   return undefined;
 }

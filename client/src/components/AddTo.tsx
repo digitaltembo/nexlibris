@@ -7,6 +7,7 @@ import { Button, Muted, Spacer } from '../styles/ui';
 import { formatLabel } from './ItemFiles';
 import { Modal, ModalFooter } from './Modal';
 import { writableConnections } from './SendTo';
+import { t } from '../i18n';
 
 const Row = styled.div`
   display: flex;
@@ -23,10 +24,14 @@ export function AddTo({ items, file, onClose }: { items: Item[]; /** Just this f
   const { library, apply } = useLibrary();
   const connections = writableConnections(library);
   const ids = items.map((item) => item.id);
-  const what = file ? `${formatLabel(file.format)} of “${items[0]!.title}”` : items.length === 1 ? `“${items[0]!.title}”` : `${items.length} books`;
+  const what = file
+    ? t('addTo.file', { format: formatLabel(file.format), title: items[0]!.title })
+    : items.length === 1
+      ? t('addTo.one', { title: items[0]!.title })
+      : t('addTo.many', { count: items.length });
   return (
-    <Modal title={`Add ${what}`} onClose={onClose}>
-      {connections.length === 0 && <Muted as="p">There are no connections with catalogs yet. Add one under Connections.</Muted>}
+    <Modal title={t('addTo.title', { what })} onClose={onClose}>
+      {connections.length === 0 && <Muted as="p">{t('addTo.none')}</Muted>}
       {connections.map((device) => {
         const type = connectionType(device.type)!;
         const held = items.filter((item) => inCatalog(library, device, item.id));
@@ -35,32 +40,32 @@ export function AddTo({ items, file, onClose }: { items: Item[]; /** Just this f
         return (
           <Row key={device.id}>
             <span>
-              {device.name} <Muted>({type.label})</Muted>
+              {device.name} <Muted>{t('addTo.type', { type: type.label })}</Muted>
             </span>
             <Spacer />
             {held.length > 0 && !file && (
               <Button $variant="secondary" $size="small" onClick={() => void apply(takeOutOfDevice(library, device, held.map((i) => i.id)))}>
-                Remove
+                {t('common.remove')}
               </Button>
             )}
             {added ? (
-              <Muted>In its catalog</Muted>
+              <Muted>{t('addTo.inCatalog')}</Muted>
             ) : (
               <Button
                 $size="small"
                 onClick={() => void apply(file ? addFileToDevice(library, device, type, items[0]!, file.hash) : addToDevice(device, ids))}
               >
-                Add
+                {t('common.add')}
               </Button>
             )}
           </Row>
         );
       })}
-      <Muted as="p">Books in a catalog go there with the connection’s next sync; use Send to… to send them now.</Muted>
+      <Muted as="p">{t('addTo.hint')}</Muted>
       <ModalFooter>
         <Spacer />
         <Button $variant="secondary" onClick={onClose}>
-          Close
+          {t('common.close')}
         </Button>
       </ModalFooter>
     </Modal>

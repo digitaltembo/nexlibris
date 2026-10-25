@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react';
 import type { Plugin } from '../../devices/types';
 import { GraphIcon } from '../../components/icons';
 import type { CollectionProps } from '../../components/LibraryGrid';
+import { t } from '../../i18n';
 
 // three.js is large, so the graph loads only when it's shown.
 const ForceGraph = lazy(() => import('./ForceGraph'));
@@ -19,5 +20,5 @@ export const graph: Plugin = {
   id: 'graph',
   name: 'Graph',
   connectionTypes: [],
-  views: [{ id: 'graph.force', label: 'Graph', icon: <GraphIcon />, component: GraphView }],
+  views: [{ id: 'graph.force', label: t('views.graph'), icon: <GraphIcon />, component: GraphView }],
 };

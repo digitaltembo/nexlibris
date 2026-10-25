@@ -22,7 +22,7 @@ Options (environment variable in brackets):
   --port <n>             port to listen on (PORT, NEXLIBRIS_PORT; default 8080)
   --host <address>       address to listen on (NEXLIBRIS_HOST; default 0.0.0.0)
   --data <dir>           accounts, sessions and libraries' details (NEXLIBRIS_DATA; default ./data)
-  --client <dir>         the built web app to serve (NEXLIBRIS_CLIENT; default client/dist beside the server)
+  --client <dir>         the built web app to serve (NEXLIBRIS_CLIENT; default the one it came with)
   --name <text>          what the server calls itself to paired devices (NEXLIBRIS_NAME; default "nexlibris cloud")
   --signup <policy>      who may make an account from the web: open, first (only the first account), or
                          closed (NEXLIBRIS_SIGNUP; default first)

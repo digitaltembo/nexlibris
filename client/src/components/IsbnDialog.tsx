@@ -8,6 +8,7 @@ import { useLibrary } from '../library/LibraryContext';
 import { Button, FileButton, Muted, Row, Spacer } from '../styles/ui';
 import { CameraScanner } from './CameraScanner';
 import { Modal, ModalFooter } from './Modal';
+import { t } from '../i18n';
 
 const Controls = styled(Row)`
   flex-wrap: wrap;
@@ -119,7 +120,7 @@ export function IsbnDialog({ onClose, onOpen }: { onClose(): void; onOpen(id: It
     e.preventDefault();
     const isbn = normalizeIsbn(typed);
     if (!isbn) {
-      setError(`“${typed.trim()}” isn’t a valid ISBN.`);
+      setError(t('isbn.invalid', { typed: typed.trim() }));
       return;
     }
     setError(undefined);
@@ -133,10 +134,10 @@ export function IsbnDialog({ onClose, onOpen }: { onClose(): void; onOpen(id: It
     setError(undefined);
     try {
       const found = await readIsbnFromImage(file);
-      if (!found.length) setError('No ISBN barcode found in that picture. Try a closer, sharper one, or type the number.');
+      if (!found.length) setError(t('isbn.noBarcode'));
       for (const isbn of found) offer(isbn);
     } catch (e) {
-      setError(`Couldn’t read that picture: ${errorMessage(e)}`);
+      setError(t('isbn.photoFailed', { message: errorMessage(e) }));
     }
   };
 
@@ -149,12 +150,12 @@ export function IsbnDialog({ onClose, onOpen }: { onClose(): void; onOpen(id: It
         const item =
           entry.state === 'found'
             ? await itemFromBook(backend, entry.book)
-            : createItem({ title: `ISBN ${formatIsbn(entry.isbn)}`, identifiers: { isbn: entry.isbn } });
+            : createItem({ title: t('isbn.isbnTitle', { isbn: formatIsbn(entry.isbn) }), identifiers: { isbn: entry.isbn } });
         await apply([{ type: 'addItem', item }]);
         setAdded((current) => ({ ...current, [entry.isbn]: item.id }));
       }
     } catch (e) {
-      setError(`Couldn’t add the book: ${errorMessage(e)}`);
+      setError(t('isbn.addFailed', { message: errorMessage(e) }));
     } finally {
       setAdding((current) => new Set([...current].filter((isbn) => !isbns.includes(isbn))));
     }
@@ -164,10 +165,9 @@ export function IsbnDialog({ onClose, onOpen }: { onClose(): void; onOpen(id: It
   const addable = entries.filter((e) => e.state === 'found' && !inLibrary(e.isbn) && !adding.has(e.isbn));
 
   return (
-    <Modal title="Add by ISBN" onClose={onClose}>
+    <Modal title={t('isbn.title')} onClose={onClose}>
       <Muted as="p">
-        Scan the barcode on the back of a book, or type its ISBN, to look it up on Open Library and add it to the library
-        without a file.
+        {t('isbn.explain')}
       </Muted>
 
       {scanning && (
@@ -175,19 +175,19 @@ export function IsbnDialog({ onClose, onOpen }: { onClose(): void; onOpen(id: It
           reader={isbnReader}
           onValue={offer}
           onError={(message) => (setError(message), setScanning(false))}
-          hint="Hold the barcode inside the frame."
-          otherwise="Use a photo of the barcode, or type the ISBN."
+          hint={t('isbn.hint')}
+          otherwise={t('isbn.otherwise')}
         />
       )}
 
       <Controls>
         {cameraAvailable() && (
           <Button $variant={scanning ? 'secondary' : 'primary'} onClick={() => (setError(undefined), setScanning(!scanning))}>
-            {scanning ? 'Stop camera' : 'Scan with camera'}
+            {scanning ? t('isbn.stopCamera') : t('isbn.scan')}
           </Button>
         )}
         <FileButton $variant="secondary">
-          Photo of barcode…
+          {t('isbn.photo')}
           <input
             type="file"
             accept="image/*"
@@ -203,13 +203,13 @@ export function IsbnDialog({ onClose, onOpen }: { onClose(): void; onOpen(id: It
         <form onSubmit={submitTyped}>
           <input
             inputMode="numeric"
-            placeholder="ISBN, e.g. 978-0-441-17271-9"
-            aria-label="ISBN"
+            placeholder={t('isbn.placeholder')}
+            aria-label={t('isbn.label')}
             value={typed}
             onChange={(e) => setTyped(e.target.value)}
           />
           <Button type="submit" $variant="secondary" disabled={!typed.trim()}>
-            Look up
+            {t('isbn.lookUp')}
           </Button>
         </form>
       </Controls>
@@ -217,7 +217,7 @@ export function IsbnDialog({ onClose, onOpen }: { onClose(): void; onOpen(id: It
       {error && <ErrorText role="alert">{error}</ErrorText>}
 
       {entries.length > 0 && (
-        <Results aria-label="Books found">
+        <Results aria-label={t('isbn.found')}>
           {entries.map((entry) => (
             <EntryRow
               key={entry.isbn}
@@ -234,10 +234,10 @@ export function IsbnDialog({ onClose, onOpen }: { onClose(): void; onOpen(id: It
       )}
 
       <ModalFooter>
-        {addable.length > 1 && <Button onClick={() => void add(addable)}>Add all {addable.length}</Button>}
+        {addable.length > 1 && <Button onClick={() => void add(addable)}>{t('isbn.addAll', { count: addable.length })}</Button>}
         <Spacer />
         <Button $variant="secondary" onClick={onClose}>
-          Close
+          {t('common.close')}
         </Button>
       </ModalFooter>
     </Modal>
@@ -267,27 +267,27 @@ function EntryRow({ entry, existing, wasAdded, adding, onAdd, onRetry, onOpen }:
   if (existing) {
     action = (
       <Button $variant="secondary" $size="small" onClick={() => onOpen(existing)}>
-        {wasAdded ? 'Added · Open' : 'In library · Open'}
+        {wasAdded ? t('isbn.addedOpen') : t('isbn.inLibraryOpen')}
       </Button>
     );
   } else if (adding) {
-    action = <Muted>Adding…</Muted>;
+    action = <Muted>{t('isbn.adding')}</Muted>;
   } else if (entry.state === 'found') {
     action = (
       <Button $size="small" onClick={onAdd}>
-        Add
+        {t('isbn.add')}
       </Button>
     );
   } else if (entry.state === 'missing') {
     action = (
-      <Button $variant="secondary" $size="small" onClick={onAdd} title="Adds an item with only the ISBN, to fill in yourself">
-        Add anyway
+      <Button $variant="secondary" $size="small" onClick={onAdd} title={t('isbn.anywayTitle')}>
+        {t('isbn.anyway')}
       </Button>
     );
   } else if (entry.state === 'failed') {
     action = (
       <Button $variant="secondary" $size="small" onClick={onRetry}>
-        Retry
+        {t('isbn.retry')}
       </Button>
     );
   }
@@ -296,12 +296,12 @@ function EntryRow({ entry, existing, wasAdded, adding, onAdd, onRetry, onOpen }:
     <Result>
       {thumbnail ? <img src={thumbnail} alt="" loading="lazy" referrerPolicy="no-referrer" /> : <span className="placeholder" />}
       <div>
-        <strong>{book?.title ?? `ISBN ${formatIsbn(entry.isbn)}`}</strong>
+        <strong>{book?.title ?? t('isbn.isbnTitle', { isbn: formatIsbn(entry.isbn) })}</strong>
         <Muted>
-          {entry.state === 'looking' && 'Looking up…'}
-          {entry.state === 'missing' && 'Open Library doesn’t know this ISBN.'}
+          {entry.state === 'looking' && t('isbn.looking')}
+          {entry.state === 'missing' && t('isbn.unknown')}
           {entry.state === 'failed' && entry.error}
-          {details?.filter(Boolean).join(' · ')}
+          {details?.filter(Boolean).join(t('common.list'))}
         </Muted>
       </div>
       {action}

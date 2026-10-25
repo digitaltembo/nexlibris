@@ -1,6 +1,7 @@
 import { hashBlob, type LibraryBackend } from '@nexlibris/common';
 import { fillTemplate, PARSER_VERSION, parseOpdsFeed, parseOpenSearch, type OpdsFeed } from './opdsFeed';
 import type { TextFetcher } from './remote';
+import { t } from '../i18n';
 
 /**
  * Catalog pages as last read, kept in this instance's local files (`opds/<hash of the address>.json`;
@@ -64,10 +65,10 @@ export class FeedError extends Error {
   constructor(readonly status: number) {
     super(
       status === 401 || status === 403
-        ? 'The catalog needs a sign-in, or refused the one given: check the user name and password in the connection’s settings.'
+        ? t('errors.feedSignIn')
         : status === 404
-          ? 'The catalog has nothing at that address (404).'
-          : `The catalog’s server said ${status}.`,
+          ? t('errors.feedNotFound')
+          : t('errors.feedStatus', { status }),
     );
     this.name = 'FeedError';
   }
@@ -152,9 +153,7 @@ export async function searchTemplate(backend: LibraryBackend, root: string, fetc
   try {
     response = await fetcher(search.description);
   } catch {
-    throw new Error(
-      'Couldn’t read how to search this catalog (its OpenSearch description). Give a search address in the connection’s settings to search it from here.',
-    );
+    throw new Error(t('errors.noSearchDescription'));
   }
   if (response.status < 200 || response.status >= 300) throw failure(response.status);
   let template = parseOpenSearch(response.text, response.url || search.description);
@@ -184,7 +183,7 @@ export async function loadSearch(
   options: { now?: Date; check?: boolean; template?: string } = {},
 ): Promise<Loaded> {
   const template = options.template ?? (await searchTemplate(backend, root, fetcher));
-  if (!template) throw new Error('This catalog doesn’t offer search.');
+  if (!template) throw new Error(t('errors.noSearch'));
   const url = fillTemplate(template, terms);
   try {
     return await loadFeed(backend, url, fetcher, options);

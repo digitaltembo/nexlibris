@@ -8,6 +8,7 @@ import { Button, Muted, SmallSelect, Spacer } from '../styles/ui';
 import { ConvertOptions, Field, IndirectNote, pathLabel, useOptionValues } from './ConvertOptions';
 import { formatLabel } from './ItemFiles';
 import { Modal, ModalFooter } from './Modal';
+import { t } from '../i18n';
 
 const ErrorText = styled.p`
   color: var(--danger);
@@ -38,7 +39,7 @@ export function ConvertDialog({ item, onClose }: { item: Item; onClose(): void }
 
   const sourceLabel = (s: (typeof sources)[number]) =>
     sources.filter((other) => other.file.format === s.file.format).length > 1
-      ? `${formatLabel(s.file.format)} (${s.file.name ?? s.file.hash.slice(0, 8)})`
+      ? t('convertDialog.source', { format: formatLabel(s.file.format), name: s.file.name ?? s.file.hash.slice(0, 8) })
       : formatLabel(s.file.format);
 
   const convert = async () => {
@@ -55,13 +56,13 @@ export function ConvertDialog({ item, onClose }: { item: Item; onClose(): void }
   };
 
   return (
-    <Modal title={`Convert ${item.title}`} onClose={() => !busy && onClose()}>
+    <Modal title={t('convertDialog.title', { title: item.title })} onClose={() => !busy && onClose()}>
       {!source || !path ? (
-        <Muted as="p">None of this book’s files can be converted to anything it lacks.</Muted>
+        <Muted as="p">{t('convertDialog.nothing')}</Muted>
       ) : (
         <>
           <Field>
-            From
+            {t('convertDialog.from')}
             <SmallSelect value={source.file.hash} disabled={busy} onChange={(e) => setHash(e.target.value)}>
               {sources.map((s) => (
                 <option key={s.file.hash} value={s.file.hash}>
@@ -71,37 +72,37 @@ export function ConvertDialog({ item, onClose }: { item: Item; onClose(): void }
             </SmallSelect>
           </Field>
           <Field>
-            To
+            {t('convertDialog.to')}
             <SmallSelect value={target} disabled={busy} onChange={(e) => setTo(e.target.value)}>
               {targets.map(([format, steps]) => (
                 <option key={format} value={format}>
-                  {`${formatLabel(format)}${steps.length > 1 ? ' (indirect)' : ''}`}
+                  {steps.length > 1 ? t('convertDialog.indirect', { format: formatLabel(format) }) : formatLabel(format)}
                 </option>
               ))}
             </SmallSelect>
           </Field>
-          {path.length > 1 && <IndirectNote>An indirect conversion: {pathLabel(source.file.format, path)}.</IndirectNote>}
+          {path.length > 1 && <IndirectNote>{t('convertDialog.indirectNote', { path: pathLabel(source.file.format, path) })}</IndirectNote>}
           <ConvertOptions fields={fields} values={values} onChange={setValues} disabled={busy} />
         </>
       )}
       {busy && (
         <Muted as="p" role="status">
-          Converting…
+          {t('convertDialog.converting')}
         </Muted>
       )}
       {error && <ErrorText role="alert">{error}</ErrorText>}
       <ModalFooter>
         {fields.length > 0 && (
           <Button $variant="secondary" disabled={busy} onClick={() => setValues({})}>
-            Defaults
+            {t('convertDialog.defaults')}
           </Button>
         )}
         <Spacer />
         <Button $variant="secondary" disabled={busy} onClick={onClose}>
-          Cancel
+          {t('common.cancel')}
         </Button>
         <Button disabled={busy || !path} onClick={() => void convert()}>
-          Convert
+          {t('convertDialog.convert')}
         </Button>
       </ModalFooter>
     </Modal>

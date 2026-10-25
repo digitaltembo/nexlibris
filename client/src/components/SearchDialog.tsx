@@ -10,6 +10,7 @@ import { Button, Muted, Tag, TagButton, TagLabel, TagRemove } from '../styles/ui
 import { Cover } from './Cover';
 import { coverageNote, passagePlace, Snippet } from './TextResults';
 import { SearchIcon } from './icons';
+import { t, tn } from '../i18n';
 
 const Dialog = styled.dialog`
   width: min(680px, calc(100vw - 24px));
@@ -229,14 +230,14 @@ const Footer = styled.footer`
 
 /** Fields offered as starting points before anything is typed. */
 const STARTERS = [
-  ['Author', 'author:'],
-  ['Title', 'title:'],
-  ['Series', 'series:'],
-  ['Tag', 'tag:'],
-  ['Format', 'format:'],
-  ['Rating', 'rating:'],
-  ['Added', 'added:'],
-  ['Has…', 'has:'],
+  [t('searchDialog.starters.author'), 'author:'],
+  [t('searchDialog.starters.title'), 'title:'],
+  [t('searchDialog.starters.series'), 'series:'],
+  [t('searchDialog.starters.tag'), 'tag:'],
+  [t('searchDialog.starters.format'), 'format:'],
+  [t('searchDialog.starters.rating'), 'rating:'],
+  [t('searchDialog.starters.added'), 'added:'],
+  [t('searchDialog.starters.has'), 'has:'],
 ] as const;
 
 const RECENT_LIMIT = 6;
@@ -386,7 +387,7 @@ export function SearchDialog(props: Props) {
   return (
     <Dialog
       ref={ref}
-      aria-label="Search"
+      aria-label={t('searchDialog.label')}
       onClose={onClose}
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
@@ -397,12 +398,12 @@ export function SearchDialog(props: Props) {
           type="text"
           inputMode="search"
           role="combobox"
-          aria-label="Search"
+          aria-label={t('searchDialog.label')}
           aria-expanded={choices.length > 0}
           aria-controls={listId}
           aria-autocomplete="list"
           aria-activedescendant={active >= 0 ? optionId(active) : undefined}
-          placeholder={source ? `Search ${source.name}…` : text ? 'Search the text of books…' : 'Search titles, authors, tags…'}
+          placeholder={source ? t('searchDialog.placeholderSource', { name: source.name }) : text ? t('searchDialog.placeholderText') : t('searchDialog.placeholder')}
           enterKeyHint="search"
           autoComplete="off"
           spellCheck={false}
@@ -416,19 +417,19 @@ export function SearchDialog(props: Props) {
           onKeyDown={onKeyDown}
         />
         {draft && (
-          <Button $variant="icon" aria-label="Clear" title="Clear" onClick={clear}>
+          <Button $variant="icon" aria-label={t('searchDialog.clear')} title={t('searchDialog.clear')} onClick={clear}>
             ×
           </Button>
         )}
         <Button $size="small" onClick={() => submit()}>
-          Search
+          {t('searchDialog.search')}
         </Button>
       </Field>
-      <Modes role="radiogroup" aria-label="Search in" onMouseDown={(e) => e.preventDefault()}>
+      <Modes role="radiogroup" aria-label={t('searchDialog.searchIn')} onMouseDown={(e) => e.preventDefault()}>
         {(
           [
-            ['books', 'Books'],
-            ['text', 'Inside books'],
+            ['books', t('searchDialog.books')],
+            ['text', t('searchDialog.insideBooks')],
             ...sources.map((s) => [`source:${s.id}`, s.name] as const),
           ] as const satisfies readonly (readonly [SearchMode, string])[]
         ).map(([value, label]) => (
@@ -451,16 +452,16 @@ export function SearchDialog(props: Props) {
       {/* Clicking a button here leaves the focus in the field, so typing (and Enter) carries on there, */}
       <Scroll onMouseDown={(e) => (e.target as Element).closest('button') && e.preventDefault()}>
         {source && (
-          <Section aria-label={`Searching ${source.name}`}>
-            <Muted as="p">Searches {source.name}’s catalog when you press Enter, and shows what it finds in the Library.</Muted>
+          <Section aria-label={t('searchDialog.searching', { name: source.name })}>
+            <Muted as="p">{t('searchDialog.sourceNote', { name: source.name })}</Muted>
           </Section>
         )}
         {inLibrary && scope && scoped && (
-          <Section aria-label="Searching within">
+          <Section aria-label={t('searchDialog.within')}>
             <Chips>
               <Tag>
-                <TagLabel>In {scope.label}</TagLabel>
-                <TagRemove aria-label={`Search all books, not just ${scope.label}`} title="Search all books" onClick={() => {
+                <TagLabel>{t('searchDialog.in', { scope: scope.label })}</TagLabel>
+                <TagRemove aria-label={t('searchDialog.allNotJust', { scope: scope.label })} title={t('searchDialog.all')} onClick={() => {
                   setScoped(false);
                   input.current?.focus();
                 }}>
@@ -472,8 +473,8 @@ export function SearchDialog(props: Props) {
         )}
 
         {!text && !source && !draft.trim() && (
-          <Section aria-label="Search by">
-            <h3>Search by</h3>
+          <Section aria-label={t('searchDialog.searchBy')}>
+            <h3>{t('searchDialog.searchBy')}</h3>
             <Chips>
               {STARTERS.map(([label, text]) => (
                 <TagButton key={text} onClick={() => insert(text)}>
@@ -485,10 +486,10 @@ export function SearchDialog(props: Props) {
         )}
 
         {!draft.trim() && recent.length > 0 && (
-          <Section aria-label="Recent searches">
+          <Section aria-label={t('searchDialog.recentLabel')}>
             <h3>
-              Recent
-              <QuietButton onClick={() => setRecent([])}>Clear</QuietButton>
+              {t('searchDialog.recent')}
+              <QuietButton onClick={() => setRecent([])}>{t('searchDialog.clear')}</QuietButton>
             </h3>
             <Options>
               {recent.map((r) => (
@@ -500,10 +501,10 @@ export function SearchDialog(props: Props) {
           </Section>
         )}
 
-        <Options id={listId} role="listbox" aria-label="Suggestions">
+        <Options id={listId} role="listbox" aria-label={t('searchDialog.suggestions')}>
           {suggestions.length > 0 && (
             <Section as="li" role="presentation">
-              <h3>Suggestions</h3>
+              <h3>{t('searchDialog.suggestions')}</h3>
               <Options role="presentation">
                 {suggestions.map((s, i) => (
                   <Option
@@ -524,10 +525,17 @@ export function SearchDialog(props: Props) {
           {text && (searched.trim() || coverageNote(textSearch.coverage)) && (
             <Section as="li" role="presentation">
               <h3>
-                Inside books{' '}
+                {t('searchDialog.insideBooks')}{' '}
                 {searched.trim() && (
                   <Muted>
-                    · {textSearch.searching ? 'searching…' : textSearch.hits.length ? `${textSearch.hits.length}${textSearch.hits.length === TEXT_LIMIT ? '+' : ''} ${textSearch.hits.length === 1 ? 'book' : 'books'}` : 'nothing found'}
+                    {textSearch.searching
+                      ? t('searchDialog.searchingText')
+                      : textSearch.hits.length
+                        ? t('searchDialog.textHits', {
+                            count: textSearch.hits.length,
+                            n: `${textSearch.hits.length}${textSearch.hits.length === TEXT_LIMIT ? '+' : ''}`,
+                          })
+                        : t('searchDialog.nothingFound')}
                   </Muted>
                 )}
               </h3>
@@ -550,12 +558,12 @@ export function SearchDialog(props: Props) {
                       <HitText>
                         <strong>{hit.item.title}</strong>
                         <div>
-                          {place && `${place}: `}
+                          {place && t('searchDialog.place', { place })}
                           <Snippet passage={passage} />
                         </div>
                       </HitText>
                       <Kind>
-                        {hit.match.total} {hit.match.total === 1 ? 'match' : 'matches'}
+                        {t('searchDialog.matches', { count: hit.match.total })}
                       </Kind>
                     </Option>
                   );
@@ -566,10 +574,10 @@ export function SearchDialog(props: Props) {
           {!text && searched.trim() && (
             <Section as="li" role="presentation">
               <h3>
-                Books <Muted>· {found.length === 1 ? '1 match' : `${found.length} matches`}</Muted>
+                {t('searchDialog.books')} <Muted>{t('searchDialog.bookMatches', { count: found.length })}</Muted>
               </h3>
               {books.length === 0 ? (
-                <Nothing>Nothing matches.</Nothing>
+                <Nothing>{t('searchDialog.nothing')}</Nothing>
               ) : (
                 <Options role="presentation">
                   {books.map((book, j) => {
@@ -598,18 +606,18 @@ export function SearchDialog(props: Props) {
 
       <Footer>
         <span>
-          <kbd>↑</kbd> <kbd>↓</kbd> choose
+          {tn('searchDialog.choose', { keys: <><kbd>↑</kbd> <kbd>↓</kbd></> })}
         </span>
         {!text && (
           <span>
-            <kbd>Tab</kbd> complete
+            {tn('searchDialog.complete', { keys: <kbd>Tab</kbd> })}
           </span>
         )}
         <span>
-          <kbd>Enter</kbd> search
+          {tn('searchDialog.enter', { keys: <kbd>Enter</kbd> })}
         </span>
         <span>
-          <kbd>Esc</kbd> cancel
+          {tn('searchDialog.cancel', { keys: <kbd>Esc</kbd> })}
         </span>
       </Footer>
     </Dialog>

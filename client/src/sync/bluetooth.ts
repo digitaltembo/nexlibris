@@ -8,6 +8,7 @@ import {
   messageFetch,
 } from '@nexlibris/common';
 import { inMobileApp } from '../backends/mobileBridge';
+import { t } from '../i18n';
 
 /**
  * Reaching a hub over Bluetooth (see `common/src/bluetoothApi.ts`): the Android app, hosting sync,
@@ -64,12 +65,12 @@ export interface BluetoothLink {
 /** Asks which phone to connect to (the browser's chooser, which needs a click to be under way), then connects. */
 export async function chooseBluetoothHub(): Promise<BluetoothLink> {
   const bluetooth = webBluetooth();
-  if (!bluetooth) throw new Error('This browser can’t use Bluetooth. Try Chrome or Edge, or the desktop app.');
+  if (!bluetooth) throw new Error(t('errors.noBluetooth'));
   let device: BluetoothDeviceLike;
   try {
     device = await bluetooth.requestDevice({ filters: [{ services: [BLUETOOTH_SERVICE] }] });
   } catch (e) {
-    if (e instanceof DOMException && e.name === 'NotFoundError') throw new Error('No phone was chosen.');
+    if (e instanceof DOMException && e.name === 'NotFoundError') throw new Error(t('errors.noPhoneChosen'));
     throw e;
   }
   return connect(device);
@@ -78,7 +79,7 @@ export async function chooseBluetoothHub(): Promise<BluetoothLink> {
 /** Connects to a device the user chose (exported for tests, which pass a stand-in). */
 export async function connect(device: BluetoothDeviceLike): Promise<BluetoothLink> {
   const name = device.name || 'Phone';
-  if (!device.gatt) throw new Error(`${name} can’t be connected to.`);
+  if (!device.gatt) throw new Error(t('errors.cantConnect', { name }));
   let requests: GattCharacteristic;
   let responses: GattCharacteristic;
   try {
@@ -87,7 +88,7 @@ export async function connect(device: BluetoothDeviceLike): Promise<BluetoothLin
     requests = await service.getCharacteristic(BLUETOOTH_REQUESTS);
     responses = await service.getCharacteristic(BLUETOOTH_RESPONSES);
   } catch (e) {
-    throw new Error(`Couldn’t connect to ${name}: ${e instanceof Error ? e.message : String(e)}. Check that sync over Bluetooth is on there.`);
+    throw new Error(t('errors.couldntConnect', { name, message: e instanceof Error ? e.message : String(e) }));
   }
   const assembler = new MessageAssembler();
   let waiting: { resolve(message: Uint8Array): void; reject(error: Error): void; touch(): void } | undefined;
@@ -105,7 +106,7 @@ export async function connect(device: BluetoothDeviceLike): Promise<BluetoothLin
   });
   device.addEventListener('gattserverdisconnected', () => {
     assembler.reset();
-    waiting?.reject(new Error(`The Bluetooth connection to ${name} dropped.`));
+    waiting?.reject(new Error(t('errors.dropped', { name })));
     waiting = undefined;
   });
   await responses.startNotifications();
@@ -114,7 +115,7 @@ export async function connect(device: BluetoothDeviceLike): Promise<BluetoothLin
   let queue: Promise<unknown> = Promise.resolve();
   const exchange = (message: Uint8Array) => {
     const call = queue.then(async () => {
-      if (!device.gatt?.connected) throw new Error(`Not connected to ${name}.`);
+      if (!device.gatt?.connected) throw new Error(t('errors.notConnected', { name }));
       const reply = new Promise<Uint8Array>((resolve, reject) => {
         let timer: ReturnType<typeof setTimeout>;
         const touch = () => {
@@ -122,7 +123,7 @@ export async function connect(device: BluetoothDeviceLike): Promise<BluetoothLin
           timer = setTimeout(() => {
             waiting = undefined;
             assembler.reset();
-            reject(new Error(`${name} stopped answering over Bluetooth.`));
+            reject(new Error(t('errors.stoppedAnswering', { name })));
           }, IDLE_TIMEOUT_MS);
         };
         waiting = {
@@ -174,7 +175,7 @@ export async function bluetoothLink(hubOrigin: string, interactive: boolean): Pr
       if (!interactive) throw e;
     }
   }
-  if (!interactive) throw new Error('Sync over Bluetooth first.');
+  if (!interactive) throw new Error(t('errors.bluetoothFirst'));
   const link = await chooseBluetoothHub();
   links.set(hubOrigin, link);
   return link;

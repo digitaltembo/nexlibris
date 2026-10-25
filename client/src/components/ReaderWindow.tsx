@@ -4,6 +4,7 @@ import { requestBook, type ReaderAddress, type ReaderBook } from '../library/rea
 import { usePositionReports } from '../library/useReadingPosition';
 import { BookReader } from '../reader/Reader';
 import { Status } from '../styles/ui';
+import { t } from '../i18n';
 
 /**
  * A book in a window of its own (see `library/readerWindow.ts`): the reader alone, filling the
@@ -28,7 +29,7 @@ export function ReaderWindow({ itemId, hash, at }: ReaderAddress) {
   useEffect(() => followTitleBar(), []);
 
   if (error) return <Status $error>{error}</Status>;
-  if (!opened) return <Status>Opening…</Status>;
+  if (!opened) return <Status>{t('common.opening')}</Status>;
   return <OpenBook book={opened.book} at={at} sendPosition={opened.sendPosition} />;
 }
 

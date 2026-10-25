@@ -14,6 +14,7 @@ import { useEffect, useState } from 'react';
 import { inMobileApp } from '../backends/mobileBridge';
 import { inDesktopApp } from '../backends/desktopBridge';
 import { localFetch } from '../devices/localFetch';
+import { t } from '../i18n';
 
 /**
  * The nexlibris server (M4) this instance uses, if any, and the account signed in to it. Signed
@@ -101,14 +102,14 @@ export function serverConnection(): ServerConnection | undefined {
 /** The server API's client, for this instance's server. */
 export function serverApi(): MessageClient<ServerApi> {
   const connection = serverConnection();
-  if (!connection) throw new Error('Choose a nexlibris server first (Account…).');
+  if (!connection) throw new Error(t('account.errors.chooseServer'));
   return serverClient(connection.base, connection.fetch);
 }
 
 /** The library in the account signed in to this instance's server. */
 export function cloudBackend(): LibraryBackend {
   const connection = serverConnection();
-  if (!connection) throw new Error('Choose a nexlibris server first (Account…).');
+  if (!connection) throw new Error(t('account.errors.chooseServer'));
   return new ServerLibraryBackend(connection.base, connection.fetch);
 }
 
@@ -122,7 +123,8 @@ const changes = new EventTarget();
 export function serverSession(refresh = false): Promise<SessionInfo | undefined> {
   if (typeof location === 'undefined') return Promise.resolve(undefined);
   if (!probe || refresh) {
-    const connection = serverConnection();
+    // A build for a static host (GitHub Pages: `VITE_STATIC_HOST=true`) knows there's none to ask.
+    const connection = import.meta.env.VITE_STATIC_HOST === 'true' && !choosesServer() ? undefined : serverConnection();
     // A 404, or a page instead of the API, is a page from somewhere without a server.
     probe = connection
       ? serverClient(connection.base, connection.fetch)
@@ -182,20 +184,20 @@ export async function changePassword(password: string, newPassword: string): Pro
  */
 export async function chooseServer(typed: string): Promise<SessionInfo> {
   const url = serverAddress(typed);
-  if (!url) throw new Error('That isn’t a server’s address. Type it as your browser would, e.g. books.example.org or 192.168.1.20:8080.');
+  if (!url) throw new Error(t('account.errors.notAddress'));
   if (inMobileApp() && url.startsWith('http:') && !isLocalAddress(url)) {
-    throw new Error('A server outside your network needs an https:// address.');
+    throw new Error(t('account.errors.needsHttps'));
   }
   // Sync goes through the app's relay (`PeerService.kt`, `PeerService.swift`), which calls servers at their origin.
-  if (inMobileApp() && new URL(url).pathname !== '/') throw new Error('The app needs a server at its own address, without a path.');
+  if (inMobileApp() && new URL(url).pathname !== '/') throw new Error(t('account.errors.noPath'));
   const connection = connectionTo(url);
   let session: SessionInfo | undefined;
   try {
     session = nexlibrisSession(await serverClient(connection.base, connection.fetch).auth.session(null));
   } catch (e) {
-    throw new Error(`Couldn’t reach a nexlibris server at ${url}: ${e instanceof Error ? e.message : String(e)}`);
+    throw new Error(t('account.errors.unreachable', { url, message: e instanceof Error ? e.message : String(e) }));
   }
-  if (!session) throw new Error(`${url} answered, but not as a nexlibris server.`);
+  if (!session) throw new Error(t('account.errors.notServer', { url }));
   if (chosen()?.token) await signOut().catch(() => undefined);
   choose({ url });
   return settled(session)!;

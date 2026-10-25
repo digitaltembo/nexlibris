@@ -1,4 +1,5 @@
 import type { Cover, FileHash, LibraryBackend } from '@nexlibris/common';
+import { t } from '../i18n';
 
 /**
  * Covers as shown: shrunk once, then kept in the backend's local files (`thumbs/<ab>/<hash>.jpg`,
@@ -26,7 +27,7 @@ export async function makeThumbnail(image: Blob): Promise<Blob> {
     const height = Math.max(1, Math.round(bitmap.height * scale));
     const canvas = typeof OffscreenCanvas === 'undefined' ? Object.assign(document.createElement('canvas'), { width, height }) : new OffscreenCanvas(width, height);
     const context = canvas.getContext('2d') as CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null;
-    if (!context) throw new Error('No canvas to draw the thumbnail on.');
+    if (!context) throw new Error(t('errors.noThumbnailCanvas'));
     context.fillStyle = '#fff';
     context.fillRect(0, 0, width, height);
     context.imageSmoothingQuality = 'high';

@@ -2,6 +2,7 @@ import type { FileRef, Item, LibraryBackend, Operation } from '@nexlibris/common
 import { betterPath, conversionPath, conversionPaths, type Converter } from '@nexlibris/tools/formats/convert/converters';
 import { isEpub, titleFromFilename, type FormatId } from '@nexlibris/tools/formats/formats';
 import { fileMetadata, metadataKey } from './fileMetadata';
+import { t } from '../i18n';
 
 /** A file and the conversions that make a format from it, in turn (more than one by way of other formats). */
 export interface ConversionSource {
@@ -42,7 +43,7 @@ export async function runConversion(
   path: Converter[],
 ): Promise<FileRef> {
   const last = path.at(-1);
-  if (!last) throw new Error('Nothing to convert with');
+  if (!last) throw new Error(t('errors.nothingToConvert'));
   const coverData = item.cover && (await backend.getFile(item.cover.hash));
   const cover = coverData && item.cover ? { data: coverData, mediaType: item.cover.mediaType } : undefined;
   let output = data;
@@ -76,7 +77,7 @@ export async function convertItemFile(
   path: Converter[],
 ): Promise<Operation> {
   const data = await backend.getFile(file.hash);
-  if (!data) throw new Error(`${file.name ?? file.format} is missing from storage`);
+  if (!data) throw new Error(t('errors.missingNamed', { name: file.name ?? file.format }));
   return { type: 'attachFile', id: item.id, file: await runConversion(backend, item, file, data, path) };
 }
 

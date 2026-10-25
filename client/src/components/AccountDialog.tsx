@@ -16,6 +16,7 @@ import {
 import { libraryPlace, type LibraryPlace } from '../library/libraryFolder';
 import { Button, Muted } from '../styles/ui';
 import { Modal, ModalFooter } from './Modal';
+import { t, tn } from '../i18n';
 
 const errorMessage = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -42,11 +43,11 @@ export function SignInForm({ session, onSignedIn }: { session: SessionInfo; onSi
   return (
     <Form onSubmit={(e) => void submit(e)}>
       <label>
-        Name
+        {t('accountDialog.name')}
         <input value={name} onChange={(e) => setName(e.target.value)} autoComplete="username" autoCapitalize="none" spellCheck={false} required />
       </label>
       <label>
-        Password
+        {t('accountDialog.password')}
         <input
           type="password"
           value={password}
@@ -58,11 +59,11 @@ export function SignInForm({ session, onSignedIn }: { session: SessionInfo; onSi
       </label>
       <Actions>
         <Button type="submit" $variant="primary" disabled={busy || !name.trim() || !password}>
-          {making ? 'Make the account' : 'Sign in'}
+          {making ? t('accountDialog.make') : t('accountDialog.signIn')}
         </Button>
         {session.signup && (
           <Button $variant="secondary" disabled={busy} onClick={() => (setMaking(!making), setError(undefined))}>
-            {making ? 'I have an account' : 'Make an account…'}
+            {making ? t('accountDialog.haveAccount') : t('accountDialog.makeAccount')}
           </Button>
         )}
       </Actions>
@@ -73,9 +74,8 @@ export function SignInForm({ session, onSignedIn }: { session: SessionInfo; onSi
 
 /** Where the library is, from the account's side. */
 function libraryLine(place: LibraryPlace, app: boolean): string {
-  if (place.kind === 'cloud') return 'Your library is kept in your account, so it’s the same wherever you sign in.';
-  const here = app ? 'on this device' : 'in this browser';
-  return `Your library is kept ${here}. It can move to your account, or keep a copy there that it syncs with: see Library folder.`;
+  if (place.kind === 'cloud') return t('accountDialog.cloud');
+  return app ? t('accountDialog.device') : t('accountDialog.browser');
 }
 
 /**
@@ -113,7 +113,7 @@ export function AccountDialog({
   const answered = reachable ?? (given !== undefined || known);
 
   return (
-    <Modal title="Account" onClose={onClose}>
+    <Modal title={t('accountDialog.title')} onClose={onClose}>
       {app && (
         <ServerChoice
           server={server}
@@ -126,22 +126,21 @@ export function AccountDialog({
       )}
       {app && (!server || changing) ? null : !session ? (
         <Muted as="p">
-          {answered && server ? `Couldn’t reach the server at ${server}. Check your connection, and the address.` : 'Asking the server…'}
+          {answered && server ? t('accountDialog.unreachable', { server }) : t('accountDialog.asking')}
         </Muted>
       ) : session.account ? (
         <SignedIn session={session} place={place} app={app} onLibraryFolder={onLibraryFolder} />
       ) : (
         <>
           <p>
-            Sign in to {session.name} to keep your library in your account, where your other devices can reach it. Signed out,
-            nexlibris keeps it {app ? 'on this device' : 'in this browser'}.
+            {t(app ? 'accountDialog.signInTo' : 'accountDialog.signInToBrowser', { name: session.name })}
           </p>
           <SignInForm session={session} onSignedIn={() => undefined} />
         </>
       )}
       <ModalFooter>
         <Button $variant="secondary" onClick={onClose}>
-          Close
+          {t('common.close')}
         </Button>
       </ModalFooter>
     </Modal>
@@ -186,13 +185,13 @@ export function ServerChoice({
     return (
       <ServerLine>
         <span>
-          Server: <strong>{server}</strong>
+          {tn('accountDialog.server', { server: <strong>{server}</strong> })}
         </span>
         <Button $variant="secondary" onClick={onChange}>
-          Change…
+          {t('accountDialog.change')}
         </Button>
         <Button $variant="secondary" disabled={busy} onClick={() => void forgetServer()}>
-          {signedIn ? 'Sign out and stop using it' : 'Stop using it'}
+          {signedIn ? t('accountDialog.signOutStop') : t('accountDialog.stop')}
         </Button>
       </ServerLine>
     );
@@ -200,16 +199,15 @@ export function ServerChoice({
   return (
     <Form onSubmit={(e) => void submit(e)}>
       <Muted as="p">
-        A nexlibris server keeps your library in an account, where your other devices can open it, or keeps a copy that this
-        device syncs with. Run one yourself (see nexlibris’s README), or use one someone runs for you.
-        {signedIn && ' Choosing another signs you out of this one.'}
+        {t('accountDialog.serverExplain')}
+        {signedIn && t('accountDialog.signsOut')}
       </Muted>
       <label>
-        Server address
+        {t('accountDialog.serverAddress')}
         <input
           value={address}
           onChange={(e) => setAddress(e.target.value)}
-          placeholder="books.example.org or 192.168.1.20:8080"
+          placeholder={t('accountDialog.serverPlaceholder')}
           inputMode="url"
           autoCapitalize="none"
           autoCorrect="off"
@@ -219,11 +217,11 @@ export function ServerChoice({
       </label>
       <Actions>
         <Button type="submit" $variant="primary" disabled={busy || !address.trim()}>
-          {busy ? 'Connecting…' : 'Connect'}
+          {busy ? t('accountDialog.connecting') : t('accountDialog.connect')}
         </Button>
         {onCancel && (
           <Button $variant="secondary" disabled={busy} onClick={onCancel}>
-            Cancel
+            {t('common.cancel')}
           </Button>
         )}
       </Actions>
@@ -268,14 +266,14 @@ function SignedIn({
       setChanging(false);
       setCurrent('');
       setNext('');
-      setStatus({ done: 'Password changed. Your other devices are signed out.' });
+      setStatus({ done: t('accountDialog.passwordChanged') });
     });
   };
 
   return (
     <>
       <p>
-        Signed in to {session.name} as <strong>{session.account!.name}</strong>.
+        {tn('accountDialog.signedInAs', { server: session.name, name: <strong>{session.account!.name}</strong> })}
       </p>
       <p>
         <Muted>{libraryLine(place, app)}</Muted>
@@ -283,19 +281,19 @@ function SignedIn({
       {changing ? (
         <Form onSubmit={submit}>
           <label>
-            Current password
+            {t('accountDialog.currentPassword')}
             <input type="password" value={current} onChange={(e) => setCurrent(e.target.value)} autoComplete="current-password" required />
           </label>
           <label>
-            New password
+            {t('accountDialog.newPassword')}
             <input type="password" value={next} onChange={(e) => setNext(e.target.value)} autoComplete="new-password" minLength={8} required />
           </label>
           <Actions>
             <Button type="submit" $variant="primary" disabled={busy || !current || next.length < 8}>
-              Change it
+              {t('accountDialog.changeIt')}
             </Button>
             <Button $variant="secondary" disabled={busy} onClick={() => setChanging(false)}>
-              Cancel
+              {t('common.cancel')}
             </Button>
           </Actions>
         </Form>
@@ -303,14 +301,14 @@ function SignedIn({
         <Actions>
           {onLibraryFolder && (
             <Button $variant="secondary" onClick={onLibraryFolder}>
-              Library folder…
+              {t('accountDialog.libraryFolder')}
             </Button>
           )}
           <Button $variant="secondary" onClick={() => setChanging(true)}>
-            Change password…
+            {t('accountDialog.changePassword')}
           </Button>
           <Button $variant="secondary" disabled={busy} onClick={() => void run(async () => void (await signOut()))}>
-            Sign out
+            {t('accountDialog.signOut')}
           </Button>
         </Actions>
       )}

@@ -3,6 +3,7 @@ import styled, { css } from 'styled-components';
 import { clickModifiers, type CollectionProps } from '../../components/LibraryGrid';
 import { Cover } from '../../components/Cover';
 import { useLongPress } from '../../library/useLongPress';
+import { t } from '../../i18n';
 
 /**
  * The books as a bookshelf, in CSS 3D: each book a box standing spine out, its title down the spine,
@@ -221,7 +222,7 @@ const Top = styled.span<{ $shape: BookShape }>`
 export function Bookshelf({ items, selection, onActivate, onLongPress }: CollectionProps) {
   const longPress = useLongPress(onLongPress);
   return (
-    <Shelf aria-label="Bookshelf">
+    <Shelf aria-label={t('bookshelf.label')}>
       {items.map((item) => {
         const shape = bookShape(item);
         const selected = selection.has(item.id);
@@ -233,8 +234,8 @@ export function Bookshelf({ items, selection, onActivate, onLongPress }: Collect
               $shape={shape}
               $selected={selected}
               aria-pressed={selected}
-              aria-label={byline ? `${item.title}, ${byline}` : item.title}
-              title={byline ? `${item.title} — ${byline}` : item.title}
+              aria-label={byline ? t('bookshelf.aria', { title: item.title, byline }) : item.title}
+              title={byline ? t('bookshelf.title', { title: item.title, byline }) : item.title}
               onClick={(e) => onActivate(item.id, clickModifiers(e))}
               {...longPress(item.id)}
             >

@@ -5,6 +5,7 @@ import { useLibrary } from '../library/LibraryContext';
 import { Button, Muted, Spacer, Stack } from '../styles/ui';
 import { connectHub } from '../sync/connect';
 import { Modal, ModalFooter } from './Modal';
+import { t } from '../i18n';
 
 const BookRow = styled.li`
   display: flex;
@@ -34,7 +35,6 @@ const Filter = styled.input`
   margin: 0 0 8px;
 `;
 
-const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 const SHOWN = 200;
 
 type State = { kind: 'loading' } | { kind: 'ready'; items: Item[]; note: string } | { kind: 'failed'; message: string };
@@ -72,13 +72,13 @@ export function InstanceContents({
         const { revision } = await client.hello(null);
         // Its library as it shows this one: the books it exposes, and those of this one's it has.
         const { library: shown } = await client.state({ since: revision, have: Object.keys(current.items), peer: current.origin });
-        setState({ kind: 'ready', items: Object.values(shown.items), note: `The books ${device.name} shows this device.` });
+        setState({ kind: 'ready', items: Object.values(shown.items), note: t('instanceContents.shows', { name: device.name }) });
       } else {
         const offer = await peerOffer(backend, device.id);
         setRequested(new Set(offer.requested));
         const note = offer.at
-          ? `The books ${device.name} offered this device when it last synced (${new Date(offer.at).toLocaleString()}). Ask for one, and it comes with its next sync.`
-          : `${device.name} hasn’t offered this device any books yet: it does when it syncs with it.`;
+          ? t('instanceContents.offered', { name: device.name, date: new Date(offer.at).toLocaleString() })
+          : t('instanceContents.notOffered', { name: device.name });
         setState({ kind: 'ready', items: offer.items, note });
       }
     } catch (e) {
@@ -107,20 +107,23 @@ export function InstanceContents({
   const lacking = matching.filter((item) => !library.items[item.id]);
 
   return (
-    <Modal title={`On ${device.name}`} onClose={onClose}>
-      {state.kind === 'loading' && <Muted as="p">{pairing ? `Connecting to ${device.name}…` : 'Reading…'}</Muted>}
+    <Modal title={t('instanceContents.title', { name: device.name })} onClose={onClose}>
+      {state.kind === 'loading' && <Muted as="p">{pairing ? t('instanceContents.connecting', { name: device.name }) : t('instanceContents.reading')}</Muted>}
       {state.kind === 'failed' && <ErrorText role="alert">{state.message}</ErrorText>}
       {state.kind === 'ready' && (
         <>
           <Muted as="p">
-            {state.note} {plural(items.length, 'book')}, {plural(items.filter((item) => !library.items[item.id]).length, 'book')} not in this
-            library.
+            {t('instanceContents.count', {
+              note: state.note,
+              books: t('common.books', { count: items.length }),
+              missing: t('common.books', { count: items.filter((item) => !library.items[item.id]).length }),
+            })}
           </Muted>
-          {items.length > 10 && <Filter type="search" placeholder="Filter by title or author" value={filter} onChange={(e) => setFilter(e.target.value)} />}
+          {items.length > 10 && <Filter type="search" placeholder={t('instanceContents.filter')} value={filter} onChange={(e) => setFilter(e.target.value)} />}
           {pairing && lacking.length > 1 && (
             <p>
               <Button $variant="secondary" $size="small" onClick={() => onDownload(lacking.map((item) => item.id))}>
-                Download all {lacking.length}
+                {t('instanceContents.downloadAll', { count: lacking.length })}
               </Button>
             </p>
           )}
@@ -131,38 +134,38 @@ export function InstanceContents({
                 <BookRow key={item.id}>
                   <div>
                     <span>{item.title}</span>
-                    <small>{[item.creators[0]?.name, here && 'in your library'].filter(Boolean).join(' · ')}</small>
+                    <small>{[item.creators[0]?.name, here && t('instanceContents.inLibrary')].filter(Boolean).join(t('common.list'))}</small>
                   </div>
                   <Spacer />
                   {!here &&
                     (pairing ? (
                       <Button $variant="secondary" $size="small" onClick={() => onDownload([item.id])}>
-                        Download
+                        {t('instanceContents.download')}
                       </Button>
                     ) : requested.has(item.id) ? (
-                      <Button $variant="secondary" $size="small" title="Comes with its next sync." onClick={() => void ask(item.id, false)}>
-                        Asked for
+                      <Button $variant="secondary" $size="small" title={t('instanceContents.askedTitle')} onClick={() => void ask(item.id, false)}>
+                        {t('instanceContents.asked')}
                       </Button>
                     ) : (
                       <Button $variant="secondary" $size="small" onClick={() => void ask(item.id, true)}>
-                        Ask for it
+                        {t('instanceContents.ask')}
                       </Button>
                     ))}
                 </BookRow>
               );
             })}
           </Stack>
-          {matching.length > SHOWN && <Muted as="p">And {matching.length - SHOWN} more: filter to find them.</Muted>}
+          {matching.length > SHOWN && <Muted as="p">{t('instanceContents.more', { count: matching.length - SHOWN })}</Muted>}
         </>
       )}
       <ModalFooter>
         <Button $variant="secondary" onClick={onDone}>
-          Back
+          {t('common.back')}
         </Button>
         <Spacer />
         {state.kind !== 'loading' && (
           <Button $variant="secondary" onClick={() => void load()}>
-            {state.kind === 'failed' ? 'Try again' : 'Refresh'}
+            {state.kind === 'failed' ? t('common.tryAgain') : t('common.refresh')}
           </Button>
         )}
       </ModalFooter>

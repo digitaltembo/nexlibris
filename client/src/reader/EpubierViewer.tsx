@@ -4,6 +4,7 @@ import { useEffect, useRef } from 'react';
 import styled from 'styled-components';
 import { inDesktopApp, watchFullScreen } from '../backends/desktopBridge';
 import { readsInWindows } from '../library/readerWindow';
+import { epubierStrings, locale } from '../i18n';
 import { epubierFormat } from './epubierFormat';
 import type { ViewerProps } from './Reader';
 
@@ -62,6 +63,7 @@ export default function EpubierViewer({ data, format, storageKey, position, onPo
       reader = epubier(target, data, {
         ...(kind && { format: kind }),
         storageKey,
+        strings: { locale, ...epubierStrings },
         replacements: 'base64',
         position: at,
         ...(workerSrc && { pdf: { workerSrc, assetsUrl: PDFJS_ASSETS } }),

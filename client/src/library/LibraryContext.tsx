@@ -18,6 +18,7 @@ import {
   SignInNeeded,
 } from './libraryFolder';
 import { mayWrite } from './savedFolders';
+import { t, tn } from '../i18n';
 
 interface LibraryContextValue {
   backend: LibraryBackend;
@@ -124,7 +125,7 @@ export function LibraryProvider({
     setState({ status: 'ready', backend, library: await backend.getLibrary() });
   }, [backend]);
 
-  if (state.status === 'loading') return <Status>Opening library…</Status>;
+  if (state.status === 'loading') return <Status>{t('libraryContext.opening')}</Status>;
   if (state.status === 'error') return <Status $error>{state.message}</Status>;
   if (state.status === 'signIn') {
     const retry = () => {
@@ -173,20 +174,19 @@ export function SignInScreen({ session, onSignedIn, onUseBrowser }: { session: S
       {session ? (
         <>
           <p>
-            Your library is in your nexlibris account on {session.name}
-            {server && ` (${server})`}. Sign in to open it.
+            {t('libraryContext.signIn', { name: session.name, server: server ? t('libraryContext.server', { server }) : '' })}
           </p>
           <SignInForm session={session} onSignedIn={onSignedIn} />
         </>
       ) : (
         <p>
           {server
-            ? `Your library is in your nexlibris account on ${server}, which can’t be reached. Check your connection, then reopen the app.`
-            : 'Your library is in your nexlibris account, and this page can’t reach the server it’s on. Check your connection, then reload.'}
+            ? t('libraryContext.unreachableServer', { server })
+            : t('libraryContext.unreachable')}
         </p>
       )}
       <p>
-        <Button onClick={onUseBrowser}>{app ? 'Use this device’s library instead' : 'Use this browser’s storage instead'}</Button>
+        <Button onClick={onUseBrowser}>{app ? t('libraryContext.useDevice') : t('libraryContext.useBrowser')}</Button>
       </p>
     </Asking>
   );
@@ -197,14 +197,13 @@ export function FolderPermission({ folder, onOpen, onForget }: { folder: string;
   return (
     <Asking>
       <p>
-        Your library is in the folder <strong>{folder}</strong>. The browser asks again before nexlibris may use it; choose
-        “Allow on every visit” to skip this next time.
+        {tn('libraryContext.folder', { folder: <strong>{folder}</strong> })}
       </p>
       <p>
         <Button $variant="primary" onClick={onOpen}>
-          Open the library
+          {t('libraryContext.open')}
         </Button>{' '}
-        <Button onClick={onForget}>Use this browser’s storage instead</Button>
+        <Button onClick={onForget}>{t('libraryContext.useBrowser')}</Button>
       </p>
     </Asking>
   );

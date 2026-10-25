@@ -6,3 +6,4 @@ storybook-static/
 TODO
 tauri/src-tauri/target/
 tauri/src-tauri/gen/
+dist-npm/

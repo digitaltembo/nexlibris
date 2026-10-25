@@ -32,6 +32,7 @@ import { useLibrary } from "../library/LibraryContext";
 import { canUseFolders } from "../library/savedFolders";
 import { Button, Muted, NoticeBox } from "../styles/ui";
 import { Modal, ModalFooter } from "./Modal";
+import { t, tn } from "../i18n";
 
 /** A folder picked to move the library to, or to open the library already in it. */
 export interface Target {
@@ -55,34 +56,34 @@ type View =
 
 const errorMessage = (e: unknown) =>
   e instanceof Error ? e.message : String(e);
-const plural = (n: number, word: string) =>
-  `${n.toLocaleString()} ${word}${n === 1 ? "" : "s"}`;
+const fileCount = (count: number) =>
+  t("libraryFolderDialog.files", { count, n: count.toLocaleString() });
 const size = (bytes: number) =>
   bytes >= 1e9
-    ? `${(bytes / 1e9).toFixed(1)} GB`
+    ? t("size.gigabytes", { count: (bytes / 1e9).toFixed(1) })
     : bytes >= 1e6
-      ? `${Math.round(bytes / 1e6)} MB`
-      : `${Math.max(1, Math.round(bytes / 1e3))} KB`;
+      ? t("size.megabytes", { count: Math.round(bytes / 1e6) })
+      : t("size.kilobytes", { count: Math.max(1, Math.round(bytes / 1e3)) });
 
 /** Where the library is now, in words. */
 function describePlace(place: LibraryPlace): string {
   if (place.kind === "cloud")
-    return `in your account (${place.name}) on this server`;
-  if (place.kind === "folder") return `in ${place.name}`;
+    return t("libraryFolderDialog.place.cloud", { name: place.name });
+  if (place.kind === "folder") return t("libraryFolderDialog.place.folder", { name: place.name });
   if (place.app === "desktop")
-    return `in the app’s data folder (${place.name})`;
+    return t("libraryFolderDialog.place.desktop", { name: place.name });
   if (place.app === "android" || place.app === "ios")
-    return "in the app’s own storage, which only nexlibris can see";
-  return "in this browser’s own storage, which only nexlibris can see";
+    return t("libraryFolderDialog.place.app");
+  return t("libraryFolderDialog.place.browser");
 }
 
 /** Where moving back takes it. */
 const homeOf = (place: LibraryPlace) =>
   place.app === "desktop"
-    ? "the app’s data folder"
+    ? t("libraryFolderDialog.home.desktop")
     : place.app === "android" || place.app === "ios"
-      ? "the app’s own storage"
-      : "this browser’s storage";
+      ? t("libraryFolderDialog.home.app")
+      : t("libraryFolderDialog.home.browser");
 
 /**
  * What keeping the library in a folder costs here, against the app's or browser's own storage.
@@ -91,27 +92,12 @@ const homeOf = (place: LibraryPlace) =>
 function folderTradeoffs(place: LibraryPlace): string | undefined {
   if (place.app === "desktop") return undefined;
   if (place.app === "android") {
-    return (
-      "In a folder, every file goes through Android’s storage provider, which is slower than the app’s own storage: books and covers " +
-      "open a little more slowly, and importing, converting and moving books takes noticeably longer. In return, file managers, " +
-      "other apps and a computer plugged in by USB can see the books, and they stay if nexlibris is uninstalled, which deletes " +
-      "its own storage. No permission is needed beyond the folder you pick."
-    );
+    return t("libraryFolderDialog.tradeoffs.android");
   }
   if (place.app === "ios") {
-    return (
-      "In a folder, the books are files you can see in the Files app, and other apps, a computer (through iCloud Drive or a " +
-      "drive) and backups can reach them; they stay if nexlibris is deleted, which deletes its own storage. A folder in " +
-      "iCloud Drive is slower, as books not yet on the phone are downloaded when they’re opened. No permission is needed " +
-      "beyond the folder you pick."
-    );
+    return t("libraryFolderDialog.tradeoffs.ios");
   }
-  return (
-    "In a folder, saving is slower: the browser writes each file to a temporary copy and checks it before putting it in place, so " +
-    "importing, converting and moving books takes longer than in its own storage, though reading is about as quick. The browser " +
-    "also asks again to let nexlibris use the folder after it restarts (one click; Chrome remembers if you choose “Allow on every " +
-    "visit”). In return, other apps and backups can see the books, and clearing the browser’s data for this site doesn’t delete them."
-  );
+  return t("libraryFolderDialog.tradeoffs.browser");
 }
 
 /** A book with a series and an author shows the most. */
@@ -265,7 +251,7 @@ export function LibraryFolderDialog({
           await new Promise((resolve) => setTimeout(resolve, 300));
           const status = await place.native.status(null);
           if (status.state === "failed")
-            throw new Error(status.message ?? "The library couldn’t be moved.");
+            throw new Error(status.message ?? t("libraryFolderDialog.moveFailed"));
           if (status.state === "done") return;
           setView({ kind: "moving", progress: status });
         }
@@ -333,14 +319,14 @@ export function LibraryFolderDialog({
   );
 
   return (
-    <Modal title="Library folder" onClose={busy ? () => undefined : onClose}>
+    <Modal title={t("libraryFolderDialog.title")} onClose={busy ? () => undefined : onClose}>
       {view.kind === "overview" && (
         <>
           <p>
-            Your library is {describePlace(place)}.{" "}
+            {t("libraryFolderDialog.where", { place: describePlace(place) })}{" "}
             {count
-              ? `It has ${plural(count, "file")}, for a total size of ${size(bytes)}, not counting metadata`
-              : "It is empty."}
+              ? t("libraryFolderDialog.has", { files: fileCount(count), size: size(bytes) })
+              : t("libraryFolderDialog.empty")}
           </p>
           {(session || app) && (
             <AccountSection
@@ -365,28 +351,23 @@ export function LibraryFolderDialog({
           )}
           {place.lost && (
             <Notice role="status">
-              nexlibris can no longer use the folder {place.lost}, where the
-              library was: the folder was deleted or moved, or its permission
-              was taken back. Choose it again to open the library there.
+              {t("libraryFolderDialog.lost", { folder: place.lost })}
             </Notice>
           )}
           {canPick ? (
             <p>
               <Muted>
                 {place.kind === "folder"
-                  ? "Its books are laid out as below; nexlibris’s own files are in the hidden .nexlibris folder there."
-                  : "It can be kept in a folder of yours instead, with the books laid out as below, where other apps and backups can see them. nexlibris’s own files go in a hidden .nexlibris folder there."}{" "}
-                Change books in nexlibris rather than moving or renaming their
-                files yourself: it keeps track of where it put them.
+                  ? t("libraryFolderDialog.laidOut")
+                  : t("libraryFolderDialog.canFolder")}{" "}
+                {t("libraryFolderDialog.dontMove")}
               </Muted>
             </p>
           ) : (
             place.kind !== "cloud" && (
               <p>
                 <Muted>
-                  This browser can’t keep the library in a folder of yours: that
-                  needs the File System Access API, which Chrome and Edge have,
-                  as do nexlibris’s desktop and phone apps.
+                  {t("libraryFolderDialog.noFolders")}
                 </Muted>
               </p>
             )
@@ -412,7 +393,7 @@ export function LibraryFolderDialog({
                   disabled={problems.length > 0}
                   onClick={() => void arrange()}
                 >
-                  Move books to match
+                  {t("libraryFolderDialog.arrange")}
                 </Button>
               )}
               {canPick && (
@@ -424,8 +405,8 @@ export function LibraryFolderDialog({
                   onClick={() => void choose()}
                 >
                   {place.kind === "folder"
-                    ? "Move to another folder…"
-                    : "Choose a folder…"}
+                    ? t("libraryFolderDialog.another")
+                    : t("libraryFolderDialog.choose")}
                 </Button>
               )}
               {place.kind === "folder" &&
@@ -434,18 +415,18 @@ export function LibraryFolderDialog({
                     $variant="secondary"
                     onClick={() => void open(undefined)}
                   >
-                    Open the library in {homeOf(place)}
+                    {t("libraryFolderDialog.openIn", { home: homeOf(place) })}
                   </Button>
                 ) : (
                   <Button
                     $variant="secondary"
                     onClick={() => setView({ kind: "moveBack" })}
                   >
-                    Move back to {homeOf(place)}
+                    {t("libraryFolderDialog.moveBackTo", { home: homeOf(place) })}
                   </Button>
                 ))}
               <Button $variant="secondary" onClick={onClose}>
-                Close
+                {t("common.close")}
               </Button>
             </>,
           )}
@@ -468,29 +449,29 @@ export function LibraryFolderDialog({
       {view.kind === "toCloud" && app && (
         <>
           <p>
-            Copy the library to your account
-            {session?.account && <> ({session.account.name})</>}, and use it
-            from there? Its {plural(count, "file")} ({size(bytes)}) go there,
-            checked as they arrive; afterwards this app opens your account’s
-            library, here or on any device you sign in on.
+            {t("libraryFolderDialog.copyToAccount", {
+              account: session?.account
+                ? t("libraryFolderDialog.account", { name: session.account.name })
+                : "",
+              files: fileCount(count),
+              size: size(bytes),
+            })}
           </p>
           <p>
             <Muted>
-              This device’s own library stays where it is, as it is, and can be
-              opened again from here. Its connections to other devices stay with
-              it.
+              {t("libraryFolderDialog.copyStays")}
             </Muted>
           </p>
           {footer(
             <>
               <Button $variant="primary" onClick={() => void toCloud()}>
-                Copy it and use it there
+                {t("libraryFolderDialog.copyIt")}
               </Button>
               <Button
                 $variant="secondary"
                 onClick={() => setView({ kind: "overview" })}
               >
-                Back
+                {t("common.back")}
               </Button>
             </>,
           )}
@@ -500,29 +481,29 @@ export function LibraryFolderDialog({
       {view.kind === "toCloud" && !app && (
         <>
           <p>
-            Move the library to your account
-            {session?.account && <> ({session.account.name})</>}? Its{" "}
-            {plural(count, "file")} ({size(bytes)}) go there, checked as they
-            arrive, then it’s deleted from this browser. Afterwards you open it
-            by signing in, here or anywhere else.
+            {t("libraryFolderDialog.moveToAccount", {
+              account: session?.account
+                ? t("libraryFolderDialog.account", { name: session.account.name })
+                : "",
+              files: fileCount(count),
+              size: size(bytes),
+            })}
           </p>
           <p>
             <Muted>
-              This browser’s own records stay behind: its connections to other
-              devices need pairing again from the account, and the text index
-              and covers’ thumbnails are made again.
+              {t("libraryFolderDialog.moveLeaves")}
             </Muted>
           </p>
           {footer(
             <>
               <Button $variant="primary" onClick={() => void toCloud()}>
-                Move it
+                {t("libraryFolderDialog.moveIt")}
               </Button>
               <Button
                 $variant="secondary"
                 onClick={() => setView({ kind: "overview" })}
               >
-                Back
+                {t("common.back")}
               </Button>
             </>,
           )}
@@ -532,21 +513,18 @@ export function LibraryFolderDialog({
       {view.kind === "fromCloud" && (
         <>
           <p>
-            Move the library from your account into this browser? Its{" "}
-            {plural(count, "file")} ({size(bytes)}) come here, then it’s deleted
-            from your account, and your other devices can’t open it there any
-            more.
+            {t("libraryFolderDialog.fromAccount", { files: fileCount(count), size: size(bytes) })}
           </p>
           {footer(
             <>
               <Button $variant="primary" onClick={() => void fromCloud()}>
-                Move it here
+                {t("libraryFolderDialog.moveHere")}
               </Button>
               <Button
                 $variant="secondary"
                 onClick={() => setView({ kind: "overview" })}
               >
-                Back
+                {t("common.back")}
               </Button>
             </>,
           )}
@@ -556,20 +534,23 @@ export function LibraryFolderDialog({
       {view.kind === "moveBack" && (
         <>
           <p>
-            Move the library from {place.name} back to {homeOf(place)}? Its{" "}
-            {plural(count, "file")} ({size(bytes)}) go there, and the books and
-            .nexlibris folder leave {place.name}; anything else in it stays.
+            {t("libraryFolderDialog.moveBack", {
+              name: place.name,
+              home: homeOf(place),
+              files: fileCount(count),
+              size: size(bytes),
+            })}
           </p>
           {footer(
             <>
               <Button $variant="primary" onClick={() => void move(undefined)}>
-                Move it back
+                {t("libraryFolderDialog.moveItBack")}
               </Button>
               <Button
                 $variant="secondary"
                 onClick={() => setView({ kind: "overview" })}
               >
-                Back
+                {t("common.back")}
               </Button>
             </>,
           )}
@@ -579,20 +560,21 @@ export function LibraryFolderDialog({
       {view.kind === "open" && (
         <>
           <p>
-            {view.target.name} has a nexlibris library already. Open that one?
-            This library stays where it is ({describePlace(place)}), and can be
-            opened again from here.
+            {t("libraryFolderDialog.hasLibrary", {
+              name: view.target.name,
+              place: describePlace(place),
+            })}
           </p>
           {footer(
             <>
               <Button $variant="primary" onClick={() => void open(view.target)}>
-                Open it
+                {t("libraryFolderDialog.openIt")}
               </Button>
               <Button
                 $variant="secondary"
                 onClick={() => setView({ kind: "overview" })}
               >
-                Back
+                {t("common.back")}
               </Button>
             </>,
           )}
@@ -637,15 +619,15 @@ export function AccountSection({
   if (!session?.account) {
     return (
       <AccountBox>
-        <h3>Your account</h3>
+        <h3>{t("libraryFolderDialog.yourAccount")}</h3>
         <Muted as="p">
           {session
-            ? `Sign in to ${session.name} to keep your library in your account, where your other devices can open it, or to keep a copy there that this one syncs with.`
-            : "Sign in to a nexlibris server, one you run yourself or one run for you, to keep your library in your account there, where your other devices can open it, or to keep a copy there that this device syncs with."}
+            ? t("libraryFolderDialog.signInTo", { name: session.name })
+            : t("libraryFolderDialog.signInServer")}
         </Muted>
         {onAccount && (
           <Button $variant="secondary" onClick={onAccount}>
-            {session ? "Sign in…" : "Choose a server…"}
+            {session ? t("libraryFolderDialog.signIn") : t("libraryFolderDialog.chooseServer")}
           </Button>
         )}
       </AccountBox>
@@ -655,22 +637,20 @@ export function AccountSection({
     return (
       <AccountBox>
         <Muted as="p">
-          It’s the same wherever you sign in. To keep a copy on a device too,
-          open the library in that device’s own storage and connect it to your
-          account from Connections.
+          {t("libraryFolderDialog.inCloud")}
         </Muted>
         <Choices>
           {app ? (
             <Button $variant="secondary" onClick={onOpenHere}>
-              Open this device’s library
+              {t("libraryFolderDialog.openDevice")}
             </Button>
           ) : homeHasLibrary ? (
             <Button $variant="secondary" onClick={onOpenHere}>
-              Open this browser’s library
+              {t("libraryFolderDialog.openBrowser")}
             </Button>
           ) : (
             <Button $variant="secondary" onClick={onMoveBack}>
-              Move it to this browser…
+              {t("libraryFolderDialog.moveToBrowser")}
             </Button>
           )}
         </Choices>
@@ -679,25 +659,26 @@ export function AccountSection({
   }
   return (
     <AccountBox>
-      <h3>Your account</h3>
+      <h3>{t("libraryFolderDialog.yourAccount")}</h3>
       {!cloud ? (
-        <Muted as="p">Looking in your account…</Muted>
+        <Muted as="p">{t("libraryFolderDialog.looking")}</Muted>
       ) : cloud.exists ? (
         <>
           <Muted as="p">
-            Your account ({session.account.name}) has a library already, of{" "}
-            {cloud.items.toLocaleString()}{" "}
-            {cloud.items === 1 ? "book" : "books"}. Open that one instead (this
-            one stays {app ? "on this device" : "here"}), or keep the two in
-            sync, as two devices are.
+            {t("libraryFolderDialog.accountHas", {
+              name: session.account.name,
+              count: cloud.items,
+              n: cloud.items.toLocaleString(),
+              here: app ? t("libraryFolderDialog.onDevice") : t("libraryFolderDialog.here"),
+            })}
           </Muted>
           <Choices>
             <Button $variant="secondary" onClick={onOpenThere}>
-              Open your account’s library
+              {t("libraryFolderDialog.openAccount")}
             </Button>
             {onSync && (
               <Button $variant="secondary" onClick={onSync}>
-                Sync this one with it…
+                {t("libraryFolderDialog.syncWith")}
               </Button>
             )}
           </Choices>
@@ -705,10 +686,9 @@ export function AccountSection({
       ) : (
         <>
           <Muted as="p">
-            {app ? "Copy" : "Move"} the library to your account (
-            {session.account.name}) and open it from anywhere you sign in, or
-            keep it here and keep a copy there, which it syncs with like another
-            device.
+            {t(app ? "libraryFolderDialog.copyOffer" : "libraryFolderDialog.moveOffer", {
+              name: session.account.name,
+            })}
           </Muted>
           <Choices>
             <Button
@@ -716,18 +696,17 @@ export function AccountSection({
               disabled={!app && place.kind !== "browser"}
               onClick={onMoveThere}
             >
-              {app ? "Use it from your account…" : "Move to your account…"}
+              {app ? t("libraryFolderDialog.useFromAccount") : t("libraryFolderDialog.moveToAccountButton")}
             </Button>
             {onSync && (
               <Button $variant="secondary" onClick={onSync}>
-                Keep a copy there too…
+                {t("libraryFolderDialog.keepCopy")}
               </Button>
             )}
           </Choices>
           {!app && place.kind !== "browser" && (
             <Muted as="p">
-              To move it to your account, move it back into this browser’s
-              storage first.
+              {t("libraryFolderDialog.backFirst")}
             </Muted>
           )}
         </>
@@ -744,22 +723,25 @@ function Working({ view }: { view: View }) {
       : undefined;
   const what =
     view.kind === "moving"
-      ? "Moving the library"
-      : "Moving books to match the layout";
+      ? t("libraryFolderDialog.moving")
+      : t("libraryFolderDialog.arranging");
   return (
     <>
       <p>
         {what}
         {progress?.total
-          ? `: ${progress.done.toLocaleString()} of ${plural(progress.total, "file")}…`
-          : "…"}
+          ? t("libraryFolderDialog.progress", {
+              done: progress.done.toLocaleString(),
+              files: fileCount(progress.total),
+            })
+          : t("libraryFolderDialog.ellipsis")}
       </p>
       <Bar
         value={progress?.done ?? 0}
         max={Math.max(progress?.total ?? 1, 1)}
       />
       <p>
-        <Muted>Keep nexlibris open until it’s done.</Muted>
+        <Muted>{t("libraryFolderDialog.keepOpen")}</Muted>
       </p>
     </>
   );
@@ -800,29 +782,29 @@ export function ConfirmMove({
   return (
     <>
       <p>
-        Move the library to <strong>{target.name}</strong>? Its{" "}
-        {plural(count, "file")} ({size(bytes)}) go there
-        {example && (
-          <>
-            , books like <Path>{example}</Path>
-          </>
-        )}
-        . It won’t be {from} any more.
+        {tn("libraryFolderDialog.confirmMove", {
+          name: <strong>{target.name}</strong>,
+          files: fileCount(count),
+          size: size(bytes),
+          example: example
+            ? tn("libraryFolderDialog.booksLike", { path: <Path>{example}</Path> })
+            : "",
+          from,
+        })}
       </p>
       {target.holds === "files" && (
         <p>
           <Muted>
-            The folder has other files in it, which stay as they are. A book
-            whose place one of them has waits in .nexlibris.
+            {t("libraryFolderDialog.otherFiles")}
           </Muted>
         </p>
       )}
       <Footer>
         <Button $variant="primary" onClick={onMove}>
-          Move it
+          {t("libraryFolderDialog.moveIt")}
         </Button>
         <Button $variant="secondary" onClick={onBack}>
-          Back
+          {t("common.back")}
         </Button>
         {error && <ErrorText>{error}</ErrorText>}
       </Footer>
@@ -847,7 +829,7 @@ function LayoutFields({
   return (
     <>
       <Field>
-        Book folders
+        {t("libraryFolderDialog.bookFolders")}
         <input
           value={layout.folder}
           disabled={disabled}
@@ -855,14 +837,13 @@ function LayoutFields({
           onChange={(e) => onChange({ ...layout, folder: e.target.value })}
         />
         <small>
-          Each book’s folder in the library folder, from its details:{" "}
-          {PLACEHOLDERS.map((p) => `<${p.key}>`).join(", ")};
-          &lt;authorSort:1&gt; for its first letter; [ … ] for a part kept only
-          when everything in it has a value, as in [&lt;series&gt;/].
+          {t("libraryFolderDialog.bookFoldersHelp", {
+            placeholders: PLACEHOLDERS.map((p) => `<${p.key}>`).join(", "),
+          })}
         </small>
       </Field>
       <Field>
-        File names
+        {t("libraryFolderDialog.fileNames")}
         <input
           value={layout.fileName}
           disabled={disabled}
@@ -870,8 +851,7 @@ function LayoutFields({
           onChange={(e) => onChange({ ...layout, fileName: e.target.value })}
         />
         <small>
-          Without the extension, which is the format (Dune.epub, Dune.x4.epub).
-          A clash gets “(2)”.
+          {t("libraryFolderDialog.fileNamesHelp")}
         </small>
       </Field>
       {problems.map((p) => (
@@ -880,7 +860,7 @@ function LayoutFields({
       {example && (
         <p>
           <small>
-            For example: <Path>{example}</Path>
+            {tn("libraryFolderDialog.example", { path: <Path>{example}</Path> })}
           </small>
         </p>
       )}

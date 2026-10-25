@@ -1,5 +1,6 @@
 import { LOCAL_USER, userData, type FileHash, type FileRef, type ItemId, type Library, type LibraryBackend, type Operation } from '@nexlibris/common';
 import { inMobileApp } from '../backends/mobileBridge';
+import { t } from '../i18n';
 
 /**
  * Books are read in windows of their own in the browser and the desktop app (Android's WebView has
@@ -92,10 +93,10 @@ export function serveReaderWindows(
       void (async () => {
         const item = current().items[message.itemId];
         const file = item?.files.find((f) => f.hash === message.hash);
-        if (!item || !file) return send({ type: 'missing', to: message.reader, message: 'This book, or this file of it, is no longer in the library.' });
+        if (!item || !file) return send({ type: 'missing', to: message.reader, message: t('errors.bookGone') });
         try {
           const data = await backend.getFile(file.hash);
-          if (!data) return send({ type: 'missing', to: message.reader, message: 'This file is missing from storage.' });
+          if (!data) return send({ type: 'missing', to: message.reader, message: t('errors.fileMissing') });
           const saved = userData(current()).positions?.[item.id];
           const position = saved?.hash === file.hash ? saved.locator : undefined;
           send({ type: 'book', to: message.reader, library, title: item.title, file, data, ...(position !== undefined && { position }) });
@@ -130,7 +131,7 @@ export function requestBook({ itemId, hash }: ReaderAddress): {
   let closed = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
   const book = new Promise<ReaderBook>((resolve, reject) => {
-    timer = setTimeout(() => reject(new Error('The library didn’t answer. Open nexlibris, then open the book from there.')), ANSWER_MS);
+    timer = setTimeout(() => reject(new Error(t('errors.noAnswer'))), ANSWER_MS);
     channel.addEventListener('message', (event: MessageEvent<Message>) => {
       const message = event.data;
       if (message.type !== 'book' && message.type !== 'missing') return;

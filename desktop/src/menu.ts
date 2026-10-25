@@ -54,6 +54,8 @@ export function parseMenus(value: unknown): NativeMenu[] {
 export function menuTemplate(menus: NativeMenu[], { platform, appName, send }: Options): MenuItemConstructorOptions[] {
   const mac = platform === 'darwin';
   const lifted: MenuItemConstructorOptions[] = [];
+  /** The page's own About, lifted in place of the system's About panel. */
+  let about: MenuItemConstructorOptions | undefined;
 
   const convert = (items: NativeMenuItem[]): MenuItemConstructorOptions[] => {
     const converted: MenuItemConstructorOptions[] = [];
@@ -69,7 +71,8 @@ export function menuTemplate(menus: NativeMenu[], { platform, appName, send }: O
           ...(item.enabled === false && { enabled: false }),
           ...(item.kind && { type: item.kind, checked: item.checked ?? false }),
         };
-        if (mac && item.appMenu) lifted.push(option);
+        if (mac && item.appMenu && item.id === 'about') about = option;
+        else if (mac && item.appMenu) lifted.push(option);
         else converted.push(option);
       }
     }
@@ -80,12 +83,15 @@ export function menuTemplate(menus: NativeMenu[], { platform, appName, send }: O
     );
   };
 
-  const template: MenuItemConstructorOptions[] = menus.map((menu) => ({ label: menu.label, submenu: convert(menu.items) }));
+  // A menu whose items all went to the app menu (Help, on macOS) is left out.
+  const template: MenuItemConstructorOptions[] = menus
+    .map((menu) => ({ label: menu.label, submenu: convert(menu.items) }))
+    .filter((menu) => menu.submenu.length > 0);
   if (mac) {
     template.unshift({
       label: appName,
       submenu: [
-        { role: 'about' },
+        about ?? { role: 'about' },
         ...(lifted.length ? [{ type: 'separator' } as const, ...lifted] : []),
         { type: 'separator' },
         { role: 'services' },

@@ -5,6 +5,7 @@ import { useLibrary } from '../library/LibraryContext';
 import { saveParts } from '../library/saveFile';
 import { Button, FileButton, Muted, Spacer } from '../styles/ui';
 import { Modal, ModalFooter } from './Modal';
+import { t } from '../i18n';
 
 const Section = styled.section`
   margin-top: 16px;
@@ -32,9 +33,8 @@ const ErrorText = styled.p`
 
 type Busy = 'exporting' | 'restoring' | undefined;
 
-const megabytes = (bytes: number) => `${Math.round(bytes / 1e6)} MB`;
+const megabytes = (bytes: number) => t('common.megabytes', { count: Math.round(bytes / 1e6) });
 
-const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
 /** Backing up the whole library to a zip, and restoring one into it. */
 export function BackupDialog({ onClose }: { onClose(): void }) {
@@ -77,14 +77,14 @@ export function BackupDialog({ onClose }: { onClose(): void }) {
         },
       ).finally(() => setProgress(undefined));
       if (!saved) {
-        setExported('Not saved.');
+        setExported(t('backup.notSaved'));
         return;
       }
       const missing = backup?.missing ?? [];
       setExported(
         missing.length
-          ? `Saved, but ${plural(missing.length, 'file')} the library refers to could not be found and ${missing.length === 1 ? 'is' : 'are'} not included.`
-          : 'Saved.',
+          ? t('backup.savedMissing', { count: missing.length })
+          : t('backup.saved'),
       );
     });
 
@@ -97,29 +97,29 @@ export function BackupDialog({ onClose }: { onClose(): void }) {
   const items = Object.keys(library.items).length;
 
   return (
-    <Modal title="Backup" onClose={busy ? () => undefined : onClose}>
+    <Modal title={t('backup.title')} onClose={busy ? () => undefined : onClose}>
       <Section>
-        <h3>Back up</h3>
+        <h3>{t('backup.backUp')}</h3>
         <Muted as="p">
-          Saves all {plural(items, 'item')}, with their files, covers, ratings, reviews and reading positions, as one zip file.
+          {t('backup.explain', { count: items })}
         </Muted>
         <Button disabled={busy !== undefined || items === 0} onClick={() => void runExport()}>
           {busy !== 'exporting'
-            ? 'Save backup'
+            ? t('backup.save')
             : progress
-              ? `Saving… file ${progress.files} of ${progress.total}, ${megabytes(progress.bytes)}`
-              : 'Preparing…'}
+              ? t('backup.saving', { files: progress.files, total: progress.total, size: megabytes(progress.bytes) })
+              : t('backup.preparing')}
         </Button>
         {exported && <Muted as="p">{exported}</Muted>}
       </Section>
 
       <Section>
-        <h3>Restore</h3>
+        <h3>{t('backup.restore')}</h3>
         <Muted as="p">
-          Adds the items from a backup that aren’t already in this library. Nothing here is changed or removed.
+          {t('backup.restoreExplain')}
         </Muted>
         <FileButton $variant="secondary" aria-disabled={busy !== undefined}>
-          {busy === 'restoring' ? 'Restoring…' : 'Choose backup…'}
+          {busy === 'restoring' ? t('backup.restoring') : t('backup.choose')}
           <input
             type="file"
             accept=".zip,application/zip"
@@ -135,8 +135,9 @@ export function BackupDialog({ onClose }: { onClose(): void }) {
         {restored && (
           <>
             <Muted as="p">
-              Restored {plural(restored.added.length, 'item')}
-              {restored.skipped.length > 0 && `; ${restored.skipped.length} already in the library`}.
+              {t('backup.restored', { count: restored.added.length })}
+              {restored.skipped.length > 0 && t('backup.alreadyIn', { count: restored.skipped.length })}
+              {t('backup.end')}
             </Muted>
             {restored.warnings.length > 0 && (
               <ul>
@@ -154,7 +155,7 @@ export function BackupDialog({ onClose }: { onClose(): void }) {
       <ModalFooter>
         <Spacer />
         <Button $variant="secondary" disabled={busy !== undefined} onClick={onClose}>
-          Close
+          {t('common.close')}
         </Button>
       </ModalFooter>
     </Modal>

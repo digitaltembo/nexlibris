@@ -1,0 +1,343 @@
+# A release: publishing one on GitHub (tagged v<major>.<minor>.<patch>, or with a pre-release part such as
+# v0.3.0-beta.1) verifies everything (verify.yml), then builds and publishes, each from the tag:
+#
+#   npm      @nexlibris/tools, @nexlibris/crosspoint-tools, @nexlibris/cli and @nexlibris/server (pre-releases
+#            under `next`)
+#   Docker   the server's image, ghcr.io/<owner>/nexlibris, for linux/amd64 and linux/arm64
+#   Android  the signed APK, attached to the release as nexlibris.apk (the AAB kept as a workflow artifact)
+#   iOS      an upload to TestFlight, once there's an Apple developer account (else skipped)
+#   Desktop  the Tauri app for macOS (universal), Windows and Linux, attached to the release
+#   Web      the app on GitHub Pages, without a server
+#
+# Run by hand (Actions → Release → Run workflow), it's a dry run: everything is built, nothing published.
+# The secrets each part needs, and what happens without them, are in RELEASING.md.
+name: Release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to build as (nothing is published)
+        default: v0.0.0-dry.run
+        required: true
+
+permissions:
+  contents: read
+
+env:
+  ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+  TAG: ${{ github.event.release.tag_name || inputs.version }}
+  PUBLISH: ${{ github.event_name == 'release' }}
+  # The About screen's iOS download, once there is one (a TestFlight public link): the repository variable DOWNLOAD_IOS.
+  VITE_DOWNLOAD_IOS: ${{ vars.DOWNLOAD_IOS }}
+
+jobs:
+  verify:
+    uses: ./.github/workflows/verify.yml
+
+  version:
+    name: Version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      marketing: ${{ steps.version.outputs.marketing }}
+      code: ${{ steps.version.outputs.code }}
+      npmTag: ${{ steps.version.outputs.npmTag }}
+    steps:
+      - uses: actions/checkout@v5
+      - id: version
+        run: node scripts/release/version.mjs "$TAG" --check >> "$GITHUB_OUTPUT"
+
+  npm:
+    name: npm packages
+    needs: [verify, version]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # npm provenance, and trusted publishing once it's set up for the packages.
+      id-token: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          registry-url: https://registry.npmjs.org
+      - run: npm ci
+      - run: node scripts/release/version.mjs "$TAG"
+      # The CLI's bundle, and the server's with the web app it serves.
+      - run: npm run build -w cli && npm run build -w client && npm run build -w server
+      - name: Pack${{ github.event_name == 'release' && ' and publish' || '' }}
+        run: node scripts/release/npm.mjs --tag ${{ needs.version.outputs.npmTag }} ${{ github.event_name == 'release' && '--publish' || '' }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  docker:
+    name: Docker image
+    needs: [verify, version]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v5
+      - run: node scripts/release/version.mjs "$TAG"
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        if: env.PUBLISH == 'true'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      # Tagged 1.2.3, 1.2 and latest for a release; a pre-release only as itself (1.2.3-beta.1).
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/nexlibris
+          tags: |
+            type=semver,pattern={{version}},value=${{ env.TAG }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ env.TAG }}
+          flavor: latest=auto
+          labels: |
+            org.opencontainers.image.title=nexlibris
+            org.opencontainers.image.description=The nexlibris server, with the web app
+            org.opencontainers.image.licenses=MIT
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: ${{ env.PUBLISH == 'true' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  android:
+    name: Android
+    needs: [verify, version]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build -w client
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+          cache: gradle
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platforms;android-36 build-tools;36.1.0
+      - name: Keystore
+        id: keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::warning::No ANDROID_KEYSTORE_BASE64 secret: the APK is built unsigned and not attached to the release."
+            exit 0
+          fi
+          echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release.jks"
+          echo "path=$RUNNER_TEMP/release.jks" >> "$GITHUB_OUTPUT"
+      - name: Build
+        working-directory: android
+        env:
+          ANDROID_KEYSTORE: ${{ steps.keystore.outputs.path }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: >
+          ./gradlew assembleRelease bundleRelease
+          -PversionCode=${{ needs.version.outputs.code }} -PversionName=${{ needs.version.outputs.version }}
+      - name: Collect
+        run: |
+          mkdir -p out
+          apk=android/app/build/outputs/apk/release
+          if [ -f "$apk/app-release.apk" ]; then cp "$apk/app-release.apk" out/nexlibris.apk; else cp "$apk/app-release-unsigned.apk" out/nexlibris-unsigned.apk; fi
+          cp android/app/build/outputs/bundle/release/app-release.aab out/nexlibris.aab
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: out/
+      - name: Attach to the release
+        if: env.PUBLISH == 'true' && steps.keystore.outputs.path != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$TAG" out/nexlibris.apk --clobber
+
+  ios:
+    name: iOS (TestFlight)
+    needs: [verify, version]
+    runs-on: macos-latest
+    env:
+      TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+      ASC_KEY: ${{ secrets.APP_STORE_CONNECT_KEY }}
+    steps:
+      - name: Check for an Apple developer account
+        id: account
+        run: |
+          if [ -z "$TEAM_ID" ] || [ -z "$ASC_KEY_ID" ] || [ -z "$ASC_ISSUER_ID" ] || [ -z "$ASC_KEY" ]; then
+            echo "::notice::No Apple developer account set up (see RELEASING.md): the iOS app isn't uploaded. Verify built it unsigned."
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v5
+        if: steps.account.outputs.ready
+      - uses: actions/setup-node@v5
+        if: steps.account.outputs.ready
+        with:
+          node-version: 24
+          cache: npm
+      - name: Build the web app
+        if: steps.account.outputs.ready
+        run: npm ci && npm run build -w client
+      - name: Archive
+        if: steps.account.outputs.ready
+        working-directory: ios
+        run: |
+          echo "$ASC_KEY" > "$RUNNER_TEMP/AuthKey.p8"
+          xcodebuild archive -project nexlibris.xcodeproj -scheme nexlibris -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/nexlibris.xcarchive" \
+            DEVELOPMENT_TEAM="$TEAM_ID" \
+            MARKETING_VERSION=${{ needs.version.outputs.marketing }} CURRENT_PROJECT_VERSION=${{ needs.version.outputs.code }} \
+            -allowProvisioningUpdates -authenticationKeyPath "$RUNNER_TEMP/AuthKey.p8" \
+            -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+      - name: Upload to TestFlight
+        if: steps.account.outputs.ready && env.PUBLISH == 'true'
+        working-directory: ios
+        run: |
+          cp ExportOptions.plist "$RUNNER_TEMP/ExportOptions.plist"
+          plutil -insert teamID -string "$TEAM_ID" "$RUNNER_TEMP/ExportOptions.plist"
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/nexlibris.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" -exportPath "$RUNNER_TEMP/export" \
+            -allowProvisioningUpdates -authenticationKeyPath "$RUNNER_TEMP/AuthKey.p8" \
+            -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+
+  desktop:
+    name: Desktop (${{ matrix.name }})
+    needs: [verify, version]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS
+            os: macos-latest
+            args: --target universal-apple-darwin
+            targets: aarch64-apple-darwin,x86_64-apple-darwin
+          - name: Windows
+            os: windows-latest
+          - name: Linux
+            os: ubuntu-22.04
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: node scripts/release/version.mjs "$TAG"
+        shell: bash
+      - run: npm run build -w client
+      - name: Install the system's web view and its libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.targets }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: tauri/src-tauri
+      # Signing and notarizing the macOS app, once there's an Apple developer account (RELEASING.md). Set only
+      # when there is one: without it the app is signed ad hoc, which macOS asks about the first time it's opened.
+      - name: Apple signing
+        if: runner.os == 'macOS'
+        env:
+          CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          ASC_KEY: ${{ secrets.APP_STORE_CONNECT_KEY }}
+        run: |
+          if [ -z "$CERTIFICATE" ] || [ -z "$SIGNING_IDENTITY" ]; then
+            echo "::notice::No Developer ID certificate: the macOS app is signed ad hoc and not notarized."
+            exit 0
+          fi
+          {
+            echo "APPLE_CERTIFICATE=$CERTIFICATE"
+            echo "APPLE_CERTIFICATE_PASSWORD=$CERTIFICATE_PASSWORD"
+            echo "APPLE_SIGNING_IDENTITY=$SIGNING_IDENTITY"
+          } >> "$GITHUB_ENV"
+          if [ -n "$ASC_KEY" ]; then
+            echo "$ASC_KEY" > "$RUNNER_TEMP/AuthKey.p8"
+            {
+              echo "APPLE_API_KEY=$ASC_KEY_ID"
+              echo "APPLE_API_ISSUER=$ASC_ISSUER_ID"
+              echo "APPLE_API_KEY_PATH=$RUNNER_TEMP/AuthKey.p8"
+            } >> "$GITHUB_ENV"
+          fi
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          projectPath: tauri
+          tauriScript: npx tauri
+          args: ${{ matrix.args }}
+          # Attached to the release when there is one; a dry run only builds.
+          releaseId: ${{ github.event.release.id }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.name }}
+          path: tauri/src-tauri/target/**/release/bundle/
+
+  pages:
+    name: Web app (GitHub Pages)
+    needs: [verify]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Build
+        run: npm run build -w client
+        env:
+          # Served at https://<owner>.github.io/<repository>/, unless a custom domain sets PAGES_BASE to /.
+          NEXLIBRIS_BASE: ${{ vars.PAGES_BASE || format('/{0}/', github.event.repository.name) }}
+          VITE_STATIC_HOST: 'true'
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: client/dist
+
+  deploy-pages:
+    name: Deploy GitHub Pages
+    if: github.event_name == 'release'
+    needs: [pages]
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4

@@ -10,9 +10,10 @@ import { Dictionaries } from './tools/Dictionaries';
 import { Fonts } from './tools/Fonts';
 import { SleepImages } from './tools/SleepImages';
 import { LIBRARY_INDEX_PATH, LibraryIndexError, parseLibraryIndex, recentBooks } from '@nexlibris/crosspoint-tools/libraryIndex';
+import { t } from '../../i18n';
 
 /** What can go in the folder and file name. */
-const PLACEHOLDER_HELP = `${PLACEHOLDERS.map((p) => `<${p.key}>`).join(', ')}; <authorSort:1> for its first letter; [ … ] for a part kept only when everything in it has a value, as in [<series>/]. Books move when this changes.`;
+const PLACEHOLDER_HELP = t('crosspoint.placeholderHelp', { placeholders: PLACEHOLDERS.map((p) => `<${p.key}>`).join(', ') });
 
 /** A template's problems, and where a book from the library would go by it. */
 function checkTemplates(folder: string, fileName: string, library: Library) {
@@ -26,13 +27,13 @@ function checkTemplates(folder: string, fileName: string, library: Library) {
 /** Which reader it is: the X4 and X3 have different screens, so each has its own optimized EPUB. */
 const MODEL: SettingField = {
   key: 'model',
-  label: 'Model',
+  label: t('crosspoint.model'),
   default: 'X4',
   choices: [
     { value: 'X4', label: 'Xteink X4' },
     { value: 'X3', label: 'Xteink X3' },
   ],
-  help: 'Books are sent as this reader’s optimized EPUB where they have one (Convert makes it), else as their EPUB.',
+  help: t('crosspoint.modelHelp'),
 };
 
 const modelOf = (device: Device): 'X4' | 'X3' => (settingOf(device, MODEL) === 'X3' ? 'X3' : 'X4');
@@ -42,22 +43,22 @@ const settings: SettingField[] = [
   MODEL,
   {
     key: 'address',
-    label: 'Address',
+    label: t('crosspoint.address'),
     default: 'http://crosspoint.local',
-    help: 'Shown on the reader in File Transfer mode. Use its IP address if crosspoint.local doesn’t work.',
+    help: t('crosspoint.addressHelp'),
   },
   {
     key: 'folder',
-    label: 'Folder',
+    label: t('crosspoint.folder'),
     default: '/Books',
-    help: `Where books go on the SD card. Put the book’s details in with ${PLACEHOLDER_HELP}`,
+    help: t('crosspoint.folderHelp', { placeholders: PLACEHOLDER_HELP }),
     check: (folder, values, library) => checkTemplates(folder, values.fileName?.trim() || DEFAULT_FILE_NAME, library),
   },
   {
     key: 'fileName',
-    label: 'File name',
+    label: t('crosspoint.fileName'),
     default: DEFAULT_FILE_NAME,
-    help: 'Books’ file names, without the extension, from the same details. A clash gets “(2)”.',
+    help: t('crosspoint.fileNameHelp'),
     check: (fileName) => ({ problems: templateProblems(fileName) }),
   },
 ];
@@ -103,8 +104,8 @@ export async function readerInventory(
   } catch (e) {
     note =
       e instanceof LibraryIndexError
-        ? 'The reader’s library index is from other firmware, so only the sync folders are listed. Opening the library on the reader rebuilds it.'
-        : 'The reader’s library index couldn’t be read, so only the sync folders are listed. Opening the library on the reader makes one.';
+        ? t('crosspoint.otherFirmware')
+        : t('crosspoint.noIndex');
   }
   // Books the index has in a folder just listed, but that aren't there now, have gone since it was built.
   const folders = syncFolders(device, type, library);
@@ -128,9 +129,9 @@ const FontsTool = ({ device }: { device: Device }) => <Fonts reader={useReader(d
 /** What else the reader keeps on its card, managed beside its books. */
 function readerTools(): DeviceTool[] {
   return [
-    { id: 'sleep', label: 'Sleep images', component: SleepTool },
-    { id: 'dictionaries', label: 'Dictionaries', component: DictionariesTool },
-    { id: 'fonts', label: 'Fonts', component: FontsTool },
+    { id: 'sleep', label: t('crosspoint.sleepImages'), component: SleepTool },
+    { id: 'dictionaries', label: t('crosspoint.dictionaries'), component: DictionariesTool },
+    { id: 'fonts', label: t('crosspoint.fonts'), component: FontsTool },
   ];
 }
 
@@ -138,7 +139,7 @@ function readerTools(): DeviceTool[] {
 export const readerType: FilesType = {
   access: 'files',
   id: 'crosspoint.reader',
-  label: 'CrossPoint Reader',
+  label: t('crosspoint.reader'),
   activation: 'manual',
   read: true,
   write: { single: true },
@@ -156,7 +157,7 @@ export const readerType: FilesType = {
 /** Xteink X4 and X3 readers running CrossPoint firmware, and the optimized EPUBs made for them. */
 export const crosspoint: Plugin = {
   id: 'crosspoint',
-  name: 'CrossPoint',
+  name: t('crosspoint.name'),
   connectionTypes: [readerType],
   formats: CROSSPOINT_FORMATS,
   converters: CROSSPOINT_CONVERTERS,

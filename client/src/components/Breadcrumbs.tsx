@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import styled from 'styled-components';
 import { NARROW } from '../styles/GlobalStyle';
 import { besidePanel } from '../styles/ui';
+import { t } from '../i18n';
 
 const Bar = styled.nav<{ $withPanel: boolean }>`
   display: flex;
@@ -94,7 +95,7 @@ interface Props {
 /** Where the library view is, from the Library down; every level but the last can be gone back to. */
 export function Breadcrumbs({ crumbs, children, withPanel }: Props) {
   return (
-    <Bar aria-label="Breadcrumbs" $withPanel={withPanel}>
+    <Bar aria-label={t('breadcrumbs.label')} $withPanel={withPanel}>
       <ol>
         {crumbs.map((crumb, i) => (
           <li key={i}>

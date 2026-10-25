@@ -1,5 +1,6 @@
 import type { Item, ItemId, Library, Operation } from '@nexlibris/common';
 import { loose } from './importFiles';
+import { t } from '../i18n';
 
 /**
  * Library cleanup's duplicates: items with the same title and authors, compared loosely (case,
@@ -48,7 +49,7 @@ export function findDuplicates(library: Library): DuplicateGroup[] {
  */
 export function mergeItems(library: Library, keep: ItemId, merged: ItemId[]): Operation[] {
   const kept = library.items[keep];
-  if (!kept) throw new Error('The item to keep is no longer in the library.');
+  if (!kept) throw new Error(t('errors.keptGone'));
   const ops: Operation[] = [];
   const hashes = new Set(kept.files.map((f) => f.hash));
   const tags = new Set(kept.tags.map((t) => t.toLowerCase()));

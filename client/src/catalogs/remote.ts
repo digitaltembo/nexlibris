@@ -4,6 +4,7 @@ import { formatFromName, type FormatId } from '@nexlibris/tools/formats/formats'
 import type { ImportSource } from '../library/importFiles';
 import { storedSource } from '../library/nativeImport';
 import { authHeaders, type CatalogAuth } from './credentials';
+import { t } from '../i18n';
 
 /**
  * Reaching OPDS catalogs: in the desktop app through its main process (`common/src/remoteApi.ts`),
@@ -18,13 +19,10 @@ const desktopRemote = () => createMessageClient(remoteApiMeta, desktopSend()).re
 
 const unreachable = (url: string, signedIn: boolean) =>
   new Error(
-    `Couldn’t reach ${new URL(url).host}. Check the address and your connection${
-      inDesktopApp()
-        ? ''
-        : signedIn
-          ? '; or the server may not let web pages sign in to it (it has to allow the Authorization header), which the desktop app can'
-          : '; or the server may not let web pages read it, which the desktop app can'
-    }.`,
+    t('errors.unreachable', {
+      host: new URL(url).host,
+      why: inDesktopApp() ? '' : signedIn ? t('errors.unreachableSignIn') : t('errors.unreachableRead'),
+    }),
   );
 
 /** How to fetch catalog pages here, signing in to the catalog's own server with `auth`. */
@@ -79,8 +77,8 @@ export async function downloadBook(url: string, format?: FormatId, auth?: Catalo
   } catch {
     throw new CantDownload(url);
   }
-  if (response.status === 401 || response.status === 403) throw new Error('The catalog refused the user name and password.');
-  if (!response.ok) throw new Error(`The server said ${response.status} ${response.statusText}.`);
+  if (response.status === 401 || response.status === 403) throw new Error(t('errors.refusedSignIn'));
+  if (!response.ok) throw new Error(t('errors.serverSaid', { status: `${response.status} ${response.statusText}`.trim() }));
   const blob = await response.blob();
   return new File([blob], named(nameFrom(response.url || url), format), { type: blob.type });
 }
@@ -88,7 +86,7 @@ export async function downloadBook(url: string, format?: FormatId, auth?: Catalo
 /** The browser wasn't allowed to download the file: the user can, from its link, then import it. */
 export class CantDownload extends Error {
   constructor(readonly url: string) {
-    super('The server doesn’t let web pages download its books. Download it from the link, then import it; the desktop app can add it directly.');
+    super(t('errors.cantDownload'));
     this.name = 'CantDownload';
   }
 }
@@ -102,11 +100,11 @@ export async function fetchSignedInImage(url: string, auth: CatalogAuth | undefi
   if (!('Authorization' in signIn)) return undefined;
   if (inDesktopApp()) {
     const { status, type, data } = await desktopRemote().fetchBytes({ url, headers: signIn });
-    if (status < 200 || status >= 300) throw new Error(`The server said ${status}.`);
+    if (status < 200 || status >= 300) throw new Error(t('errors.serverSaid', { status }));
     const bytes = Uint8Array.from(atob(data), (c) => c.charCodeAt(0));
     return new Blob([bytes], type ? { type } : {});
   }
   const response = await fetch(url, { credentials: 'omit', headers: signIn });
-  if (!response.ok) throw new Error(`The server said ${response.status}.`);
+  if (!response.ok) throw new Error(t('errors.serverSaid', { status: response.status }));
   return response.blob();
 }

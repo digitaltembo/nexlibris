@@ -16,6 +16,7 @@ import { writableConnections } from './SendTo';
 import { canWriteMetadata, isBehind } from '../library/fileMetadata';
 import { updateFiles } from '../library/updateFiles';
 import { useOptionalTextIndex } from '../fulltext/TextIndexContext';
+import { t } from '../i18n';
 
 const FileRow = styled.li`
   display: flex;
@@ -69,10 +70,10 @@ const ErrorText = styled.span`
 `;
 
 export function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-  return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`;
+  if (bytes < 1024) return t('size.bytes', { count: bytes });
+  if (bytes < 1024 * 1024) return t('size.kilobytes', { count: (bytes / 1024).toFixed(0) });
+  if (bytes < 1024 * 1024 * 1024) return t('size.megabytes', { count: (bytes / 1024 / 1024).toFixed(1) });
+  return t('size.gigabytes', { count: (bytes / 1024 / 1024 / 1024).toFixed(2) });
 }
 
 export const formatLabel = (format: string) => (isFormatId(format) ? FORMATS[format].label : format.toUpperCase());
@@ -87,7 +88,7 @@ function fileName(item: Item, file: FileRef) {
  */
 async function downloadFile(backend: LibraryBackend, item: Item, file: FileRef) {
   const blob = await backend.getFile(file.hash);
-  if (!blob) throw new Error('The file is missing from the library.');
+  if (!blob) throw new Error(t('itemFiles.missing'));
   const type = isFormatId(file.format) ? FORMATS[file.format].mediaType : blob.type;
   await saveFile(new Blob([blob], { type }), fileName(item, file));
 }
@@ -112,13 +113,13 @@ function FileItem({ item, file, notDownloaded, onRead }: {
   const text = useOptionalTextIndex();
   const name = fileName(item, file);
 
-  const attempt = (what: string, task: () => Promise<void>) => async () => {
+  const attempt = (what: 'download' | 'show' | 'update' | 'remove', task: () => Promise<void>) => async () => {
     setError(undefined);
     setNotice(undefined);
     try {
       await task();
     } catch (e) {
-      setError(`Couldn’t ${what} ${name}: ${e instanceof Error ? e.message : String(e)}`);
+      setError(t(`itemFiles.failed.${what}`, { name, message: e instanceof Error ? e.message : String(e) }));
     }
   };
   const download = attempt('download', () => downloadFile(backend, item, file));
@@ -132,7 +133,7 @@ function FileItem({ item, file, notDownloaded, onRead }: {
         ...(text && { carryText: (from, to) => text.index.carry(from, to) }),
       });
       if (result.failed[0]) throw new Error(result.failed[0].message);
-      if (!result.updated) setNotice('It already says what the library does.');
+      if (!result.updated) setNotice(t('itemFiles.upToDate'));
     } finally {
       resume?.();
       setUpdating(false);
@@ -141,25 +142,25 @@ function FileItem({ item, file, notDownloaded, onRead }: {
   const remove = attempt('remove', async () => void (await removeFiles(backend, apply, [{ item, hashes: [file.hash] }])));
 
   const actions: MenuAction[] = [
-    { label: 'Download', onSelect: () => void download() },
-    ...(canShowFiles() && !notDownloaded ? [{ label: 'Show in folder', onSelect: () => void show() }] : []),
-    ...(writableConnections(library).length ? [{ label: 'Add to…', onSelect: () => setAdding(true) }] : []),
+    { label: t('itemFiles.download'), onSelect: () => void download() },
+    ...(canShowFiles() && !notDownloaded ? [{ label: t('itemFiles.show'), onSelect: () => void show() }] : []),
+    ...(writableConnections(library).length ? [{ label: t('itemFiles.addTo'), onSelect: () => setAdding(true) }] : []),
     ...(canWriteMetadata(file) && !notDownloaded
-      ? [{ label: updating ? 'Updating file metadata…' : 'Update file metadata', disabled: updating, onSelect: () => void updateMetadata() }]
+      ? [{ label: updating ? t('itemFiles.updating') : t('itemFiles.update'), disabled: updating, onSelect: () => void updateMetadata() }]
       : []),
-    { label: 'Remove…', danger: true, onSelect: () => setConfirming(true) },
+    { label: t('itemFiles.remove'), danger: true, onSelect: () => setConfirming(true) },
   ];
 
   return (
     <FileRow>
-      <Name as="button" type="button" title="Download" onClick={() => void download()}>
+      <Name as="button" type="button" title={t('itemFiles.download')} onClick={() => void download()}>
         {name}
       </Name>
       <Meta>
-        {formatLabel(file.format)} · {formatSize(file.size)}
-        {file.derivedFrom && ' · converted'}
-        {isBehind(item, file) && ' · details older than the library’s'}
-        {notDownloaded && ' · not downloaded'}
+        {t('itemFiles.meta', { format: formatLabel(file.format), size: formatSize(file.size) })}
+        {file.derivedFrom && t('itemFiles.converted')}
+        {isBehind(item, file) && t('itemFiles.behind')}
+        {notDownloaded && t('itemFiles.notDownloaded')}
       </Meta>
       <Actions>
         {confirming ? (
@@ -173,20 +174,20 @@ function FileItem({ item, file, notDownloaded, onRead }: {
                 void remove();
               }}
             >
-              Remove
+              {t('itemFiles.removeConfirm')}
             </Button>
             <Button $variant="secondary" $size="small" onClick={() => setConfirming(false)}>
-              Cancel
+              {t('common.cancel')}
             </Button>
           </>
         ) : (
           <>
             {isReadable(file) && (
               <Button $variant="secondary" $size="small" onClick={() => onRead(file)}>
-                Read
+                {t('itemFiles.read')}
               </Button>
             )}
-            <MenuButton label={`Actions for ${name}`} actions={actions} />
+            <MenuButton label={t('itemFiles.actions', { name })} actions={actions} />
           </>
         )}
       </Actions>
@@ -243,7 +244,7 @@ export function ItemFiles({ item, onRead }: { item: Item; onRead(file: FileRef):
   return (
     <>
       {item.files.length === 0 ? (
-        <Muted as="p">No files. This item is cataloged without media.</Muted>
+        <Muted as="p">{t('itemFiles.none')}</Muted>
       ) : (
         <Stack as="ul">
           {item.files.map((file) => (
@@ -252,7 +253,7 @@ export function ItemFiles({ item, onRead }: { item: Item; onRead(file: FileRef):
         </Stack>
       )}
       <FileButton $variant="secondary" $size="small">
-        Attach file…
+        {t('itemFiles.attach')}
         <input type="file" hidden multiple onChange={(e) => void attach(e.target.files)} />
       </FileButton>
     </>
@@ -261,18 +262,18 @@ export function ItemFiles({ item, onRead }: { item: Item; onRead(file: FileRef):
 
 /** The editor's version: files can be detached, and are deleted from storage on save unless another item has them. */
 export function EditableFiles({ item, files, onChange }: { item: Item; files: FileRef[]; onChange(files: FileRef[]): void }) {
-  if (!files.length) return <Muted as="p">No files.</Muted>;
+  if (!files.length) return <Muted as="p">{t('itemFiles.noFiles')}</Muted>;
   return (
     <Stack as="ul">
       {files.map((file) => (
         <FileRow key={file.hash}>
           <Name>{fileName(item, file)}</Name>
           <Meta>
-            {formatLabel(file.format)} · {formatSize(file.size)}
+            {t('itemFiles.meta', { format: formatLabel(file.format), size: formatSize(file.size) })}
           </Meta>
           <DetachButton
             $variant="icon"
-            aria-label={`Detach ${fileName(item, file)}`}
+            aria-label={t('itemFiles.detach', { name: fileName(item, file) })}
             onClick={() => onChange(files.filter((f) => f.hash !== file.hash))}
           >
             ×

@@ -54,6 +54,7 @@ import { QueryInput } from './QueryInput';
 import { recheckConnections, setConnectionActive, useConnectionStatus } from '../connections/active';
 import { Modal, ModalFooter } from './Modal';
 import { TagEditor } from './TagEditor';
+import { t, type TextKey } from '../i18n';
 
 const DeviceRow = styled.li`
   display: flex;
@@ -99,7 +100,6 @@ const KeepFound = styled.label`
   color: var(--muted);
 `;
 
-const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 const fileName = (path: string) => path.slice(path.lastIndexOf('/') + 1);
 const errorMessage = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -124,7 +124,7 @@ type Screen =
   /** What another instance has for this one: through its pairing, or as it offered at its last sync here. */
   | { kind: 'instanceContents'; device: Device; pairing?: Pairing };
 
-const when = (iso: string | undefined) => (iso ? new Date(iso).toLocaleString() : 'never');
+const when = (iso: string | undefined) => (iso ? new Date(iso).toLocaleString() : t('connections.never'));
 
 /** Other instances first, this one leading them, then readers and catalogs as they were added. */
 const order = (origin: string) => (device: Device) => (device.id === origin ? 0 : isInstanceConnection(device) ? 1 : 2);
@@ -170,17 +170,18 @@ export function ConnectionsDialog({ onClose, pair }: { onClose(): void; /** Open
       <Button
         $variant={active ? 'secondary' : 'primary'}
         $size="small"
-        title={active ? `Takes ${device.name} out of the Library and Send to… on this device.` : `Puts ${device.name} in the Library and Send to… on this device, while it’s around.`}
+        title={t(active ? 'connections.deactivateTitle' : 'connections.activateTitle', { name: device.name })}
         onClick={() => void setConnectionActive(backend, device.id, !active)}
       >
-        {active ? 'Deactivate' : 'Activate'}
+        {active ? t('connections.deactivate') : t('connections.activate')}
       </Button>
     );
   };
   /** "active", or "inactive" and why. */
   const statusText = (device: Device) => {
     const { active, reason } = status(device);
-    return active ? 'active' : `inactive${reason && reason !== 'Not activated' ? `: ${reason}` : ''}`;
+    if (active) return t('connections.active');
+    return reason && reason !== t('connectionTypes.notActivated') ? t('connections.inactiveBecause', { reason }) : t('connections.inactive');
   };
 
   /** A deleted connection to another instance isn't reached from here any more either. */
@@ -218,11 +219,11 @@ export function ConnectionsDialog({ onClose, pair }: { onClose(): void; /** Open
   if (screen.kind === 'contents') return <ConnectionContents device={screen.device} importAll={!!screen.importAll} onDone={back} onClose={onClose} />;
   if (screen.kind === 'connect') {
     return (
-      <Modal title="Connect another nexlibris" onClose={onClose}>
+      <Modal title={t('connections.connectAnother')} onClose={onClose}>
         <PairChoices onChoose={(how) => setScreen({ kind: 'pair', how })} />
         <ModalFooter>
           <Button $variant="secondary" onClick={back}>
-            Back
+            {t('common.back')}
           </Button>
         </ModalFooter>
       </Modal>
@@ -230,7 +231,7 @@ export function ConnectionsDialog({ onClose, pair }: { onClose(): void; /** Open
   }
   if (screen.kind === 'pair') {
     return (
-      <Modal title="Connect another nexlibris" onClose={onClose}>
+      <Modal title={t('connections.connectAnother')} onClose={onClose}>
         <PairScreen how={screen.how} onPaired={(pairing, first) => void paired(pairing, first)} onBack={back} />
       </Modal>
     );
@@ -271,47 +272,45 @@ export function ConnectionsDialog({ onClose, pair }: { onClose(): void; /** Open
     ) : null;
   }
   return (
-    <Modal title="Connections" onClose={onClose}>
+    <Modal title={t('connections.title')} onClose={onClose}>
       {devices.length === 0 ? (
         <Muted as="p">
-          Add a reader or a folder to send books to, an OPDS catalog to publish them, an OPDS server to browse, or nexlibris
-          on another device to share books with. Each one you send to has a catalog of books: add to it with “Add to…” on
-          books, or give it a search whose matches are added.
+          {t('connections.empty')}
         </Muted>
       ) : (
         <Stack as="ul">
           {devices.map((device) => {
-            const books = plural(counts.get(device.id) ?? 0, 'book');
+            const books = t('common.books', { count: counts.get(device.id) ?? 0 });
             const { active } = status(device);
             if (isInstanceConnection(device)) {
               const pairing = pairingOf(device);
               const peer = hostedPeer(device);
               const link = pairing
-                ? `${transportLabel(pairing)}, last synced ${when(pairing.lastSyncedAt)}`
+                ? t('connections.pairedLink', { how: transportLabel(pairing), when: when(pairing.lastSyncedAt) })
                 : peer
-                  ? `syncs with this device, last synced ${when(peer.lastSyncedAt)}`
-                  : 'not paired from here';
+                  ? t('connections.hostedLink', { when: when(peer.lastSyncedAt) })
+                  : t('connections.notPaired');
               return (
                 <DeviceRow key={device.id}>
                   <div>
                     <strong>{device.name}</strong>
                     <Muted>
-                      nexlibris · {link} · gets {books} · {statusText(device)}
+                      {t('connections.instanceLine', { link, books, status: statusText(device) })}
                     </Muted>
                   </div>
                   <Spacer />
                   {toggle(device)}
                   <Button $variant="secondary" $size="small" onClick={() => setScreen({ kind: 'edit', device })}>
-                    Edit
+                    {t('connections.edit')}
                   </Button>
                   <Button
                       $variant="secondary"
                       $size="small"
                       disabled={!active}
-                      title={pairing ? `The books ${device.name} shows this device.` : `The books ${device.name} offered this device when it last synced.`}
+                      title={t(pairing ? 'connections.seesTitle' : 'connections.offeredTitle', { name: device.name })}
                       onClick={() => setScreen({ kind: 'instanceContents', device, ...(pairing && { pairing }) })}
                     >
-                      On it…
+                      {t('connections.onIt')}
                     </Button>
                   {pairing ? (
                       <>
@@ -319,33 +318,33 @@ export function ConnectionsDialog({ onClose, pair }: { onClose(): void; /** Open
                           $variant="secondary"
                           $size="small"
                           disabled={!active}
-                          title={`Brings every book ${device.name} shows this device that it doesn’t have.`}
+                          title={t('connections.fromTitle', { name: device.name })}
                           onClick={() => setScreen({ kind: 'instance', device, pairing, direction: 'from' })}
                         >
-                          Sync from
+                          {t('connections.syncFrom')}
                         </Button>
                         <Button
                           $size="small"
                           disabled={!active}
-                          title={`Sends every book in its catalog that ${device.name} doesn’t have. Nothing is deleted either side.`}
+                          title={t('connections.toTitle', { name: device.name })}
                           onClick={() => setScreen({ kind: 'instance', device, pairing, direction: 'to' })}
                         >
-                          Sync to
+                          {t('connections.syncTo')}
                         </Button>
                       </>
                     ) : peer ? (
                       <Button
                         $variant="secondary"
                         $size="small"
-                        title={`Unpairs ${device.name}: it can’t sync with this device until it pairs again. The connection stays.`}
+                        title={t('connections.forgetTitle', { name: device.name })}
                         onClick={() => void hosted.forget(peer.origin)}
                       >
-                        Forget
+                        {t('connections.forget')}
                       </Button>
                     ) : (
                       canSync() && (
                         <Button $variant="secondary" $size="small" onClick={() => setScreen({ kind: 'connect' })}>
-                          Pair…
+                          {t('connections.pair')}
                         </Button>
                       )
                     )}
@@ -359,15 +358,15 @@ export function ConnectionsDialog({ onClose, pair }: { onClose(): void; /** Open
                   <div>
                     <strong>{device.name}</strong>
                     <Muted>
-                      {source.label} · {source.url(device) || 'no address'}
+                      {source.label} · {source.url(device) || t('connections.noAddress')}
                     </Muted>
                   </div>
                   <Spacer />
                   <Button $variant="secondary" $size="small" onClick={() => setScreen({ kind: 'edit', device })}>
-                    Edit
+                    {t('connections.edit')}
                   </Button>
                   <Button $size="small" disabled={!source.url(device)} onClick={() => setScreen({ kind: 'contents', device })}>
-                    On it…
+                    {t('connections.onIt')}
                   </Button>
                 </DeviceRow>
               );
@@ -381,13 +380,14 @@ export function ConnectionsDialog({ onClose, pair }: { onClose(): void; /** Open
                   <div>
                     <strong>{device.name}</strong>
                     <Muted>
-                      {type.label} · {books} in its catalog
-                      {device.query && ` (adds “${device.query}”)`} · {url ? `at ${url}` : statusText(device)}
+                      {type.label} · {t('connections.inCatalog', { books })}
+                      {device.query && t('connections.adds', { query: device.query })} ·{' '}
+                      {url ? t('connections.at', { url }) : statusText(device)}
                     </Muted>
                   </div>
                   <Spacer />
                   <Button $variant="secondary" $size="small" onClick={() => setScreen({ kind: 'edit', device })}>
-                    Edit
+                    {t('connections.edit')}
                   </Button>
                 </DeviceRow>
               );
@@ -398,39 +398,40 @@ export function ConnectionsDialog({ onClose, pair }: { onClose(): void; /** Open
                 <div>
                   <strong>{device.name}</strong>
                   <Muted>
-                    {type?.label ?? `Unknown type ${device.type}`}
-                    {folderName && ` (“${String(folderName)}”)`} · {books} in its catalog
-                    {device.query && ` (adds “${device.query}”)`}
-                    {device.lastSyncedAt && ` · synced ${new Date(device.lastSyncedAt).toLocaleString()}`}
+                    {type?.label ?? t('connections.unknownType', { type: device.type })}
+                    {folderName && t('connections.folderName', { name: String(folderName) })} ·{' '}
+                    {t('connections.inCatalog', { books })}
+                    {device.query && t('connections.adds', { query: device.query })}
+                    {device.lastSyncedAt && t('connections.syncedAt', { when: new Date(device.lastSyncedAt).toLocaleString() })}
                     {` · ${statusText(device)}`}
                   </Muted>
                 </div>
                 <Spacer />
                 {toggle(device)}
                 <Button $variant="secondary" $size="small" onClick={() => setScreen({ kind: 'edit', device })}>
-                  Edit
+                  {t('connections.edit')}
                 </Button>
                 <Button $variant="secondary" $size="small" disabled={!type || !active} onClick={() => setScreen({ kind: 'contents', device })}>
-                  On it…
+                  {t('connections.onIt')}
                 </Button>
                 {type?.read && (
                   <Button
                     $variant="secondary"
                     $size="small"
                     disabled={!active}
-                    title="Brings in every book there that the library doesn’t have."
+                    title={t('connections.readTitle')}
                     onClick={() => setScreen({ kind: 'contents', device, importAll: true })}
                   >
-                    Sync from
+                    {t('connections.syncFrom')}
                   </Button>
                 )}
                 <Button
                   $size="small"
                   disabled={!type?.write || !active}
-                  title="Sends every book in its catalog that isn’t there yet, and newer copies of ones that changed. Nothing there is deleted."
+                  title={t('connections.writeTitle')}
                   onClick={() => setScreen({ kind: 'sync', device })}
                 >
-                  Sync to
+                  {t('connections.syncTo')}
                 </Button>
               </DeviceRow>
             );
@@ -439,11 +440,11 @@ export function ConnectionsDialog({ onClose, pair }: { onClose(): void; /** Open
       )}
       <ModalFooter>
         <Button $variant="secondary" onClick={() => setScreen({ kind: 'edit' })}>
-          Add connection
+          {t('connections.addConnection')}
         </Button>
         <Spacer />
         <Button $variant="secondary" onClick={onClose}>
-          Close
+          {t('common.close')}
         </Button>
       </ModalFooter>
     </Modal>
@@ -460,7 +461,6 @@ const TYPE_CHOICES = [
 ];
 
 /** What a kind of connection's search is called. */
-const SEARCH_LABEL = { device: 'Add books by search', catalog: 'Add books by search', instance: 'Books it sees' };
 
 function EditConnection({
   device,
@@ -527,7 +527,7 @@ function EditConnection({
   const save = async () => {
     const values: Record<string, string | undefined> = Object.fromEntries((type?.settings ?? []).map((f) => [f.key, settings[f.key]?.trim() || undefined]));
     if (pickFolder) values[FOLDER_NAME] = folder?.name ?? (device?.settings[FOLDER_NAME] as string | undefined);
-    const label = name.trim() || type?.label || 'Connection';
+    const label = name.trim() || type?.label || t('connections.connection');
     let id = device?.id;
     if (device) {
       const patch: DevicePatch = { name: label, settings: values, query };
@@ -558,7 +558,7 @@ function EditConnection({
   };
 
   return (
-    <Modal title={device ? `Edit ${device.name}` : 'Add connection'} onClose={onClose}>
+    <Modal title={device ? t('connections.editTitle', { name: device.name }) : t('connections.addConnection')} onClose={onClose}>
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -566,7 +566,7 @@ function EditConnection({
         }}
       >
         <Field>
-          Type
+          {t('connections.type')}
           <SmallSelect value={typeId} disabled={!!device} onChange={(e) => setTypeId(e.target.value)}>
             {choices.map((t) => (
               <option key={t.id} value={t.id}>
@@ -581,60 +581,59 @@ function EditConnection({
             <ModalFooter>
               <Spacer />
               <Button $variant="secondary" onClick={onDone}>
-                Cancel
+                {t('common.cancel')}
               </Button>
             </ModalFooter>
           </>
         ) : (
           <>
         <Field>
-          Name
+          {t('connections.name')}
           <input value={name} placeholder={type?.label} onChange={(e) => setName(e.target.value)} />
         </Field>
         {source && (
           <Muted as="p">
-            Browse its books in the Library and under “On it…”, and add them to the library from there. Nothing is sent to it.
+            {t('connections.browseHelp')}
           </Muted>
         )}
         {!source && (
         <Field>
-          {SEARCH_LABEL[kind]}
+          {t(`connections.searchLabel.${kind}`)}
           <QueryInput value={query} onChange={setQuery} />
           <small>
             {instance
-              ? `${self ? 'This device' : device!.name} sees the books matching this search, and books you add to it: their details, covers and files. It doesn’t see the others, and nothing either side deletes is deleted on the other.`
-              : `Books matching it, as in the search box (say, tag:xteink, or rating:4+ author:herbert), are added to its catalog beside the books you add to it, and stay there; take one out by hand to keep it out.`}
+              ? t('connections.instanceSearchHelp', { name: self ? t('connections.thisDevice') : device!.name })
+              : t('connections.searchHelp')}
           </small>
         </Field>
         )}
         {pickFolder && (
           <Field as="div">
-            Folder
+            {t('connections.folder')}
             <div>
               <Button $variant="secondary" $size="small" onClick={() => void chooseFolder()}>
-                {folder ? `“${folder.name}”: choose another…` : 'Choose folder…'}
+                {folder ? t('connections.chooseAnother', { name: folder.name }) : t('connections.chooseFolder')}
               </Button>
             </div>
             <small>
-              Where its books are, on this computer (a backup drive, a reader that mounts as one). Each computer chooses it
-              for itself; a manifest there, .nexlibris-library.json, keeps the books’ details.
+              {t('connections.folderHelp')}
             </small>
           </Field>
         )}
         {source && (
           <Field as="div">
-            Sign-in (optional)
+            {t('connections.signIn')}
             <SignInRow>
               <input
-                aria-label="User name"
-                placeholder="User name"
+                aria-label={t('connections.userName')}
+                placeholder={t('connections.userName')}
                 autoComplete="off"
                 value={signIn.username}
                 onChange={(e) => setSignIn({ ...signIn, username: e.target.value })}
               />
               <input
-                aria-label="Password"
-                placeholder="Password"
+                aria-label={t('connections.password')}
+                placeholder={t('connections.password')}
                 type="password"
                 autoComplete="new-password"
                 value={signIn.password}
@@ -642,9 +641,9 @@ function EditConnection({
               />
             </SignInRow>
             <small>
-              For a catalog that asks for one (HTTP Basic). Kept on this device only, sent only to the catalog’s own server.
+              {t('connections.signInHelp')}
             </small>
-            {insecure && <small role="alert">This address isn’t https, so the password would be sent unencrypted.</small>}
+            {insecure && <small role="alert">{t('connections.insecure')}</small>}
           </Field>
         )}
         {type?.settings.map((field) => (
@@ -687,7 +686,7 @@ function EditConnection({
         <ModalFooter>
           {device && !self && (
             <DeleteButton
-              what={device.name}
+              label={t('connections.deleteNamed', { name: device.name })}
               onDelete={() =>
                 void apply([{ type: 'removeDevice', id: device.id }])
                   .then(() => (source ? writeCredentials(backend, device.id, undefined) : undefined))
@@ -697,7 +696,7 @@ function EditConnection({
           )}
           <Spacer />
           <Button $variant="secondary" onClick={onDone}>
-            Cancel
+            {t('common.cancel')}
           </Button>
           <Button
             type="submit"
@@ -706,7 +705,7 @@ function EditConnection({
               (source && !!type?.settings.some((f) => f.check?.(settings[f.key] ?? f.default, settings, library).problems?.length))
             }
           >
-            {device ? 'Save' : 'Add'}
+            {device ? t('common.save') : t('common.add')}
           </Button>
         </ModalFooter>
           </>
@@ -746,7 +745,7 @@ export function SyncDevice({
 }) {
   const { library, backend, apply } = useLibrary();
   const [state, setState] = useState<SyncState>({ kind: 'connecting' });
-  const title = (id: string) => library.items[id]?.title ?? 'A removed item';
+  const title = (id: string) => library.items[id]?.title ?? t('connections.removedItem');
   const options = (keepFound: boolean) => ({ keepFound, ...(only && { only }) });
 
   /** Whether the books to send have been asked about (once). */
@@ -813,8 +812,8 @@ export function SyncDevice({
       ? state.plan.uploads.length + state.plan.moves.length + state.plan.kept.length + state.plan.removals.length + (state.plan.catalog ? 1 : 0)
       : 0;
   return (
-    <Modal title={only ? `Send to ${device.name}` : `Sync ${device.name}`} onClose={busy ? () => undefined : onClose}>
-      {state.kind === 'connecting' && <Muted as="p">Connecting to {device.name}…</Muted>}
+    <Modal title={t(only ? 'connections.sendTo' : 'connections.sync', { name: device.name })} onClose={busy ? () => undefined : onClose}>
+      {state.kind === 'connecting' && <Muted as="p">{t('connections.connecting', { name: device.name })}</Muted>}
       {state.kind === 'asking' && (
         <SendCheckStep
           device={device}
@@ -841,26 +840,35 @@ export function SyncDevice({
       )}
       {state.kind === 'syncing' && (
         <p role="status">
-          {state.progress.current ?? 'Syncing'} ({Math.min(state.progress.done + 1, state.progress.total)} of{' '}
-          {state.progress.total})…
+          {t('connections.progress', {
+            what: state.progress.current ?? t('connections.syncing'),
+            done: Math.min(state.progress.done + 1, state.progress.total),
+            total: state.progress.total,
+          })}
         </p>
       )}
       {state.kind === 'done' && (
         <>
           <p role="status">
             {state.result.sent || state.result.removed || state.result.moved || state.result.kept
-              ? `Sent ${plural(state.result.sent, 'file')}${state.result.moved ? `, moved ${state.result.moved}` : ''}${state.result.kept ? `, kept ${state.result.kept} already there` : ''}${state.result.removed ? `, replaced ${state.result.removed} old ${state.result.removed === 1 ? 'copy' : 'copies'}` : ''}.`
-              : !state.result.catalogAdded && !state.result.takenOut && 'Nothing needed doing.'}
-            {state.result.takenOut > 0 && ` Took ${plural(state.result.takenOut, 'book')} deleted there out of its catalog.`}
-            {state.result.catalogAdded && ' Added the catalog to the reader’s OPDS libraries.'}
+              ? [
+                  t('connections.sent', { files: t('common.files', { count: state.result.sent }) }),
+                  state.result.moved ? t('connections.moved', { count: state.result.moved }) : '',
+                  state.result.kept ? t('connections.keptThere', { count: state.result.kept }) : '',
+                  state.result.removed ? t('connections.replaced', { count: state.result.removed }) : '',
+                  t('connections.end'),
+                ].join('')
+              : !state.result.catalogAdded && !state.result.takenOut && t('connections.nothingNeeded')}
+            {state.result.takenOut > 0 && t('connections.tookOut', { count: state.result.takenOut })}
+            {state.result.catalogAdded && t('connections.catalogAdded')}
           </p>
           {state.result.errors.length > 0 && (
             <>
-              <ErrorText role="alert">Some steps failed:</ErrorText>
+              <ErrorText role="alert">{t('connections.someFailed')}</ErrorText>
               <List>
                 {state.result.errors.map((e) => (
                   <li key={e.path}>
-                    {e.path}: {e.message}
+                    {t('connections.pathError', { path: e.path, message: e.message })}
                   </li>
                 ))}
               </List>
@@ -873,18 +881,24 @@ export function SyncDevice({
       {state.kind !== 'asking' && (
       <ModalFooter>
         <Button $variant="secondary" disabled={busy} onClick={onDone}>
-          Back
+          {t('common.back')}
         </Button>
         <Spacer />
-        {state.kind === 'failed' && <Button onClick={() => void check()}>Try again</Button>}
+        {state.kind === 'failed' && <Button onClick={() => void check()}>{t('common.tryAgain')}</Button>}
         {state.kind === 'planned' && (
           <Button disabled={work === 0 && !state.adding.length && !state.plan.deleted.length} onClick={() => void sync(state.plan, state.adding)}>
-            {work === 0 ? (state.adding.length || state.plan.deleted.length ? 'Update catalog' : 'Up to date') : only ? 'Send' : 'Sync to'}
+            {work === 0
+              ? state.adding.length || state.plan.deleted.length
+                ? t('connections.updateCatalog')
+                : t('connections.upToDate')
+              : only
+                ? t('connections.send')
+                : t('connections.syncTo')}
           </Button>
         )}
         {state.kind === 'done' && (
           <Button $variant="secondary" onClick={onClose}>
-            Close
+            {t('common.close')}
           </Button>
         )}
       </ModalFooter>
@@ -905,7 +919,7 @@ function SettingCheck({ field, settings }: { field: SettingField; settings: Reco
           {p}
         </ErrorText>
       ))}
-      {example && <small>For example: {example}</small>}
+      {example && <small>{t('connections.example', { example })}</small>}
     </>
   );
 }
@@ -928,24 +942,24 @@ export function PlanSummary({
   const replacing = plan.uploads.filter((u) => u.replaces).length;
   const sending = plan.uploads.length - replacing;
   const changes = [
-    sending > 0 && `send ${plural(sending, 'file')}`,
-    plan.kept.length > 0 && `keep ${plan.kept.length === 1 ? '1 copy' : `${plan.kept.length} copies`} already there`,
-    plan.moves.length > 0 && `move ${plan.moves.length} to ${plan.moves.length === 1 ? 'its new place' : 'their new places'}`,
-    replacing > 0 && `update ${replacing}`,
+    sending > 0 && t('connections.willSend', { files: t('common.files', { count: sending }) }),
+    plan.kept.length > 0 && t('connections.willKeep', { count: plan.kept.length }),
+    plan.moves.length > 0 && t('connections.willMove', { count: plan.moves.length }),
+    replacing > 0 && t('connections.willUpdate', { count: replacing }),
   ].filter(Boolean);
   return (
     <>
-      <Muted as="p">Connected: {description}.</Muted>
+      <Muted as="p">{t('connections.connected', { description })}</Muted>
       <p>
-        {changes.length ? `Will ${changes.join(', ')}.` : 'Everything in its catalog is already there.'}
-        {plan.catalog && ` Will add the catalog at ${plan.catalog.url} to the reader’s OPDS libraries.`}
-        {plan.unchanged > 0 && changes.length > 0 && ` ${plan.unchanged} already there.`}
+        {changes.length ? t('connections.will', { changes: changes.join(t('common.listJoin')) }) : t('connections.allThere')}
+        {plan.catalog && t('connections.willAddCatalog', { url: plan.catalog.url })}
+        {plan.unchanged > 0 && changes.length > 0 && t('connections.unchanged', { count: plan.unchanged })}
       </p>
       {plan.uploads.length + plan.moves.length > 0 && (
         <List>
           {plan.moves.map((m) => (
             <li key={m.to}>
-              {m.to} <Muted>({m.found ? 'already on the device, ' : ''}moved from {m.from})</Muted>
+              {m.to} <Muted>{t('connections.movedFrom', { found: m.found ? t('connections.foundThere') : '', from: m.from })}</Muted>
             </li>
           ))}
           {plan.uploads.map((u) => (
@@ -953,44 +967,47 @@ export function PlanSummary({
               {fileName(u.path)}{' '}
               <Muted>
                 ({formatLabel(u.file.format)}
-                {u.supersedes ? `, replacing ${fileName(u.supersedes)}` : u.replaces && ', updated'})
+                {u.supersedes
+                  ? t('connections.replacing', { name: fileName(u.supersedes) })
+                  : u.replaces && t('connections.updated')})
               </Muted>
             </li>
           ))}
           {plan.kept.map((k) => (
             <li key={k.path}>
-              {fileName(k.path)} <Muted>(already there, kept)</Muted>
+              {fileName(k.path)} <Muted>{t('connections.keptLine')}</Muted>
             </li>
           ))}
         </List>
       )}
       {plan.deleted.length > 0 && (
         <Muted as="p">
-          Deleted there since the last sync, so taken out of its catalog rather than sent again: {plan.deleted.map(title).join(', ')}.
+          {t('connections.deletedThere', { titles: plan.deleted.map(title).join(t('common.listJoin')) })}
         </Muted>
       )}
-      {plan.left > 0 && <Muted as="p">{plural(plan.left, 'file')} no longer in its catalog left there as they are.</Muted>}
+      {plan.left > 0 && <Muted as="p">{t('connections.leftThere', { count: plan.left })}</Muted>}
       {onKeepFound && (found > 0 || keepFound === false) && (
         <KeepFound>
           <input type="checkbox" checked={keepFound !== false} onChange={(e) => onKeepFound(e.target.checked)} />
-          Keep copies of these books already on the device (put there by hand or by other software) rather than sending
-          nexlibris’s. They’re sent again once the book’s file in the library changes.
+          {t('connections.keepFound')}
         </KeepFound>
       )}
       {plan.conflicts.length > 0 && (
         <>
-          <p>Left alone:</p>
+          <p>{t('connections.leftAlone')}</p>
           <List>
             {plan.conflicts.map((c) => (
               <li key={c.path}>
-                {c.path}: {c.reason}
+                {t('connections.pathError', { path: c.path, message: c.reason })}
               </li>
             ))}
           </List>
         </>
       )}
       {plan.unsendable.length > 0 && (
-        <Muted as="p">Not sent, with no file the device reads: {plan.unsendable.map(title).join(', ')}.</Muted>
+        <Muted as="p">
+          {t('connections.unsendable', { titles: plan.unsendable.map(title).join(t('common.listJoin')) })}
+        </Muted>
       )}
     </>
   );
@@ -1061,7 +1078,7 @@ function SyncCatalog({ device, type, onDone, onClose }: { device: Device; type: 
       }
       await saveFolder(catalogKey, target);
     } else if (!(await mayWrite(target))) {
-      setState({ kind: 'failed', message: `nexlibris wasn’t allowed to write to ${target.name}.`, folder: target });
+      setState({ kind: 'failed', message: t('connections.notAllowed', { name: target.name }), folder: target });
       return;
     }
     await run(directorySink(target), target);
@@ -1075,37 +1092,44 @@ function SyncCatalog({ device, type, onDone, onClose }: { device: Device; type: 
   const busy = state.kind === 'exporting' || state.kind === 'loading';
   const url = typeof device.settings.url === 'string' && device.settings.url.trim();
   return (
-    <Modal title={`Sync ${device.name}`} onClose={busy ? () => undefined : onClose}>
+    <Modal title={t('connections.sync', { name: device.name })} onClose={busy ? () => undefined : onClose}>
       {(state.kind === 'ready' || state.kind === 'failed') && (
         <Muted as="p">
-          A static OPDS catalog of {plural(count, 'book')}, for hosting anywhere that serves files (it’s meant for the root of a
-          site){url && <>, at {url}</>}. Books go as their files are; book files written before stay, even once out of the
-          catalog.{' '}
+          {t('connections.staticCatalog', {
+            books: t('common.books', { count }),
+            at: url ? t('connections.atUrl', { url }) : '',
+          })}{' '}
           {folder
-            ? `It’s written to the folder “${folder.name}” on this computer; only what changed is copied.`
+            ? t('connections.writtenTo', { name: folder.name })
             : canWriteFolders()
-              ? 'Choose a folder to write it to (the one your site is deployed from, say): later syncs update it in place.'
-              : 'This browser can’t write to folders, so each sync saves the whole catalog as a zip.'}
+              ? t('connections.chooseToWrite')
+              : t('connections.zipOnly')}
         </Muted>
       )}
       {state.kind === 'exporting' && (
         <p role="status">
-          {state.progress.current ?? 'Writing'} ({Math.min(state.progress.done + 1, state.progress.total)} of{' '}
-          {state.progress.total})…
+          {t('connections.progress', {
+            what: state.progress.current ?? t('connections.writing'),
+            done: Math.min(state.progress.done + 1, state.progress.total),
+            total: state.progress.total,
+          })}
         </p>
       )}
       {state.kind === 'done' && (
         <>
           <p role="status">
-            {state.saved ? `Wrote the catalog of ${plural(state.result.books, 'book')}` : 'Not saved'}
-            {state.saved && state.result.unchanged > 0 && `; ${state.result.unchanged} file(s) were already up to date`}
-            {state.saved && state.result.removed > 0 && `; removed ${plural(state.result.removed, 'page')} no longer needed`}
-            {state.saved && state.folder && ` in “${state.folder.name}”`}.
+            {state.saved
+              ? t('connections.wrote', { books: t('common.books', { count: state.result.books }) })
+              : t('connections.notSaved')}
+            {state.saved && state.result.unchanged > 0 && t('connections.alreadyUpToDate', { count: state.result.unchanged })}
+            {state.saved && state.result.removed > 0 && t('connections.removedPages', { count: state.result.removed })}
+            {state.saved && state.folder && t('connections.inFolder', { name: state.folder.name })}
+            {t('connections.end')}
           </p>
           {state.result.skipped.length > 0 && (
             <List>
               {state.result.skipped.map((title) => (
-                <li key={`s:${title}`}>{title}: left out, with no file in a format the catalog takes</li>
+                <li key={`s:${title}`}>{t('connections.leftOut', { title })}</li>
               ))}
             </List>
           )}
@@ -1114,11 +1138,11 @@ function SyncCatalog({ device, type, onDone, onClose }: { device: Device; type: 
       {state.kind === 'failed' && <ErrorText role="alert">{state.message}</ErrorText>}
       <ModalFooter>
         <Button $variant="secondary" disabled={busy} onClick={onDone}>
-          Back
+          {t('common.back')}
         </Button>
         {folder && (state.kind === 'ready' || state.kind === 'failed') && (
           <Button $variant="secondary" onClick={() => void forget()}>
-            Forget folder
+            {t('connections.forgetFolder')}
           </Button>
         )}
         <Spacer />
@@ -1126,18 +1150,18 @@ function SyncCatalog({ device, type, onDone, onClose }: { device: Device; type: 
           <>
             {canWriteFolders() && (
               <Button $variant="secondary" onClick={() => void toFolder()}>
-                {folder ? 'Another folder…' : 'Choose folder…'}
+                {folder ? t('connections.anotherFolder') : t('connections.chooseFolder')}
               </Button>
             )}
             <Button $variant={folder ? 'secondary' : 'primary'} onClick={() => void toZip()}>
-              Save as zip
+              {t('connections.saveZip')}
             </Button>
-            {folder && <Button onClick={() => void toFolder(folder)}>Sync</Button>}
+            {folder && <Button onClick={() => void toFolder(folder)}>{t('connections.syncButton')}</Button>}
           </>
         )}
         {state.kind === 'done' && (
           <Button $variant="secondary" onClick={onClose}>
-            Close
+            {t('common.close')}
           </Button>
         )}
       </ModalFooter>
@@ -1156,14 +1180,18 @@ function SourceContents({ device, onDone, onClose }: { device: Device; onDone():
   const [trail, setTrail] = useState<{ url: string; title: string }[]>([]);
   const step = trail.at(-1);
   return (
-    <Modal title={`On ${device.name}`} onClose={onClose}>
+    <Modal title={t('connections.on', { name: device.name })} onClose={onClose}>
       {trail.length > 0 && (
         <Trail>
           <LinkLike onClick={() => setTrail([])}>{device.name}</LinkLike>
-          {trail.map((t, i) => (
-            <span key={`${i}:${t.url}`}>
+          {trail.map((entry, i) => (
+            <span key={`${i}:${entry.url}`}>
               {' › '}
-              {i === trail.length - 1 ? t.title : <LinkLike onClick={() => setTrail(trail.slice(0, i + 1))}>{t.title}</LinkLike>}
+              {i === trail.length - 1 ? (
+                entry.title
+              ) : (
+                <LinkLike onClick={() => setTrail(trail.slice(0, i + 1))}>{entry.title}</LinkLike>
+              )}
             </span>
           ))}
         </Trail>
@@ -1179,7 +1207,7 @@ function SourceContents({ device, onDone, onClose }: { device: Device; onDone():
       <ModalFooter>
         <Spacer />
         <Button $variant="secondary" onClick={onDone}>
-          Back
+          {t('common.back')}
         </Button>
       </ModalFooter>
     </Modal>
@@ -1206,7 +1234,7 @@ function SomeChoices({ field, value, onChange }: { field: SettingField; value: s
   // Checked while it's picking, even with every chip removed (which, saved, means all again).
   const [only, setOnly] = useState(stored.length > 0);
   const set = (values: string[]) => onChange(all.filter((v) => values.includes(v)).join(','));
-  const noun = field.label.toLowerCase().replace(/s$/, '');
+  const noun = field.noun ?? { one: t('connections.choice', { count: 1 }), many: t('connections.choice', { count: 2 }) };
   return (
     <>
       <OnlyRow>
@@ -1218,7 +1246,7 @@ function SomeChoices({ field, value, onChange }: { field: SettingField; value: s
             if (!e.target.checked) onChange('');
           }}
         />
-        Only specific {field.label.toLowerCase()}
+        {t('connections.onlySpecific', { many: noun.many })}
       </OnlyRow>
       {only && (
         <TagEditor
@@ -1345,18 +1373,25 @@ function ConnectionContents({ device, importAll, onDone, onClose }: { device: De
   const Tool = tools.find((t) => t.id === tab)?.component;
 
   return (
-    <Modal title={`On ${device.name}`} onClose={working ? () => undefined : onClose}>
+    <Modal title={t('connections.on', { name: device.name })} onClose={working ? () => undefined : onClose}>
       {tools.length > 0 && (
         <Tabs role="tablist">
-          {[{ id: 'books', label: 'Books' }, ...tools].map((t) => (
-            <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} disabled={!!working} onClick={() => setTab(t.id)}>
-              {t.label}
+          {[{ id: 'books', label: t('connections.books') }, ...tools].map((tool) => (
+            <button
+              key={tool.id}
+              type="button"
+              role="tab"
+              aria-selected={tab === tool.id}
+              disabled={!!working}
+              onClick={() => setTab(tool.id)}
+            >
+              {tool.label}
             </button>
           ))}
         </Tabs>
       )}
       {Tool && <Tool device={current} />}
-      {!Tool && state.kind === 'loading' && <Muted as="p">{isExport(type) ? 'Reading…' : `Connecting to ${device.name}…`}</Muted>}
+      {!Tool && state.kind === 'loading' && <Muted as="p">{isExport(type) ? t('connections.reading') : t('connections.connecting', { name: device.name })}</Muted>}
       {!Tool && state.kind === 'failed' && <ErrorText role="alert">{state.message}</ErrorText>}
       {!Tool && state.kind === 'ready' && (
         <ContentsView
@@ -1373,12 +1408,12 @@ function ConnectionContents({ device, importAll, onDone, onClose }: { device: De
       {error && <ErrorText role="alert">{error}</ErrorText>}
       <ModalFooter>
         <Button $variant="secondary" disabled={!!working} onClick={onDone}>
-          Back
+          {t('common.back')}
         </Button>
         <Spacer />
         {!Tool && state.kind !== 'loading' && (
           <Button $variant="secondary" disabled={!!working} onClick={() => void load()}>
-            {state.kind === 'failed' ? 'Try again' : 'Refresh'}
+            {state.kind === 'failed' ? t('common.tryAgain') : t('common.refresh')}
           </Button>
         )}
       </ModalFooter>
@@ -1446,16 +1481,17 @@ const BookRow = styled.li`
   }
 `;
 
-const STATUS: Record<Extract<ContentEntry, { kind: 'placed' }>['status'], string> = {
-  current: 'up to date',
-  update: 'the next sync sends a newer copy',
-  left: 'no longer in its catalog: left there',
-  changed: 'changed on the device, so left alone',
+const STATUS: Record<Extract<ContentEntry, { kind: 'placed' }>['status'], TextKey> = {
+  current: 'connections.status.current',
+  update: 'connections.status.update',
+  left: 'connections.status.left',
+  changed: 'connections.status.changed',
 };
 
 const byline = (book: RemoteBook, item?: Item) => {
   const author = item?.creators[0]?.name ?? book.author;
-  const series = book.series && `${book.series}${book.seriesIndex ? ` #${book.seriesIndex}` : ''}`;
+  const series =
+    book.series && (book.seriesIndex ? t('connections.seriesIndex', { series: book.series, index: book.seriesIndex }) : book.series);
   return [author, series].filter(Boolean).join(' · ');
 };
 
@@ -1498,7 +1534,7 @@ export function ContentsView({
       <DeleteButton
         small
         disabled={busy}
-        verb={entry.kind === 'unknown' ? 'Delete' : 'Remove'}
+        label={entry.kind === 'unknown' ? t('common.delete') : t('common.remove')}
         onDelete={() => onRemove(entry)}
       />
     );
@@ -1506,7 +1542,7 @@ export function ContentsView({
     <BookRow key={key}>
       <div>
         <span>
-          {title(book, item)} {working === book.path && <Muted>(working…)</Muted>}
+          {title(book, item)} {working === book.path && <Muted>{t('connections.working')}</Muted>}
         </span>
         <small>{[byline(book, item), detail].filter(Boolean).join(' · ')}</small>
       </div>
@@ -1517,32 +1553,35 @@ export function ContentsView({
 
   return (
     <>
-      {description && <Muted as="p">Connected: {description}.</Muted>}
+      {description && <Muted as="p">{t('connections.connected', { description })}</Muted>}
       <p>
         {contents.entries.length === 0
           ? catalog
-            ? 'Nothing yet: the catalog hasn’t been written. Sync it to write it.'
-            : 'No books on it.'
-          : `${plural(contents.entries.length, 'book')} on it: ${[
-              placed.length && `${placed.length} sent by nexlibris`,
-              matches.length && `${matches.length} also in your library`,
-              unknown.length && `${unknown.length} not in your library`,
-            ]
-              .filter(Boolean)
-              .join(', ')}.`}
-        {contents.pending.length > 0 && ` ${plural(contents.pending.length, 'book')} in its catalog not on it yet: the next sync adds them.`}
+            ? t('connections.noCatalogYet')
+            : t('connections.noBooks')
+          : t('connections.onItCounts', {
+              books: t('common.books', { count: contents.entries.length }),
+              parts: [
+                placed.length && t('connections.sentByCount', { count: placed.length }),
+                matches.length && t('connections.alsoCount', { count: matches.length }),
+                unknown.length && t('connections.notInCount', { count: unknown.length }),
+              ]
+                .filter(Boolean)
+                .join(t('common.listJoin')),
+            })}
+        {contents.pending.length > 0 && t('connections.pending', { count: contents.pending.length })}
       </p>
       {note && <Muted as="p">{note}</Muted>}
 
       {canImport && unknown.length > 0 && (
         <Group>
           <h3>
-            Not in your library <Spacer />
+            {t('connections.notInLibrary')} <Spacer />
             <Button $variant="secondary" $size="small" disabled={busy} onClick={() => onImport(unknown.map((e) => e.book))}>
-              Import all
+              {t('connections.importAll')}
             </Button>
           </h3>
-          <Muted as="p">Importing copies a book into the library and keeps it on this connection.</Muted>
+          <Muted as="p">{t('connections.importHelp')}</Muted>
           <Stack as="ul">
             {unknown.map((e) =>
               row(
@@ -1552,7 +1591,7 @@ export function ContentsView({
                 e.book.path,
                 <>
                   <Button $variant="secondary" $size="small" disabled={busy} onClick={() => onImport([e.book])}>
-                    Import
+                    {t('connections.import')}
                   </Button>
                   {removal(e)}
                 </>,
@@ -1565,16 +1604,15 @@ export function ContentsView({
       {matches.length > 0 && (
         <Group>
           <h3>
-            Also in your library <Spacer />
+            {t('connections.alsoInLibrary')} <Spacer />
             {linkable.length > 0 && (
               <Button $variant="secondary" $size="small" disabled={busy} onClick={() => onLink(linkable)}>
-                Link all
+                {t('connections.linkAll')}
               </Button>
             )}
           </h3>
           <Muted as="p">
-            Put there some other way. Linking keeps them on this connection and lets syncs update them. One whose library
-            copy has no file the connection takes can be imported instead, adding the device’s file to it.
+            {t('connections.linkHelp')}
           </Muted>
           <Stack as="ul">
             {matches.map((e) =>
@@ -1586,12 +1624,12 @@ export function ContentsView({
                 <>
                   {e.linkable ? (
                     <Button $variant="secondary" $size="small" disabled={busy} onClick={() => onLink([e])}>
-                      Link
+                      {t('connections.link')}
                     </Button>
                   ) : (
                     canImport && (
                       <Button $variant="secondary" $size="small" disabled={busy} onClick={() => onImport([e.book])}>
-                        Import
+                        {t('connections.import')}
                       </Button>
                     )
                   )}
@@ -1605,19 +1643,19 @@ export function ContentsView({
 
       {placed.length > 0 && (
         <Group>
-          <h3>{catalog ? 'In the catalog' : 'Sent by nexlibris'}</h3>
+          <h3>{catalog ? t('connections.inTheCatalog') : t('connections.sentBy')}</h3>
           {onRemove && (
-            <Muted as="p">Removing one deletes it there and takes it out of the catalog, so syncs don’t send it again.</Muted>
+            <Muted as="p">{t('connections.removeHelp')}</Muted>
           )}
           <Stack as="ul">
-            {placed.map((e) => row(e.book.path, e.book, e.item, e.item ? STATUS[e.status] : 'removed from the library', removal(e)))}
+            {placed.map((e) => row(e.book.path, e.book, e.item, e.item ? t(STATUS[e.status]) : t('connections.removedFromLibrary'), removal(e)))}
           </Stack>
         </Group>
       )}
 
       {contents.pending.length > 0 && (
         <Group>
-          <h3>Not on it yet</h3>
+          <h3>{t('connections.notOnYet')}</h3>
           <Stack as="ul">
             {contents.pending.map((item) => (
               <BookRow key={item.id}>

@@ -1,11 +1,10 @@
 import { useState } from 'react';
 import { Button } from '../styles/ui';
+import { t } from '../i18n';
 
 interface Props {
-  /** What's being deleted, for the button labels, e.g. "3 items". Omit for "Delete…". */
-  what?: string;
-  /** The action's word, "Delete" unless given (e.g. "Remove"). */
-  verb?: string;
+  /** The button's label, e.g. "Delete 3 items" or "Remove"; "Delete" unless given. */
+  label?: string;
   /** Small buttons, as in a list's rows. */
   small?: boolean;
   disabled?: boolean;
@@ -13,10 +12,9 @@ interface Props {
 }
 
 /** A delete button that asks for confirmation in place before acting. */
-export function DeleteButton({ what, verb = 'Delete', small, disabled, onDelete }: Props) {
+export function DeleteButton({ label = t('common.delete'), small, disabled, onDelete }: Props) {
   const [confirming, setConfirming] = useState(false);
   const size = small ? ({ $size: 'small' } as const) : {};
-  const label = `${verb}${what ? ` ${what}` : ''}`;
   if (!confirming) {
     return (
       <Button $variant="secondary" {...size} disabled={disabled} onClick={() => setConfirming(true)}>
@@ -39,7 +37,7 @@ export function DeleteButton({ what, verb = 'Delete', small, disabled, onDelete 
         {label}
       </Button>
       <Button $variant="secondary" {...size} onClick={() => setConfirming(false)}>
-        Cancel
+        {t('common.cancel')}
       </Button>
     </>
   );

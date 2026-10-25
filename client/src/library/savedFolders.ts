@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 /**
  * Folders remembered on this computer, by key: where each catalog connection is written
  * (`catalog:<id>`), and the sync folder of each pairing through one (`sync:<hub origin>`). Kept
@@ -20,7 +21,7 @@ function open(): Promise<IDBDatabase> {
     const request = indexedDB.open(DB, 1);
     request.onupgradeneeded = () => request.result.createObjectStore(STORE);
     request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error ?? new Error('Couldn’t open the saved folders.'));
+    request.onerror = () => reject(request.error ?? new Error(t('errors.savedFoldersOpen')));
   });
 }
 
@@ -30,7 +31,7 @@ async function run<T>(mode: IDBTransactionMode, work: (store: IDBObjectStore) =>
     return await new Promise<T>((resolve, reject) => {
       const request = work(db.transaction(STORE, mode).objectStore(STORE));
       request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error ?? new Error('Couldn’t read the saved folders.'));
+      request.onerror = () => reject(request.error ?? new Error(t('errors.savedFoldersRead')));
     });
   } finally {
     db.close();

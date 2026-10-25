@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 /**
  * Light or dark: the system's choice unless one is picked in Settings. A pick is kept per device
  * (in localStorage, as the view is) and marks the page `<html data-theme="light|dark">`, which
@@ -7,9 +8,9 @@
 export type Appearance = 'system' | 'light' | 'dark';
 
 export const APPEARANCES: { id: Appearance; label: string }[] = [
-  { id: 'system', label: 'System' },
-  { id: 'light', label: 'Light' },
-  { id: 'dark', label: 'Dark' },
+  { id: 'system', label: t('appearance.system') },
+  { id: 'light', label: t('appearance.light') },
+  { id: 'dark', label: t('appearance.dark') },
 ];
 
 /** Where the pick is kept; `usePersistentState` stores it as JSON under this key. */

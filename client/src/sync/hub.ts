@@ -3,6 +3,7 @@ import { inIosApp } from '../backends/iosBridge';
 import { inMobileApp, mobileTransport } from '../backends/mobileBridge';
 import { inDesktopApp } from '../backends/desktopBridge';
 import { serverConnection, serverUrl } from '../library/account';
+import { t } from '../i18n';
 
 /**
  * Reaching a sync hub (the desktop app, or the server) from this instance. The phone apps' pages
@@ -42,10 +43,17 @@ export function instanceName(): string {
   // Android WebViews still name the model; reduced user agents say just "K".
   const model = /Android [\d.]+; ([^;)]+?)(?: Build\/[^;)]*)?[;)]/.exec(ua)?.[1]?.trim();
   if (model && model !== 'K') return model;
-  if (inIosApp()) return /iPad/.test(ua) || !/iPhone/.test(ua) ? 'iPad' : 'iPhone';
-  if (inMobileApp()) return 'Android device';
-  const browser = /Firefox\//.test(ua) ? 'Firefox' : /Edg\//.test(ua) ? 'Edge' : /Chrome\//.test(ua) ? 'Chrome' : /Safari\//.test(ua) ? 'Safari' : 'A browser';
-  return `${browser} on ${/Mac OS X/.test(ua) ? 'a Mac' : /Windows/.test(ua) ? 'Windows' : /Linux/.test(ua) ? 'Linux' : 'this computer'}`;
+  if (inIosApp()) return /iPad/.test(ua) || !/iPhone/.test(ua) ? t('instanceName.iPad') : t('instanceName.iPhone');
+  if (inMobileApp()) return t('instanceName.android');
+  const browser = /Firefox\//.test(ua) ? 'Firefox' : /Edg\//.test(ua) ? 'Edge' : /Chrome\//.test(ua) ? 'Chrome' : /Safari\//.test(ua) ? 'Safari' : t('instanceName.aBrowser');
+  const os = /Mac OS X/.test(ua)
+    ? t('instanceName.mac')
+    : /Windows/.test(ua)
+      ? t('instanceName.windows')
+      : /Linux/.test(ua)
+        ? t('instanceName.linux')
+        : t('instanceName.thisComputer');
+  return t('instanceName.on', { browser, os });
 }
 
 /**
@@ -66,6 +74,6 @@ export const isOwnServer = (address: string) => address === serverUrl();
 export function ownServerClient(): { address: string; client: SyncClient } {
   const address = serverUrl();
   const server = serverConnection();
-  if (!address || !server) throw new Error('Choose a nexlibris server first (Account…).');
+  if (!address || !server) throw new Error(t('errors.chooseServer'));
   return { address, client: httpSyncClient(server.base ?? address, undefined, server.fetch) };
 }

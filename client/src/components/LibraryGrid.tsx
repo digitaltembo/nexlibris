@@ -8,6 +8,7 @@ import { NARROW } from '../styles/GlobalStyle';
 import { Badge } from '../styles/ui';
 import { Cover } from './Cover';
 import { StarRating } from './StarRating';
+import { t } from '../i18n';
 
 /** Shared by the grid and list views. */
 export interface CollectionProps {
@@ -106,7 +107,7 @@ export function LibraryGrid({ items, selection, onActivate, onLongPress }: Colle
               <Creators>{item.creators.map((c) => c.name).join(', ')}</Creators>
               <Footer>
                 <StarRating value={ratings[item.id]} />
-                {decor.badge?.(item) ? <Badge>{decor.badge(item)}</Badge> : item.files.length === 0 && <Badge>no file</Badge>}
+                {decor.badge?.(item) ? <Badge>{decor.badge(item)}</Badge> : item.files.length === 0 && <Badge>{t('libraryGrid.noFile')}</Badge>}
               </Footer>
             </Card>
           </li>

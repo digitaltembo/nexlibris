@@ -1,6 +1,7 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import styled from 'styled-components';
-import { DEFAULT_DESC, fieldLabel, type Sort, type SortKey } from '@nexlibris/common';
+import { DEFAULT_DESC, type Sort, type SortKey } from '@nexlibris/common';
+import { fieldLabel } from '../library/fieldLabels';
 import { BUILTIN_COLUMNS, DEFAULT_COLUMNS, fieldColumn, type ColumnId } from '../library/columns';
 import type { PairHow } from './InstanceSync';
 import { Button, Muted, Spacer } from '../styles/ui';
@@ -12,17 +13,18 @@ import { BackupDialog } from './BackupDialog';
 import { CategoriesDialog } from './CategoriesDialog';
 import { ConnectionsDialog } from './ConnectionsDialog';
 import { LibraryFolderDialog } from './LibraryFolderDialog';
+import { t } from '../i18n';
 
 export type { View } from '../views/views';
 
 export const SORT_LABELS: Record<SortKey, string> = {
-  title: 'Title',
-  author: 'Author',
-  series: 'Series',
-  published: 'First published',
-  rating: 'Rating',
-  size: 'Size',
-  added: 'Date added',
+  title: t('settings.sort.title'),
+  author: t('settings.sort.author'),
+  series: t('settings.sort.series'),
+  published: t('settings.sort.published'),
+  rating: t('settings.sort.rating'),
+  size: t('settings.sort.size'),
+  added: t('settings.sort.added'),
 };
 
 const Group = styled.fieldset`
@@ -206,7 +208,7 @@ export function SettingsDialog({ asked, accounts, onClose, view, onView, appeara
   const tabs = useMemo((): { id: SettingsTab; label: string; panel: ReactNode }[] => [
     {
       id: 'appearance',
-      label: 'Appearance',
+      label: t('settings.tabs.appearance'),
       panel: (
         <AppearanceSettings
           {...{ view, onView, appearance, onAppearance, sort, onSort, columns, fields, onColumns, onClose }}
@@ -215,7 +217,7 @@ export function SettingsDialog({ asked, accounts, onClose, view, onView, appeara
     },
     {
       id: 'folder',
-      label: 'Filesystem',
+      label: t('settings.tabs.folder'),
       panel: (
         <LibraryFolderDialog
           onClose={onClose}
@@ -227,30 +229,30 @@ export function SettingsDialog({ asked, accounts, onClose, view, onView, appeara
         />
       ),
     },
-    { id: 'backup', label: 'Backup', panel: <BackupDialog onClose={onClose} /> },
+    { id: 'backup', label: t('settings.tabs.backup'), panel: <BackupDialog onClose={onClose} /> },
     ...(accounts
-      ? [{ id: 'account' as const, label: 'Account', panel: <AccountDialog onClose={onClose} onLibraryFolder={() => onTab('folder')} /> }]
+      ? [{ id: 'account' as const, label: t('settings.tabs.account'), panel: <AccountDialog onClose={onClose} onLibraryFolder={() => onTab('folder')} /> }]
       : []),
-    { id: 'categories', label: 'Categories', panel: <CategoriesDialog onClose={onClose} /> },
+    { id: 'categories', label: t('settings.tabs.categories'), panel: <CategoriesDialog onClose={onClose} /> },
     // Keyed by how it pairs, so asking to pair again opens on it.
-    { id: 'connections', label: 'Connections', panel: <ConnectionsDialog key={pair} onClose={onClose} {...(pair && { pair })} /> },
+    { id: 'connections', label: t('settings.tabs.connections'), panel: <ConnectionsDialog key={pair} onClose={onClose} {...(pair && { pair })} /> },
   ], [accounts, pair, onClose, view, onView, appearance, onAppearance, sort, onSort, columns, fields, onColumns]);
 
   return (
-    <Modal title="Settings" wide onClose={() => (closers.get(tab) ?? onClose)()}>
+    <Modal title={t('settings.title')} wide onClose={() => (closers.get(tab) ?? onClose)()}>
       <Layout>
-        <TabList role="tablist" aria-orientation="vertical" aria-label="Settings">
-          {tabs.map((t) => (
+        <TabList role="tablist" aria-orientation="vertical" aria-label={t('settings.title')}>
+          {tabs.map((entry) => (
             <button
-              key={t.id}
+              key={entry.id}
               type="button"
               role="tab"
-              id={`settings-tab-${t.id}`}
-              aria-controls={`settings-panel-${t.id}`}
-              aria-selected={tab === t.id}
-              onClick={() => onTab(t.id)}
+              id={`settings-tab-${entry.id}`}
+              aria-controls={`settings-panel-${entry.id}`}
+              aria-selected={tab === entry.id}
+              onClick={() => onTab(entry.id)}
             >
-              {t.label}
+              {entry.label}
             </button>
           ))}
         </TabList>
@@ -291,10 +293,10 @@ function AppearanceSettings({ view, onView, appearance, onAppearance, sort, onSo
 
   return (
     <section>
-      <Heading>Appearance</Heading>
+      <Heading>{t('settings.appearance')}</Heading>
       <Group>
-        <legend>Theme</legend>
-        <Segmented role="group" aria-label="Appearance">
+        <legend>{t('settings.theme')}</legend>
+        <Segmented role="group" aria-label={t('settings.appearance')}>
           {APPEARANCES.map((a) => (
             <button key={a.id} type="button" aria-pressed={appearance === a.id} onClick={() => onAppearance(a.id)}>
               {a.label}
@@ -303,8 +305,8 @@ function AppearanceSettings({ view, onView, appearance, onAppearance, sort, onSo
         </Segmented>
       </Group>
       <Group>
-        <legend>View</legend>
-        <Segmented role="group" aria-label="View">
+        <legend>{t('settings.view')}</legend>
+        <Segmented role="group" aria-label={t('settings.view')}>
           {VIEWS.map((v) => (
             <button key={v.id} type="button" aria-pressed={view === v.id} onClick={() => onView(v.id)}>
               {v.icon}
@@ -315,11 +317,11 @@ function AppearanceSettings({ view, onView, appearance, onAppearance, sort, onSo
       </Group>
       {sorted && (
         <Group>
-          <legend>Sort</legend>
+          <legend>{t('settings.sortHeading')}</legend>
           <SortRow>
             <select
               value={sort.key}
-              aria-label="Sort by"
+              aria-label={t('settings.sortBy')}
               onChange={(e) => {
                 const key = e.target.value as SortKey;
                 onSort({ key, desc: DEFAULT_DESC[key] });
@@ -332,19 +334,19 @@ function AppearanceSettings({ view, onView, appearance, onAppearance, sort, onSo
               ))}
             </select>
             <label>
-              <input type="checkbox" checked={sort.desc} onChange={(e) => onSort({ ...sort, desc: e.target.checked })} /> Descending
+              <input type="checkbox" checked={sort.desc} onChange={(e) => onSort({ ...sort, desc: e.target.checked })} /> {t('settings.descending')}
             </label>
           </SortRow>
         </Group>
       )}
       {view === 'list' && (
         <Group>
-          <legend>List columns</legend>
-          <Muted as="p">Title is always shown.</Muted>
+          <legend>{t('settings.listColumns')}</legend>
+          <Muted as="p">{t('settings.titleAlways')}</Muted>
           <Options>{BUILTIN_COLUMNS.map((c) => checkbox(c.id, c.label))}</Options>
           {fields.length > 0 && (
             <>
-              <Muted as="p">Fields</Muted>
+              <Muted as="p">{t('settings.fields')}</Muted>
               <Options>{fields.map((key) => checkbox(fieldColumn(key), fieldLabel(key)))}</Options>
             </>
           )}
@@ -353,11 +355,11 @@ function AppearanceSettings({ view, onView, appearance, onAppearance, sort, onSo
       <ModalFooter>
         {view === 'list' && (
           <Button $variant="secondary" onClick={() => onColumns(DEFAULT_COLUMNS)}>
-            Reset columns
+            {t('settings.resetColumns')}
           </Button>
         )}
         <Spacer />
-        <Button onClick={onClose}>Done</Button>
+        <Button onClick={onClose}>{t('common.done')}</Button>
       </ModalFooter>
     </section>
   );

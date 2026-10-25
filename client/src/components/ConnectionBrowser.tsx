@@ -28,6 +28,7 @@ import { SyncInstance } from './InstanceSync';
 import { LibraryGrid, type CollectionProps } from './LibraryGrid';
 import { LibraryList } from './LibraryList';
 import { ItemDetail } from './ItemDetail';
+import { t } from '../i18n';
 
 const ErrorText = styled.p`
   margin: 12px 0;
@@ -117,7 +118,7 @@ export function ConnectionBrowser({
           const owned = matchItem(current, book);
           return { item: remoteItem(device, book), book, ...(owned && { owned }) };
         });
-        setState({ kind: 'ready', shown, note: [`Read from ${description}.`, inventory.note].filter(Boolean).join(' ') });
+        setState({ kind: 'ready', shown, note: [t('connectionBrowser.readFrom', { description }), inventory.note].filter(Boolean).join(' ') });
       } else if (type && isInstance(type)) {
         const pairing = (await readPairings(backend)).find((p) => p.hub.origin === device.id);
         if (pairing) {
@@ -125,16 +126,16 @@ export function ConnectionBrowser({
           const { revision } = await client.hello(null);
           const { library: view } = await client.state({ since: revision, have: Object.keys(current.items), peer: current.origin });
           const shown = Object.values(view.items).map((item) => ({ item, ...(current.items[item.id] && { owned: current.items[item.id] }) }));
-          setState({ kind: 'ready', shown, note: `The books ${device.name} shows this device.`, pairing });
+          setState({ kind: 'ready', shown, note: t('connectionBrowser.shows', { name: device.name }), pairing });
         } else {
           const offer = await peerOffer(backend, device.id);
           const note = offer.at
-            ? `The books ${device.name} offered this device when it last synced. One asked for comes with its next sync.`
-            : `${device.name} hasn’t offered this device any books yet: it does when it syncs with it.`;
+            ? t('connectionBrowser.offered', { name: device.name })
+            : t('connectionBrowser.notOffered', { name: device.name });
           setState({ kind: 'ready', shown: offer.items.map((item) => ({ item })), note, offered: true, requested: new Set(offer.requested) });
         }
       } else {
-        setState({ kind: 'failed', message: 'This connection can’t be read.' });
+        setState({ kind: 'failed', message: t('connectionBrowser.unreadable') });
       }
     } catch (e) {
       setState({ kind: 'failed', message: errorMessage(e) });
@@ -150,13 +151,13 @@ export function ConnectionBrowser({
     setOpen((was) => was && (state.shown.find((s) => s.item.id === was.item.id) ?? was));
   }, [state]);
 
-  if (state.kind === 'loading') return <Muted as="p">Reading {device.name}…</Muted>;
+  if (state.kind === 'loading') return <Muted as="p">{t('connectionBrowser.reading', { name: device.name })}</Muted>;
   if (state.kind === 'failed') {
     return (
       <>
         <ErrorText role="alert">{state.message}</ErrorText>
         <Button $variant="secondary" $size="small" onClick={() => void load()}>
-          Try again
+          {t('common.tryAgain')}
         </Button>
       </>
     );
@@ -165,7 +166,7 @@ export function ConnectionBrowser({
   const byId = new Map(state.shown.map((s) => [s.item.id, s]));
   const items = state.shown.map((s) => s.item);
   const sorted = sort ? sortItems(items, sort) : items;
-  const decor: CollectionDecor = { badge: (item) => (byId.get(item.id)?.owned || library.items[item.id] ? 'In library' : undefined) };
+  const decor: CollectionDecor = { badge: (item) => (byId.get(item.id)?.owned || library.items[item.id] ? t('connectionBrowser.inLibrary') : undefined) };
   const collection: CollectionProps = {
     items: sorted,
     selection: open ? new Set([open.item.id]) : NO_SELECTION,
@@ -179,15 +180,15 @@ export function ConnectionBrowser({
     <>
       <Heading>
         <Muted>
-          {state.note} {items.length} {items.length === 1 ? 'book' : 'books'}.
+          {t('connectionBrowser.count', { note: state.note, count: items.length })}
         </Muted>
         <Spacer />
         <Button $variant="secondary" $size="small" onClick={() => void load()}>
-          Refresh
+          {t('common.refresh')}
         </Button>
       </Heading>
       {items.length === 0 ? (
-        <Muted as="p">Nothing here.</Muted>
+        <Muted as="p">{t('connectionBrowser.nothing')}</Muted>
       ) : (
         <CollectionDecorContext.Provider value={decor}>
           {view === 'list' ? (
@@ -253,7 +254,13 @@ function ConnectionBook({
   const { item, book } = shown;
   const owned = shown.owned ?? library.items[item.id];
   const asked = state.requested?.has(item.id);
-  const label = state.offered ? (asked ? 'Don’t ask for it' : 'Ask for it') : owned ? 'Download its file' : 'Download';
+  const label = state.offered
+    ? asked
+      ? t('connectionBrowser.dontAsk')
+      : t('connectionBrowser.ask')
+    : owned
+      ? t('connectionBrowser.downloadFile')
+      : t('connectionBrowser.download');
   return (
     <ItemDetail
       item={item}
@@ -264,7 +271,7 @@ function ConnectionBook({
           !owned || book ? (
             <Button
               disabled={working}
-              title={state.offered ? 'It comes with the next sync from there.' : undefined}
+              title={state.offered ? t('connectionBrowser.nextSync') : undefined}
               onClick={() => {
                 setWorking(true);
                 setError(undefined);
@@ -273,7 +280,7 @@ function ConnectionBook({
                   .finally(() => setWorking(false));
               }}
             >
-              {working ? 'Working…' : label}
+              {working ? t('connectionBrowser.working') : label}
             </Button>
           ) : null,
         ...(book && { files: <Muted as="p">{book.path}</Muted> }),

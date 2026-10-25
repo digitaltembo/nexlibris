@@ -2,6 +2,7 @@ import { createItem, mergeTags, normalizeDate, type Creator, type Item, type Lib
 import { coverColor } from '@nexlibris/tools/coverColor';
 import { isbn13to10 } from './isbn';
 import { bcp47Language } from '@nexlibris/tools/formats/language';
+import { t } from '../i18n';
 
 /**
  * Book lookup by ISBN from Open Library (https://openlibrary.org/developers/api), which
@@ -62,9 +63,9 @@ export async function lookupIsbn(isbn: string, fetchFn: typeof fetch = (input, i
     try {
       response = await fetchFn(`${ORIGIN}${path}`, { headers: { Accept: 'application/json' } });
     } catch (e) {
-      throw new Error(`Couldn’t reach Open Library (${e instanceof Error ? e.message : String(e)}).`);
+      throw new Error(t('errors.openLibraryUnreachable', { message: e instanceof Error ? e.message : String(e) }));
     }
-    if (!response.ok) throw new Error(`Open Library answered ${response.status} ${response.statusText}`.trim());
+    if (!response.ok) throw new Error(t('errors.openLibraryStatus', { status: `${response.status} ${response.statusText}`.trim() }));
     return (await response.json()) as T;
   };
   const optional = async <T,>(path: string | undefined): Promise<T | undefined> => {
@@ -166,7 +167,7 @@ export async function findCovers(
 ): Promise<CoverChoice[]> {
   const getJson = async <T,>(path: string): Promise<T> => {
     const response = await fetchFn(`${ORIGIN}${path}`, { headers: { Accept: 'application/json' } });
-    if (!response.ok) throw new Error(`Open Library answered ${response.status} ${response.statusText}`.trim());
+    if (!response.ok) throw new Error(t('errors.openLibraryStatus', { status: `${response.status} ${response.statusText}`.trim() }));
     return (await response.json()) as T;
   };
   const isbns = [...new Set(book.isbns.map((isbn) => isbn.replace(/[^0-9X]/gi, '')).filter(Boolean))];
@@ -199,7 +200,7 @@ export async function findCovers(
   const results = await Promise.allSettled([...(isbns.length ? [byIsbn()] : []), ...(title ? [bySearch()] : [])]);
   if (results.length && results.every((r) => r.status === 'rejected')) {
     const e = (results[0] as PromiseRejectedResult).reason;
-    throw new Error(`Couldn’t reach Open Library (${e instanceof Error ? e.message : String(e)}).`);
+    throw new Error(t('errors.openLibraryUnreachable', { message: e instanceof Error ? e.message : String(e) }));
   }
   // The same cover can come from an ISBN and a search, by URLs that differ only in size.
   const seen = new Set<string>();

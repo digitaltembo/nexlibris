@@ -2,6 +2,7 @@ import styled from 'styled-components';
 import type { Reading } from '../library/currentlyReading';
 import { Muted } from '../styles/ui';
 import { Cover } from './Cover';
+import { t } from '../i18n';
 
 interface Props {
   reading: Reading[];
@@ -20,11 +21,11 @@ interface Props {
  */
 export function CurrentlyReading({ reading, onRead, onSetAside, onHide }: Props) {
   return (
-    <Section aria-label="Currently reading">
+    <Section aria-label={t('currentlyReading.label')}>
       <Heading>
-        <h2>Currently reading</h2>
-        <Quiet onClick={onHide} title="Hide till nexlibris is next opened; the books stay under Library › Currently reading">
-          Hide
+        <h2>{t('currentlyReading.heading')}</h2>
+        <Quiet onClick={onHide} title={t('currentlyReading.hideTitle')}>
+          {t('currentlyReading.hide')}
         </Quiet>
       </Heading>
       <Books>
@@ -33,19 +34,19 @@ export function CurrentlyReading({ reading, onRead, onSetAside, onHide }: Props)
           const authors = r.item.creators.map((c) => c.name).join(', ');
           return (
             <li key={r.item.id}>
-              <Book onClick={() => onRead(r)} title={`Continue reading ${r.item.title}`}>
+              <Book onClick={() => onRead(r)} title={t('currentlyReading.continue', { title: r.item.title })}>
                 <Thumb item={r.item} />
                 <span>
                   <strong>{r.item.title}</strong>
                   {authors && <Muted>{authors}</Muted>}
                   {percent !== undefined && (
-                    <Progress aria-label={`${percent}% read`}>
+                    <Progress aria-label={t('currentlyReading.percent', { percent })}>
                       <span style={{ width: `${percent}%` }} />
                     </Progress>
                   )}
                 </span>
               </Book>
-              <SetAside aria-label={`Remove ${r.item.title} from Currently reading`} title="Remove from Currently reading (keeps your place)" onClick={() => onSetAside(r)}>
+              <SetAside aria-label={t('currentlyReading.remove', { title: r.item.title })} title={t('currentlyReading.removeTitle')} onClick={() => onSetAside(r)}>
                 ×
               </SetAside>
             </li>

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Button } from '../../../styles/ui';
 import { DICTIONARY_ROOT, HIDDEN_DICTIONARY_ROOT, isSidecar, parseIfo, prepareDictionaries } from '@nexlibris/crosspoint-tools/stardict';
 import { Actions, Note, PickButton, Rows, sizeLabel, Status, useReaderState, type ToolProps } from './shared';
+import { t } from '../../../i18n';
 
 interface InstalledDictionary {
   name: string;
@@ -42,7 +43,7 @@ export function Dictionaries({ reader }: ToolProps) {
   });
 
   const add = (picked: { path: string; data: Blob }[]) =>
-    void run('Reading the files…', async (say) => {
+    void run(t('crosspoint.tools.dictionaries.reading'), async (say) => {
       const { dictionaries, problems: found } = await prepareDictionaries(picked);
       setProblems(found);
       if (!dictionaries.length) return;
@@ -50,14 +51,14 @@ export function Dictionaries({ reader }: ToolProps) {
       for (const dictionary of dictionaries) {
         await reader.makeFolder(DICTIONARY_ROOT, dictionary.name);
         for (const [i, file] of dictionary.files.entries()) {
-          say(`Copying ${dictionary.name}: ${file.name} (${i + 1} of ${dictionary.files.length})…`);
+          say(t('crosspoint.tools.dictionaries.copying', { name: dictionary.name, file: file.name, n: i + 1, total: dictionary.files.length }));
           await reader.upload(`${DICTIONARY_ROOT}/${dictionary.name}/${file.name}`, file.data);
         }
       }
     });
 
   const remove = (dictionary: InstalledDictionary) =>
-    void run(`Removing ${dictionary.name}…`, async () => {
+    void run(t('crosspoint.tools.dictionaries.removing', { name: dictionary.name }), async () => {
       for (const file of dictionary.files) await reader.remove(`${dictionary.folder}/${file}`);
       await reader.remove(dictionary.folder);
     });
@@ -65,20 +66,19 @@ export function Dictionaries({ reader }: ToolProps) {
   return (
     <>
       <Note>
-        StarDict dictionaries, for looking words up while reading. Add their files, a folder of them, or the zip or tar.gz
-        they were downloaded as. Choose the one used first on the reader, in Settings → Reader → Dictionary.
+        {t('crosspoint.tools.dictionaries.note')}
       </Note>
       <Actions>
         <PickButton accept={ACCEPT} disabled={!!busy} onPick={add}>
-          Add files…
+          {t('crosspoint.tools.dictionaries.addFiles')}
         </PickButton>
         <PickButton folder disabled={!!busy} onPick={add}>
-          Add a folder…
+          {t('crosspoint.tools.addFolder')}
         </PickButton>
       </Actions>
       <Status busy={busy} error={error} problems={problems} />
-      {!data && !error && <Note>Reading the reader…</Note>}
-      {data && data.length === 0 && <Note>No dictionaries on the reader yet.</Note>}
+      {!data && !error && <Note>{t('crosspoint.tools.readingReader')}</Note>}
+      {data && data.length === 0 && <Note>{t('crosspoint.tools.dictionaries.none')}</Note>}
       {data && data.length > 0 && (
         <Rows>
           {data.map((dictionary) => (
@@ -88,16 +88,16 @@ export function Dictionaries({ reader }: ToolProps) {
                 <small>
                   {[
                     dictionary.title !== dictionary.name && dictionary.title,
-                    dictionary.words && `${dictionary.words.toLocaleString()} words`,
+                    dictionary.words && t('crosspoint.tools.dictionaries.words', { count: dictionary.words, n: dictionary.words.toLocaleString() }),
                     sizeLabel(dictionary.size),
-                    dictionary.folder.startsWith(HIDDEN_DICTIONARY_ROOT) && 'in .dictionaries',
+                    dictionary.folder.startsWith(HIDDEN_DICTIONARY_ROOT) && t('crosspoint.tools.dictionaries.hidden'),
                   ]
                     .filter(Boolean)
-                    .join(' · ')}
+                    .join(t('common.list'))}
                 </small>
               </div>
               <Button $variant="secondary" $size="small" disabled={!!busy} onClick={() => remove(dictionary)}>
-                Remove
+                {t('crosspoint.tools.remove')}
               </Button>
             </li>
           ))}

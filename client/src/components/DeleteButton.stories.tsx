@@ -9,4 +9,4 @@ type Story = StoryObj<typeof meta>;
 /** Asks for confirmation in place before calling `onDelete`. */
 export const Default: Story = {};
 
-export const Several: Story = { args: { what: '3 items' } };
+export const Several: Story = { args: { label: 'Delete 3 items' } };

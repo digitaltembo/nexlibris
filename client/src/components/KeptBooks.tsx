@@ -4,6 +4,7 @@ import { useLibrary } from '../library/LibraryContext';
 import { addInstances, EVERY_BOOK } from '../sync/instances';
 import { Button, Muted } from '../styles/ui';
 import { QueryInput, useMatchCount } from './QueryInput';
+import { t } from '../i18n';
 
 const Line = styled.span`
   display: inline-flex;
@@ -48,10 +49,9 @@ export function KeptBooks({
     return (
       <Editing>
         <Muted>
-          Only books matching this search go to {name} (their details, covers and files), along with any added to it by hand.
-          Empty for every book.
+          {t('keptBooks.explain', { name })}
         </Muted>
-        <QueryInput value={draft} onChange={setDraft} aria-label={`Books ${name} gets`} />
+        <QueryInput value={draft} onChange={setDraft} aria-label={t('keptBooks.label', { name })} />
         <Line>
           <Button
             $size="small"
@@ -60,10 +60,10 @@ export function KeptBooks({
               setDraft(undefined);
             }}
           >
-            Done
+            {t('common.done')}
           </Button>
           <Button $variant="secondary" $size="small" onClick={() => setDraft(undefined)}>
-            Cancel
+            {t('common.cancel')}
           </Button>
         </Line>
       </Editing>
@@ -72,16 +72,17 @@ export function KeptBooks({
   return (
     <Line>
       <Muted>
-        Gets {everyBook(query) ? 'every book' : `books matching “${query}”`}
-        {count !== undefined && ` (${count} now)`}
-        {excluded > 0 && `, less ${excluded} deleted there`}.
+        {t('keptBooks.gets', { what: everyBook(query) ? t('keptBooks.everyBook') : t('keptBooks.matching', { query }) })}
+        {count !== undefined && t('keptBooks.now', { count })}
+        {excluded > 0 && t('keptBooks.less', { count: excluded })}
+        {t('keptBooks.end')}
       </Muted>
       <Button $variant="secondary" $size="small" onClick={() => setDraft(everyBook(query) ? '' : query)}>
-        Choose books…
+        {t('keptBooks.choose')}
       </Button>
       {excluded > 0 && onBringBack && (
         <Button $variant="secondary" $size="small" onClick={onBringBack}>
-          Bring back deleted
+          {t('keptBooks.bringBack')}
         </Button>
       )}
     </Line>

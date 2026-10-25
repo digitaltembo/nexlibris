@@ -12,6 +12,7 @@ import { Button, Muted, Spacer } from '../styles/ui';
 import { ConvertOptions, useOptionValues } from './ConvertOptions';
 import { formatLabel } from './ItemFiles';
 import { ModalFooter } from './Modal';
+import { t } from '../i18n';
 
 const Choice = styled.label`
   display: flex;
@@ -31,7 +32,6 @@ const ErrorText = styled.p`
   color: var(--danger);
 `;
 
-const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 const SHOWN = 8;
 
 /** A few titles, then how many more. */
@@ -41,7 +41,7 @@ function Titles({ items }: { items: Item[] }) {
       {items.slice(0, SHOWN).map((item) => (
         <li key={item.id}>{item.title}</li>
       ))}
-      {items.length > SHOWN && <li>and {items.length - SHOWN} more</li>}
+      {items.length > SHOWN && <li>{t('common.andMore', { count: items.length - SHOWN })}</li>}
     </List>
   );
 }
@@ -73,19 +73,19 @@ export function SendCheckStep({
   const [values, setValues] = useOptionValues(fields);
   const [working, setWorking] = useState<string>();
   const [error, setError] = useState<string>();
-  const formats = [...new Set(check.convertible.map((c) => c.path.at(-1)!.to))].map(formatLabel).join(' or ');
+  const formats = [...new Set(check.convertible.map((c) => c.path.at(-1)!.to))].map(formatLabel).join(t('common.or'));
 
   const run = async () => {
     setError(undefined);
     try {
       if (update && check.behind.length) {
-        setWorking('Updating files…');
+        setWorking(t('sendCheck.updating'));
         const result = await updateFiles(backend, check.behind, apply, { carryText: (from, to) => textIndex.carry(from, to) });
-        if (result.failed.length) throw new Error(result.failed.map((f) => `${f.title}: ${f.message}`).join('; '));
+        if (result.failed.length) throw new Error(result.failed.map((f) => t('sendCheck.failure', f)).join(t('sendCheck.failureSeparator')));
       }
       if (convert) {
         for (const [i, { item }] of check.convertible.entries()) {
-          setWorking(`Converting ${item.title} (${i + 1} of ${check.convertible.length})…`);
+          setWorking(t('sendCheck.converting', { title: item.title, n: i + 1, total: check.convertible.length }));
           // The item as it is now: updating may have replaced the file it's made from.
           const current = (await backend.getLibrary()).items[item.id];
           const source = current && checkSend(await backend.getLibrary(), device, type, [current]).convertible[0];
@@ -107,8 +107,7 @@ export function SendCheckStep({
           <Choice>
             <input type="checkbox" checked={convert} disabled={!!working} onChange={(e) => setConvert(e.target.checked)} />
             <span>
-              {plural(check.convertible.length, 'book')} {check.convertible.length === 1 ? 'has' : 'have'} no {formats}, which{' '}
-              {device.name} prefers. Convert {check.convertible.length === 1 ? 'it' : 'them'} first (kept in the library)?
+              {t('sendCheck.convert', { count: check.convertible.length, formats, device: device.name })}
             </span>
           </Choice>
           <Titles items={check.convertible.map((c) => c.item)} />
@@ -120,8 +119,7 @@ export function SendCheckStep({
           <Choice>
             <input type="checkbox" checked={update} disabled={!!working} onChange={(e) => setUpdate(e.target.checked)} />
             <span>
-              {plural(check.behind.length, 'file')} to send {check.behind.length === 1 ? 'has' : 'have'} older details than the
-              library’s. Write the library’s into {check.behind.length === 1 ? 'it' : 'them'} first?
+              {t('sendCheck.behind', { count: check.behind.length })}
             </span>
           </Choice>
           <Titles items={[...new Map(check.behind.map((b) => [b.item.id, b.item])).values()]} />
@@ -129,22 +127,23 @@ export function SendCheckStep({
       )}
       {check.unsendable.length > 0 && (
         <Muted as="p">
-          Not sent, with no file {device.name} takes: {check.unsendable.slice(0, SHOWN).map((i) => i.title).join(', ')}
-          {check.unsendable.length > SHOWN && ` and ${check.unsendable.length - SHOWN} more`}.
+          {t('sendCheck.unsendable', { device: device.name, titles: check.unsendable.slice(0, SHOWN).map((i) => i.title).join(t('common.listJoin')) })}
+          {check.unsendable.length > SHOWN && t('sendCheck.unsendableMore', { count: check.unsendable.length - SHOWN })}
+          {t('sendCheck.end')}
         </Muted>
       )}
       {working && <p role="status">{working}</p>}
       {error && <ErrorText role="alert">{error}</ErrorText>}
       <ModalFooter>
         <Button $variant="secondary" disabled={!!working} onClick={onCancel}>
-          Cancel
+          {t('common.cancel')}
         </Button>
         <Spacer />
         <Button $variant="secondary" disabled={!!working} onClick={onContinue}>
-          Send as they are
+          {t('sendCheck.asTheyAre')}
         </Button>
         <Button disabled={!!working || (!convert && !update)} onClick={() => void run()}>
-          {convert && update ? 'Convert, update and send' : convert ? 'Convert and send' : 'Update and send'}
+          {convert && update ? t('sendCheck.convertUpdateSend') : convert ? t('sendCheck.convertSend') : t('sendCheck.updateSend')}
         </Button>
       </ModalFooter>
     </>

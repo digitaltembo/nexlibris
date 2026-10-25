@@ -1,5 +1,6 @@
 import { localFetch, relaysLocalHttp } from '../../devices/localFetch';
 import type { Catalog, DeviceTarget, RemoteFile } from '../../devices/types';
+import { t } from '../../i18n';
 
 /** A file or folder in a listing. */
 export interface Entry {
@@ -173,7 +174,7 @@ export class CrossPointTarget implements DeviceTarget {
     }
     if (!response.ok) {
       const text = (await response.text().catch(() => '')).trim();
-      throw new Error(`The reader refused ${path.split('?')[0]}: ${text || `${response.status} ${response.statusText}`}`);
+      throw new Error(t('errors.readerRefused', { path: path.split('?')[0], message: text || `${response.status} ${response.statusText}` }));
     }
     return response;
   }

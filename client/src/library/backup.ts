@@ -7,6 +7,7 @@ import {
   type Operation,
 } from '@nexlibris/common';
 import { NotAZipError, readZip, zipParts, type ZipEntry, type ZipEntryInput, type ZipPart } from '@nexlibris/tools/zip';
+import { t } from '../i18n';
 
 /**
  * A backup is a zip of:
@@ -96,7 +97,7 @@ export interface RestoreResult {
  */
 export async function restoreLibrary(backend: LibraryBackend, backup: Blob): Promise<RestoreResult> {
   const zip = await readZip(backup).catch((e) => {
-    throw e instanceof NotAZipError ? new Error('This file is not a nexlibris backup (it is not a zip).') : e;
+    throw e instanceof NotAZipError ? new Error(t('backupErrors.notZip')) : e;
   });
   const manifest = await readManifest(zip);
   const source = manifest.library;
@@ -150,13 +151,13 @@ export async function restoreLibrary(backend: LibraryBackend, backup: Blob): Pro
 
 async function readManifest(zip: Map<string, ZipEntry>): Promise<BackupManifest> {
   const text = await zip.get(MANIFEST_PATH)?.text();
-  if (text === undefined) throw new Error('This file is not a nexlibris backup (it has no manifest).');
+  if (text === undefined) throw new Error(t('backupErrors.noManifest'));
   const manifest = JSON.parse(text) as Partial<BackupManifest>;
   if (manifest.format !== BACKUP_FORMAT || !manifest.library) {
-    throw new Error('This file is not a nexlibris backup.');
+    throw new Error(t('backupErrors.notBackup'));
   }
   if (manifest.version !== BACKUP_VERSION) {
-    throw new Error('This backup was made by a different version of nexlibris and cannot be restored.');
+    throw new Error(t('backupErrors.otherVersion'));
   }
   // An older library is brought up to date; a newer one is refused (NewerSchemaError says so).
   return { ...manifest, library: migrateLibrary(manifest.library) } as BackupManifest;

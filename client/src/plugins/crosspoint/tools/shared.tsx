@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import styled from 'styled-components';
 import { FileButton, Muted } from '../../../styles/ui';
 import type { CrossPointTarget } from '../client';
+import { t } from '../../../i18n';
 
 /** A reader tool's props: the reader, reached by its connection's address. */
 export interface ToolProps {
@@ -11,7 +12,9 @@ export interface ToolProps {
 export const errorMessage = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 export const sizeLabel = (bytes: number) =>
-  bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  bytes >= 1024 * 1024
+    ? t('common.megabytes', { count: (bytes / 1024 / 1024).toFixed(1) })
+    : t('common.kilobytes', { count: Math.max(1, Math.round(bytes / 1024)) });
 
 /**
  * What a tool reads from the reader, loaded on opening and again after changes, and the work it's

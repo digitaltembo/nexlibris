@@ -7,6 +7,7 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import type { CollectionProps } from '../../components/LibraryGrid';
 import { isDark, onAppearanceChange } from '../../styles/appearance';
 import { booksOf, buildGraph, endId, type GraphLink, type GraphNode } from './graph';
+import { t } from '../../i18n';
 
 /**
  * The books as stars in a 3D force graph, as on the readings site: books drawn together by the
@@ -53,7 +54,7 @@ function readPalette(): Palette {
 const FLY_DISTANCE = 140;
 
 const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
-const KIND_LABEL = { author: 'author', tag: 'tag', series: 'series' } as const;
+const KIND_LABEL = { author: t('graph.author'), tag: t('graph.tag'), series: t('graph.series') };
 
 /** A node's tooltip, built from text so book titles can't add markup. */
 function tooltip(node: Node): HTMLElement {
@@ -62,9 +63,9 @@ function tooltip(node: Node): HTMLElement {
   title.textContent = node.label;
   const line = (text: string) => (el.appendChild(document.createElement('div')).textContent = text);
   if (node.kind === 'book') {
-    if (node.detail) line(`by ${node.detail}`);
+    if (node.detail) line(t('graph.by', { name: node.detail }));
   } else {
-    line(`${KIND_LABEL[node.kind]} · ${node.books} ${node.books === 1 ? 'book' : 'books'}`);
+    line(t('graph.kind', { kind: KIND_LABEL[node.kind], count: node.books }));
   }
   return el;
 }
@@ -202,7 +203,7 @@ export function ForceGraph({ items, selection, onActivate }: CollectionProps) {
     fg.nodeColor(fg.nodeColor()).nodeVal(fg.nodeVal());
   }, [selection]);
 
-  return <Canvas ref={container} role="img" aria-label={`A graph of ${items.length} books, joined by their authors, tags and series`} />;
+  return <Canvas ref={container} role="img" aria-label={t('graph.label', { count: items.length })} />;
 }
 
 export default ForceGraph;

@@ -10,7 +10,9 @@
 
 ARG NODE_VERSION=24
 
-FROM node:${NODE_VERSION}-bookworm-slim AS build
+# The build makes only JavaScript, so it runs on the builder's own platform, whatever the image is for
+# (linux/amd64 and linux/arm64 alike), rather than emulated.
+FROM --platform=$BUILDPLATFORM node:${NODE_VERSION}-bookworm-slim AS build
 
 # Dependencies first, from the workspaces' manifests alone, so they're cached while only code changes.
 WORKDIR /src/nexlibris

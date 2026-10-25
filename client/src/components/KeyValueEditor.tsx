@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import styled from 'styled-components';
 import { Button, Row, Stack } from '../styles/ui';
+import { t } from '../i18n';
 
 const Key = styled.span`
   flex: 0 0 110px;
@@ -42,7 +43,7 @@ export function KeyValueEditor({ entries, onChange, keyPlaceholder }: Props) {
           />
           <Button
             $variant="icon"
-            aria-label={`Remove ${key}`}
+            aria-label={t('keyValueEditor.remove', { key })}
             onClick={() => onChange(entries.filter((_, j) => j !== i))}
           >
             ×
@@ -57,12 +58,12 @@ export function KeyValueEditor({ entries, onChange, keyPlaceholder }: Props) {
           onKeyDown={(e) => e.key === 'Enter' && add()}
         />
         <input
-          placeholder="value"
+          placeholder={t('keyValueEditor.value')}
           value={newValue}
           onChange={(e) => setNewValue(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && add()}
         />
-        <Button $variant="icon" aria-label="Add" disabled={!canAdd} onClick={add}>
+        <Button $variant="icon" aria-label={t('keyValueEditor.add')} disabled={!canAdd} onClick={add}>
           +
         </Button>
       </Row>

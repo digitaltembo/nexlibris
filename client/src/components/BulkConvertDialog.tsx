@@ -9,6 +9,7 @@ import { Button, Muted, SmallSelect, Spacer } from '../styles/ui';
 import { ConvertOptions, Field, IndirectNote, pathLabel, useOptionValues } from './ConvertOptions';
 import { formatLabel } from './ItemFiles';
 import { Modal, ModalFooter } from './Modal';
+import { t } from '../i18n';
 
 const ErrorText = styled.p`
   color: var(--danger);
@@ -65,31 +66,31 @@ export function BulkConvertDialog({ items, onClose }: Props) {
     setRunning(true);
     setFailures([]);
     for (const [n, { item, file, path }] of sources.entries()) {
-      setProgress(`Converting ${n + 1} of ${sources.length} to ${formatLabel(to)}…`);
+      setProgress(t('bulkConvert.converting', { n: n + 1, total: sources.length, format: formatLabel(to) }));
       try {
         await apply([await convertItemFile(backend, item, file, pathWithOptions(path, values))]);
       } catch (e) {
-        failed.push(`${item.title}: ${e instanceof Error ? e.message : e}`);
+        failed.push(t('bulkConvert.failure', { title: item.title, message: e instanceof Error ? e.message : String(e) }));
       }
     }
     setRunning(false);
     setFailures(failed);
-    setProgress(`Converted ${sources.length - failed.length} to ${formatLabel(to)}.`);
+    setProgress(t('bulkConvert.converted', { count: sources.length - failed.length, format: formatLabel(to) }));
   };
 
   const paths = new Set(indirect.map((s) => pathLabel(s.file.format, s.path)));
-  const books = (n: number) => `${n} book${n === 1 ? '' : 's'}`;
+  const books = (n: number) => t('common.books', { count: n });
 
   return (
-    <Modal title={`Convert ${books(count)}`} onClose={() => !running && onClose()}>
+    <Modal title={t('bulkConvert.title', { books: books(count) })} onClose={() => !running && onClose()}>
       {!to ? (
-        <Muted as="p">None of these books has a file that can be converted.</Muted>
+        <Muted as="p">{t('bulkConvert.nothing')}</Muted>
       ) : (
         <>
           <Field>
-            From
+            {t('convertDialog.from')}
             <SmallSelect value={input} disabled={running} onChange={(e) => setFrom(e.target.value)}>
-              <option value={BEST}>Pick best (least lost for each book)</option>
+              <option value={BEST}>{t('bulkConvert.pickBest')}</option>
               {inputs.map((format) => (
                 <option key={format} value={format}>
                   {formatLabel(format)}
@@ -98,7 +99,7 @@ export function BulkConvertDialog({ items, onClose }: Props) {
             </SmallSelect>
           </Field>
           <Field>
-            To
+            {t('convertDialog.to')}
             <SmallSelect value={to} disabled={running} onChange={(e) => setChosen(e.target.value as FormatId)}>
               {outputs.map((format) => (
                 <option key={format} value={format}>
@@ -109,13 +110,17 @@ export function BulkConvertDialog({ items, onClose }: Props) {
           </Field>
           <Muted as="p">
             {sources.length === 0
-              ? `None of these books can be made ${formatLabel(to)}${input ? ` from ${formatLabel(input)}` : ''}, or all have it already.`
-              : `${sources.length === count ? `All ${books(count)}` : `${sources.length} of ${books(count)}`} will get a copy in ${formatLabel(to)}; the rest have one already or nothing to make it from.`}
+              ? input
+                ? t('bulkConvert.noneFrom', { format: formatLabel(to), from: formatLabel(input) })
+                : t('bulkConvert.none', { format: formatLabel(to) })
+              : sources.length === count
+                ? t('bulkConvert.all', { books: books(count), format: formatLabel(to) })
+                : t('bulkConvert.some', { count: sources.length, books: books(count), format: formatLabel(to) })}
           </Muted>
           {indirect.length > 0 && (
             <IndirectNote>
-              {indirect.length === sources.length ? 'Indirect' : `${books(indirect.length)} ${indirect.length === 1 ? 'converts' : 'convert'} indirectly`}
-              {paths.size === 1 ? `: ${[...paths][0]}.` : ', by way of other formats.'}
+              {indirect.length === sources.length ? t('bulkConvert.indirectAll') : t('bulkConvert.indirectSome', { count: indirect.length })}
+              {paths.size === 1 ? t('bulkConvert.indirectPath', { path: [...paths][0] }) : t('bulkConvert.indirectOther')}
             </IndirectNote>
           )}
           <ConvertOptions fields={fields} values={values} onChange={setValues} disabled={running} />
@@ -128,21 +133,21 @@ export function BulkConvertDialog({ items, onClose }: Props) {
       )}
       {failures.length > 0 && (
         <ErrorText>
-          {failures.length} failed: {failures.join('; ')}
+          {t('bulkConvert.failed', { count: failures.length, failures: failures.join(t('bulkConvert.failureSeparator')) })}
         </ErrorText>
       )}
       <ModalFooter>
         {fields.length > 0 && (
           <Button $variant="secondary" disabled={running} onClick={() => setValues({})}>
-            Defaults
+            {t('convertDialog.defaults')}
           </Button>
         )}
         <Spacer />
         <Button $variant="secondary" disabled={running} onClick={onClose}>
-          Done
+          {t('common.done')}
         </Button>
         <Button disabled={running || sources.length === 0} onClick={() => void convertAll()}>
-          Convert {sources.length > 0 && books(sources.length)}
+          {sources.length > 0 ? t('bulkConvert.convertBooks', { books: books(sources.length) }) : t('bulkConvert.convert')}
         </Button>
       </ModalFooter>
     </Modal>

@@ -1,0 +1,131 @@
+# Everything that has to pass before a release, and on every push and pull request: the web side's lint,
+# typecheck, tests and builds, and each app's own tests and build (Android, iOS, the Tauri desktop app).
+# release.yml runs it first, and builds nothing until it passes.
+name: Verify
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:
+  workflow_dispatch:
+
+concurrency:
+  group: verify-${{ github.workflow_ref }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  # The desktop workspace's Electron isn't needed to test or build anything here.
+  ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+
+jobs:
+  web:
+    name: Lint, typecheck, test and build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - run: npm run build-storybook -w client
+      # The npm packages pack (compiled, with their declarations), as a release would publish them.
+      - run: node scripts/release/npm.mjs
+
+  docker:
+    name: Docker image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: docker/setup-buildx-action@v3
+      - name: Build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: nexlibris:verify
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      # It starts, and answers as a nexlibris server.
+      - name: Check it runs
+        run: |
+          docker run -d --name nexlibris -p 8080:8080 nexlibris:verify
+          curl -fsS --retry 30 --retry-delay 1 --retry-all-errors http://127.0.0.1:8080/api/auth/session
+          curl -fsS http://127.0.0.1:8080/ | grep -q '<div id="root">'
+          docker rm -f nexlibris
+
+  android:
+    name: Android unit tests and lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      # The app packages the web app, so its build needs one.
+      - run: npm run build -w client
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+          cache: gradle
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platforms;android-36 build-tools;36.1.0
+      - name: Test
+        working-directory: android
+        run: ./gradlew testDebugUnitTest lintDebug
+
+  ios:
+    name: iOS tests and build
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build -w client
+      - name: Test NexlibrisKit
+        working-directory: ios/NexlibrisKit
+        run: swift test
+      - name: Build the app (unsigned)
+        working-directory: ios
+        run: >
+          xcodebuild build -project nexlibris.xcodeproj -scheme nexlibris -configuration Release
+          -destination 'generic/platform=iOS' -derivedDataPath build CODE_SIGNING_ALLOWED=NO
+
+  tauri:
+    name: Tauri tests
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      # Bundled as the app's resources, which its build checks are there.
+      - run: npm run build -w client
+      - name: Install the system's web view and its libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: tauri/src-tauri
+      - name: Test
+        working-directory: tauri/src-tauri
+        run: cargo test

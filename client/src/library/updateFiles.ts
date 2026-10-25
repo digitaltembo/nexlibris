@@ -11,6 +11,7 @@ import { canWriteMetadata, coverDiffers, fileMetadata, metadataKey, writesCover 
 import { epubDrm, parseEpub } from '@nexlibris/tools/formats/epub';
 import { epubMetadataChanges, writeEpubMetadata } from '@nexlibris/tools/formats/epubMetadata';
 import type { ParsedItem } from '@nexlibris/tools/formats/formats';
+import { t, tIf } from '../i18n';
 
 /**
  * Library cleanup's "Update book files": writes the library's metadata (title, creators, tags,
@@ -72,6 +73,9 @@ interface Options {
 
 /** An EPUB's metadata and cover. */
 const readMetadata = (data: Blob, name: string) => parseEpub(data, name);
+
+/** A field named by `differences`, in words. */
+export const changeLabel = (change: string) => tIf(`cleanup.changes.${change}`) ?? change;
 
 /** The fields where a file says otherwise than the library would write into it, the cover among them. */
 const differences = async (item: Item, file: FileRef, parsed: ParsedItem, cover: boolean) => [
@@ -196,14 +200,14 @@ export async function updateFiles(
       try {
         if (!item.files.some((f) => f.hash === file.hash)) continue;
         const data = await backend.getFile(file.hash);
-        if (!data) throw new Error('The file is missing from storage.');
+        if (!data) throw new Error(t('errors.missingFromStorage'));
         const drm = await epubDrm(data, nameOf(item, file));
-        if (drm) throw new Error(`It’s DRM-protected (${drm}), so it’s left alone.`);
+        if (drm) throw new Error(t('errors.drm', { drm }));
         const withCover = writesCover(item, file) && !!cover;
         const written = await writeEpubMetadata(data, wanted, withCover && cover ? { data: cover, mediaType: item.cover!.mediaType } : undefined);
         // Checked before it replaces anything: it must read back as the library has it.
         const left = await differences(item, file, await parse(written, nameOf(item, file)), withCover);
-        if (left.length) throw new Error(`It didn’t take: ${left.join(', ')}`);
+        if (left.length) throw new Error(t('errors.didntTake', { fields: left.map(changeLabel).join(t('common.listJoin')) }));
         // Without the cover written, what the file's is isn't known.
         const key = withCover ? metadataKey(item, file) : metadataKey(item);
         const { hash, size } = await backend.putFile(written);

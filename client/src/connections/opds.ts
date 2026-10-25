@@ -2,40 +2,42 @@ import { OPDS_SERVED_TYPE, type Device } from '@nexlibris/common';
 import { pickedChoices, type ExportType, type FeedType, type ServedType, type SettingField } from '../devices/types';
 import { FORMATS, type FormatId } from '@nexlibris/tools/formats/formats';
 import { serverSession, serverUrl } from '../library/account';
+import { t } from '../i18n';
 
 /** Where a catalog is hosted, for showing it; nothing is uploaded there. */
 export const HOSTED_AT: SettingField = {
   key: 'url',
-  label: 'Hosted at',
+  label: t('connectionTypes.opds.hostedAt'),
   default: '',
-  help: 'The address the catalog is served from, if you host it. Sync writes the files; putting them online is up to you.',
+  help: t('connectionTypes.opds.hostedAtHelp'),
 };
 
 /** Which formats of each book the catalog offers. */
 export const EXPORT_FORMATS: SettingField = {
   key: 'formats',
-  label: 'Formats',
+  label: t('connectionTypes.formats'),
   kind: 'some',
   default: '',
   choices: (Object.keys(FORMATS) as FormatId[]).map((format) => ({ value: format, label: FORMATS[format].label })),
-  help: 'Each book is offered in every format it has, or, if you pick some, in every one of those it has; a book with none of them is left out.',
+  noun: { one: t('connectionTypes.formatNoun.one'), many: t('connectionTypes.formatNoun.many') },
+  help: t('connectionTypes.opds.formatsHelp'),
 };
 
 /** calibre3opds's Cloudflare Pages options (`devices/opds/cloudflare/`). */
 export const SEARCH_ROUTING: SettingField = {
   key: 'searchRouting',
-  label: 'Cloudflare search routing',
+  label: t('connectionTypes.opds.searchRouting'),
   kind: 'checkbox',
   default: 'no',
-  help: 'Lets OPDS readers search as they type when the catalog is hosted on Cloudflare Pages: writes a Pages Function and a search index.',
+  help: t('connectionTypes.opds.searchRoutingHelp'),
 };
 
 export const BASIC_AUTH: SettingField = {
   key: 'basicAuth',
-  label: 'Cloudflare Basic Auth',
+  label: t('connectionTypes.opds.basicAuth'),
   kind: 'checkbox',
   default: 'no',
-  help: 'Puts a user name and password in front of the whole catalog on Cloudflare Pages: writes _worker.js. Set them as the BASIC_USER and BASIC_PASS secrets of the Pages project (see README.md in the catalog).',
+  help: t('connectionTypes.opds.basicAuthHelp'),
 };
 
 /**
@@ -45,7 +47,7 @@ export const BASIC_AUTH: SettingField = {
 export const opdsExport: ExportType = {
   access: 'export',
   id: 'opds.catalog',
-  label: 'OPDS Static Export',
+  label: t('connectionTypes.opds.export'),
   write: { single: false },
   formats: (device) => pickedChoices(device, EXPORT_FORMATS) as FormatId[],
   settings: [HOSTED_AT, EXPORT_FORMATS, SEARCH_ROUTING, BASIC_AUTH],
@@ -54,16 +56,16 @@ export const opdsExport: ExportType = {
 /** Where a catalog to browse starts. */
 const CATALOG_URL: SettingField = {
   key: 'url',
-  label: 'Catalog address',
+  label: t('connectionTypes.opds.catalogAddress'),
   default: '',
-  help: 'The address of the catalog’s first page, e.g. https://www.gutenberg.org/ebooks.opds/ for Project Gutenberg.',
+  help: t('connectionTypes.opds.catalogAddressHelp'),
   check: (url) => {
-    if (!url.trim()) return { problems: ['Give the catalog’s address.'] };
+    if (!url.trim()) return { problems: [t('connectionTypes.opds.giveAddress')] };
     try {
       const parsed = new URL(url.trim());
-      return parsed.protocol === 'https:' || parsed.protocol === 'http:' ? {} : { problems: ['That isn’t a web address.'] };
+      return parsed.protocol === 'https:' || parsed.protocol === 'http:' ? {} : { problems: [t('connectionTypes.notWebAddress')] };
     } catch {
-      return { problems: ['That isn’t a web address.'] };
+      return { problems: [t('connectionTypes.notWebAddress')] };
     }
   },
 };
@@ -71,17 +73,17 @@ const CATALOG_URL: SettingField = {
 /** How to search a catalog, where it doesn't say in a way nexlibris can read. */
 const SEARCH_TEMPLATE: SettingField = {
   key: 'search',
-  label: 'Search address (optional)',
+  label: t('connectionTypes.opds.searchAddress'),
   default: '',
-  help: 'Only needed if the catalog’s own search can’t be read here: its search page’s address with {searchTerms} where the words go, e.g. https://www.gutenberg.org/ebooks/search.opds/?query={searchTerms} for Project Gutenberg in a browser.',
+  help: t('connectionTypes.opds.searchAddressHelp'),
   check: (template) => {
     if (!template.trim()) return {};
-    if (!template.includes('{searchTerms}')) return { problems: ['Put {searchTerms} where the words go.'] };
+    if (!template.includes('{searchTerms}')) return { problems: [t('connectionTypes.opds.searchTerms')] };
     try {
       const parsed = new URL(template.trim().replace('{searchTerms}', 'x'));
-      return parsed.protocol === 'https:' || parsed.protocol === 'http:' ? {} : { problems: ['That isn’t a web address.'] };
+      return parsed.protocol === 'https:' || parsed.protocol === 'http:' ? {} : { problems: [t('connectionTypes.notWebAddress')] };
     } catch {
-      return { problems: ['That isn’t a web address.'] };
+      return { problems: [t('connectionTypes.notWebAddress')] };
     }
   },
 };
@@ -90,7 +92,7 @@ const SEARCH_TEMPLATE: SettingField = {
 export const opdsServer: FeedType = {
   access: 'feed',
   id: 'opds.server',
-  label: 'OPDS server',
+  label: t('connectionTypes.opds.server'),
   read: true,
   formats: () => [],
   settings: [CATALOG_URL, SEARCH_TEMPLATE],
@@ -101,11 +103,12 @@ export const opdsServer: FeedType = {
 /** Which formats of each book a served feed offers (`servedFormats` in `common/src/opdsServer.ts` reads it). */
 const SERVED_FORMATS: SettingField = {
   key: 'formats',
-  label: 'Formats',
+  label: t('connectionTypes.formats'),
   kind: 'some',
   default: '',
   choices: (Object.keys(FORMATS) as FormatId[]).map((format) => ({ value: format, label: FORMATS[format].label })),
-  help: 'Each book is offered in every format it has, or, if you pick some, in every one of those it has; a book with none of them is left out.',
+  noun: { one: t('connectionTypes.formatNoun.one'), many: t('connectionTypes.formatNoun.many') },
+  help: t('connectionTypes.opds.formatsHelp'),
 };
 
 /** Where the server serves a feed, while signed in to one. */
@@ -123,9 +126,9 @@ export function servedFeedUrl(device: Device): string | undefined {
 export const opdsServed: ServedType = {
   access: 'served',
   id: OPDS_SERVED_TYPE,
-  label: 'OPDS feed on your server',
+  label: t('connectionTypes.opds.served'),
   write: { single: false },
   formats: (device) => pickedChoices(device, SERVED_FORMATS) as FormatId[],
   settings: [SERVED_FORMATS],
-  activation: async () => ((await serverSession())?.account ? undefined : 'Sign in to a nexlibris server (Account…) to serve it'),
+  activation: async () => ((await serverSession())?.account ? undefined : t('connectionTypes.opds.signIn')),
 };
